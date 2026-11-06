@@ -1262,6 +1262,13 @@ pub trait Entity: EntityEventSource + ErasedType + Send + Sync + 'static {
     /// Marks the entity as removed with the given reason.
     fn set_removed(&self, reason: RemovalReason) {
         self.base().set_removed(reason);
+        // Vanilla `LivingEntity.remove` forgets everything the brain remembered.
+        if let Some(memories) = self
+            .as_living_entity()
+            .and_then(LivingEntity::brain_memories)
+        {
+            memories.lock().clear();
+        }
     }
 
     /// Emits a vanilla game event from this entity's exact position with an explicit source entity.
