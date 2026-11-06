@@ -29,6 +29,7 @@ pub struct MoveToBlockGoal {
     vertical_search_start: i32,
     accepted_distance: f64,
     recalculate_path_interval: i32,
+    fixed_next_start_tick: Option<i32>,
 }
 
 impl MoveToBlockGoal {
@@ -67,6 +68,7 @@ impl MoveToBlockGoal {
             vertical_search_start: 0,
             accepted_distance: DEFAULT_ACCEPTED_DISTANCE,
             recalculate_path_interval: DEFAULT_RECALCULATE_PATH_INTERVAL,
+            fixed_next_start_tick: None,
         }
     }
 
@@ -91,6 +93,14 @@ impl MoveToBlockGoal {
         self
     }
 
+    /// Overrides vanilla `nextStartTick` with a fixed delay between searches,
+    /// as `CatLieOnBlockGoal` does.
+    #[must_use]
+    pub(crate) const fn with_fixed_next_start_tick(mut self, next_start_tick: i32) -> Self {
+        self.fixed_next_start_tick = Some(next_start_tick);
+        self
+    }
+
     #[must_use]
     pub(crate) fn with_move_to_target(
         mut self,
@@ -110,8 +120,9 @@ impl MoveToBlockGoal {
         self.reached_target
     }
 
-    fn next_start_tick(_mob: &dyn PathfinderMob) -> i32 {
-        reduced_tick_delay(INTERVAL_TICKS + rand::random_range(0..200))
+    fn next_start_tick(&self, _mob: &dyn PathfinderMob) -> i32 {
+        self.fixed_next_start_tick
+            .unwrap_or_else(|| reduced_tick_delay(INTERVAL_TICKS + rand::random_range(0..200)))
     }
 
     fn move_mob_to_block(&self, mob: &dyn PathfinderMob) {
@@ -160,7 +171,7 @@ impl Goal for MoveToBlockGoal {
             return false;
         }
 
-        self.next_start_tick = Self::next_start_tick(mob);
+        self.next_start_tick = self.next_start_tick(mob);
         let Some(world) = mob.level() else {
             return false;
         };

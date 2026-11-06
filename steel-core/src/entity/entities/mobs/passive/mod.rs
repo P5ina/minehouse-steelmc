@@ -18,7 +18,7 @@ pub use chicken::ChickenEntity;
 pub use cow::CowEntity;
 pub use dolphin::DolphinEntity;
 pub use equine::{DonkeyEntity, HorseEntity, MuleEntity, SkeletonHorseEntity, ZombieHorseEntity};
-pub use feline::OcelotEntity;
+pub use feline::{CatEntity, OcelotEntity};
 pub use fish::{
     COMMON_TROPICAL_FISH_VARIANTS, CodEntity, PufferfishEntity, SalmonEntity, SalmonVariant,
     TropicalFishBase, TropicalFishEntity, TropicalFishPattern, TropicalFishVariant,

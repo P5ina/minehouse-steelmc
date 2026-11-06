@@ -3419,6 +3419,50 @@ pub trait LivingEntity: Entity {
         }
     }
 
+    /// Vanilla `randomTeleport(x, y, z, showParticles, avoidanceTag)`: like
+    /// [`random_teleport`](Self::random_teleport), but refuses to land on, or
+    /// overlap, a block in `avoid`.
+    fn random_teleport_avoiding(
+        &self,
+        world: &Arc<World>,
+        x: f64,
+        y: f64,
+        z: f64,
+        broadcast: bool,
+        avoid: &steel_utils::Identifier,
+    ) -> bool {
+        use steel_registry::blocks::block_state_ext::BlockStateExt as _;
+
+        let Some(landing_y) = random_teleport_ground_y(world, x, y, z) else {
+            return false;
+        };
+        let ground = BlockPos::containing(x, landing_y, z).below();
+        if world.get_block_state(ground).get_block().has_tag(avoid) {
+            return false;
+        }
+        let dimensions = self.base().dimensions();
+        let aabb = WorldAabb::entity_box(
+            x,
+            landing_y,
+            z,
+            f64::from(dimensions.half_width()),
+            f64::from(dimensions.height),
+        );
+        let min = BlockPos::containing(aabb.min_x(), aabb.min_y(), aabb.min_z());
+        let max = BlockPos::containing(aabb.max_x(), aabb.max_y(), aabb.max_z());
+        for block_x in min.x()..=max.x() {
+            for block_y in min.y()..=max.y() {
+                for block_z in min.z()..=max.z() {
+                    let state = world.get_block_state(BlockPos::new(block_x, block_y, block_z));
+                    if state.get_block().has_tag(avoid) {
+                        return false;
+                    }
+                }
+            }
+        }
+        self.random_teleport(world, x, y, z, broadcast)
+    }
+
     /// Returns `true` and commits the move on success, or
     /// `false` and leaves the entity untouched on failure.
     fn random_teleport(&self, world: &Arc<World>, x: f64, y: f64, z: f64, broadcast: bool) -> bool {

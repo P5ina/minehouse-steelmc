@@ -11,6 +11,7 @@ const SKY_LIGHT_LEVEL_ATTRIBUTE: &str = "minecraft:gameplay/sky_light_level";
 const SUN_ANGLE_ATTRIBUTE: &str = "minecraft:visual/sun_angle";
 const MONSTERS_BURN_ATTRIBUTE: &str = "minecraft:gameplay/monsters_burn";
 const MOON_PHASE_ATTRIBUTE: &str = "minecraft:visual/moon_phase";
+const CAT_WAKING_UP_GIFT_CHANCE_ATTRIBUTE: &str = "minecraft:gameplay/cat_waking_up_gift_chance";
 const CAN_PILLAGER_PATROL_SPAWN_ATTRIBUTE: &str = "minecraft:gameplay/can_pillager_patrol_spawn";
 const SURFACE_SLIME_SPAWN_CHANCE_ATTRIBUTE: &str = "minecraft:gameplay/surface_slime_spawn_chance";
 const DEFAULT_SKY_LIGHT_LEVEL: f32 = 15.0;
@@ -73,6 +74,20 @@ fn apply_timeline_float_attribute(
         value = apply_timeline_float_track(value, timeline, clock_manager, attribute);
     });
     value
+}
+
+/// Samples `CAT_WAKING_UP_GIFT_CHANCE`: 0 by default, raised by the overworld day timeline.
+#[must_use]
+pub(super) fn cat_waking_up_gift_chance(
+    dimension_type: DimensionTypeRef,
+    clock_manager: &WorldClockManager,
+) -> f32 {
+    apply_timeline_float_attribute(
+        0.0,
+        dimension_type,
+        clock_manager,
+        CAT_WAKING_UP_GIFT_CHANCE_ATTRIBUTE,
+    )
 }
 
 /// Samples `MONSTERS_BURN`: false by default, enabled by the overworld day timeline.
