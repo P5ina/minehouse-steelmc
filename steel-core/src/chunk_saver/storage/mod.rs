@@ -690,6 +690,7 @@ impl ChunkStorage {
             structure_starts,
             structure_references,
             pois,
+            chunk.inhabited_time(),
             pos,
         );
 
@@ -745,6 +746,7 @@ impl ChunkStorage {
         structure_starts: Vec<PersistentStructureStart>,
         structure_references: Vec<PersistentStructureReference>,
         pois: Vec<PersistentPoi>,
+        inhabited_time: i64,
         chunk_pos: ChunkPos,
     ) -> PersistentChunk<'static> {
         let mut builder = ChunkBuilder::new(&REGISTRY);
@@ -806,6 +808,7 @@ impl ChunkStorage {
             structure_starts,
             structure_references,
             pois,
+            inhabited_time,
         }
     }
 }

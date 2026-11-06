@@ -480,6 +480,7 @@ impl ChunkStorage {
                 world.poi_storage.lock().restore_tickets(pos, &tickets);
             }
 
+            full.common().set_inhabited_time(persistent.inhabited_time);
             // Clear dirty flag since we just loaded (add_and_register marks dirty)
             full.common().dirty.store(false, Ordering::Release);
 
@@ -510,6 +511,7 @@ impl ChunkStorage {
                 Weak::clone(&level),
                 light,
             );
+            chunk.set_inhabited_time(persistent.inhabited_time);
 
             for persistent_be in &persistent.block_entities {
                 let block_entity_pos = Self::persistent_block_entity_pos(persistent_be, pos);

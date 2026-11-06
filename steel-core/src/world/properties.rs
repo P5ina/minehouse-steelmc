@@ -10,6 +10,9 @@ use super::{
     Player, REGISTRY, SectionPos, Sha256, World, vanilla_dimension_types,
 };
 
+/// Vanilla `ChunkMap.playerIsCloseEnoughForSpawning`: 128 blocks, squared.
+const SPAWN_DISTANCE_SQR: f64 = 16384.0;
+
 impl World {
     /// Maximum absolute X/Z coordinate for the world border, in blocks.
     pub const MAX_LEVEL_SIZE: i32 = 30_000_000;
@@ -44,6 +47,28 @@ impl World {
         let mut close_enough = false;
         self.players.iter_players(|_, player| {
             if !player.is_spectator() && player.position().distance(target) < f64::from(radius) {
+                close_enough = true;
+                return false;
+            }
+            true
+        });
+        close_enough
+    }
+
+    /// Vanilla `ChunkMap.anyPlayerCloseEnoughForSpawning`: a non-spectator player is
+    /// within 128 blocks (horizontally) of the chunk center.
+    pub fn any_player_close_enough_for_spawning(&self, chunk_pos: ChunkPos) -> bool {
+        let center_x = f64::from(chunk_pos.0.x * 16 + 8);
+        let center_z = f64::from(chunk_pos.0.y * 16 + 8);
+        let mut close_enough = false;
+        self.players.iter_players(|_, player| {
+            if player.is_spectator() {
+                return true;
+            }
+            let position = player.position();
+            let dx = center_x - position.x;
+            let dz = center_z - position.z;
+            if dx * dx + dz * dz < SPAWN_DISTANCE_SQR {
                 close_enough = true;
                 return false;
             }
