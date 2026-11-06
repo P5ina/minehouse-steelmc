@@ -51,6 +51,17 @@ pub enum ChunkConversion {
     NotFull(String),
 }
 
+/// What chunk conversion needs to know about the dimension a chunk is in.
+#[derive(Debug, Clone, Copy)]
+pub struct ChunkDimension {
+    /// Minimum build height of the dimension type.
+    pub min_y: i32,
+    /// Build height of the dimension type.
+    pub height: i32,
+    /// World seed. Vanilla rebuilds ocean monuments from it when their chunk loads.
+    pub seed: i64,
+}
+
 /// Converts the NBT of a vanilla chunk, its entity chunk and its POI chunk.
 ///
 /// Returns an error for data Steel cannot read faithfully, such as another data version or a
@@ -60,10 +71,14 @@ pub fn convert_chunk(
     entity_bytes: Option<&[u8]>,
     poi_bytes: Option<&[u8]>,
     pos: ChunkPos,
-    min_y: i32,
-    height: i32,
+    dimension: ChunkDimension,
     report: &mut ImportReport,
 ) -> Result<ChunkConversion, String> {
+    let ChunkDimension {
+        min_y,
+        height,
+        seed,
+    } = dimension;
     let root = nbt::read_root(chunk_bytes)?;
     check_data_version(&root)?;
 
@@ -101,7 +116,7 @@ pub fn convert_chunk(
     let postprocessing = converter.postprocessing(&root);
     let structure_references = structure_references(&root);
     let structure_starts = match root.compound("structures") {
-        Some(structures) => structures::structure_starts(structures, report),
+        Some(structures) => structures::structure_starts(structures, seed, report),
         None => Vec::new(),
     };
 

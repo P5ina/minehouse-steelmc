@@ -12,6 +12,7 @@ use steel_utils::Identifier;
 
 use super::nbt;
 use super::report::ImportReport;
+use super::structure_procedural::{self, StartContext};
 use super::structure_templates;
 use crate::chunk_saver::{
     PersistentBoundingBox, PersistentJigsawJunction, PersistentJigsawPieceData,
@@ -27,8 +28,11 @@ const JIGSAW_PIECE: &str = "minecraft:jigsaw";
 const END_TAG: u8 = 0;
 
 /// Converts the structure starts of a chunk's `structures` compound.
+///
+/// `seed` is the world seed, which vanilla uses to rebuild ocean monuments on load.
 pub(super) fn structure_starts(
     structures: &NbtCompound,
+    seed: i64,
     report: &mut ImportReport,
 ) -> Vec<PersistentStructureStart> {
     let Some(starts) = structures.compound("starts") else {
@@ -43,7 +47,7 @@ pub(super) fn structure_starts(
             continue;
         }
         let structure = structure.to_str();
-        match structure_start(&structure, start) {
+        match structure_start(&structure, start, seed) {
             Ok(start) => converted.push(start),
             Err(_) => {
                 ImportReport::count(&mut report.structure_starts_dropped, structure.into_owned());
@@ -57,29 +61,38 @@ pub(super) fn structure_starts(
 fn structure_start(
     structure: &str,
     start: &NbtCompound,
+    seed: i64,
 ) -> Result<PersistentStructureStart, String> {
     let structure = nbt::identifier(structure).ok_or("malformed structure id")?;
     if REGISTRY.structures.by_key(&structure).is_none() {
         return Err(format!("unknown structure {structure}"));
     }
+    let context = StartContext {
+        seed,
+        chunk_x: int(start, "ChunkX")?,
+        chunk_z: int(start, "ChunkZ")?,
+    };
     let pieces = compound_list(start, "Children")?
         .iter()
-        .map(structure_piece)
+        .map(|piece| structure_piece(piece, &context))
         .collect::<Result<Vec<_>, _>>()?;
     if pieces.is_empty() {
         return Err("structure start has no pieces".to_owned());
     }
     Ok(PersistentStructureStart {
         structure,
-        chunk_x: int(start, "ChunkX")?,
-        chunk_z: int(start, "ChunkZ")?,
+        chunk_x: context.chunk_x,
+        chunk_z: context.chunk_z,
         references: int(start, "references")?,
         pieces,
     })
 }
 
 /// Converts one piece. The common fields are vanilla `StructurePiece(type, tag)`.
-fn structure_piece(piece: &NbtCompound) -> Result<PersistentStructurePiece, String> {
+fn structure_piece(
+    piece: &NbtCompound,
+    start: &StartContext,
+) -> Result<PersistentStructurePiece, String> {
     let piece_type = nbt::string(piece, "id").ok_or("piece without id")?;
     let bounding_box = bounding_box(piece)?;
     let gen_depth = int(piece, "GD")?;
@@ -91,8 +104,23 @@ fn structure_piece(piece: &NbtCompound) -> Result<PersistentStructurePiece, Stri
     if piece_type == JIGSAW_PIECE {
         return jigsaw_piece(piece, bounding_box, gen_depth, orientation);
     }
-    let (payload, bounding_box) = structure_templates::template_payload(&piece_type, piece)
-        .ok_or_else(|| format!("unsupported structure piece {piece_type}"))??;
+    let (payload, bounding_box, orientation) = if let Some(template) =
+        structure_templates::template_payload(&piece_type, piece)
+    {
+        let (payload, bounding_box) = template?;
+        (payload, bounding_box, orientation)
+    } else if let Some(procedural) =
+        structure_procedural::procedural_piece(&piece_type, piece, bounding_box, orientation, start)
+    {
+        let procedural = procedural?;
+        (
+            procedural.payload,
+            procedural.bounding_box,
+            procedural.orientation,
+        )
+    } else {
+        return Err(format!("unsupported structure piece {piece_type}"));
+    };
     let piece_type = nbt::identifier(&piece_type).ok_or("malformed piece id")?;
     Ok(PersistentStructurePiece {
         piece_type,
@@ -100,7 +128,7 @@ fn structure_piece(piece: &NbtCompound) -> Result<PersistentStructurePiece, Stri
         gen_depth,
         orientation,
         payload,
-        // Template pieces have no terrain adaptation data.
+        // Only jigsaw pieces have terrain adaptation data.
         ground_level_delta: 0,
         projection: -1,
         junctions: Vec::new(),
