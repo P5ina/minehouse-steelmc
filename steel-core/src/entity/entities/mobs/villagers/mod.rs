@@ -3,8 +3,10 @@
 pub mod trading;
 mod villager;
 pub(crate) mod villager_data;
+mod wandering_trader;
 
 pub use villager::VillagerEntity;
+pub use wandering_trader::WanderingTraderEntity;
 
 use std::sync::Arc;
 
