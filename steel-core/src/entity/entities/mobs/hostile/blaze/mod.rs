@@ -27,7 +27,8 @@ use crate::entity::projectile::{normalize_or_zero, triangle_random};
 use crate::entity::{
     AbstractHurtingProjectile, DefaultEntityPush, Entity, EntityBase, EntityBaseLoad,
     EntityMovementEmission, EntityPose, EntitySyncedData, LivingEntity, LivingEntityBase, Mob,
-    MobBase, Monster, PathfinderMob, SharedEntity, next_entity_id, sync_dirty_mob_effects,
+    MobBase, Monster, PathfinderMob, SharedEntity, SpawnRule, next_entity_id,
+    sync_dirty_mob_effects,
 };
 use crate::physics::MoveResult;
 use crate::world::World;
@@ -47,7 +48,7 @@ const LOST_SIGHT_CHASE_TICKS: i32 = 5;
 const FIREBALL_SPREAD: f64 = 2.297;
 
 /// A blaze.
-#[entity_behavior(class = "Blaze")]
+#[entity_behavior(class = "Blaze", spawn_rule)]
 pub struct BlazeEntity {
     base: EntityBase,
     entity_type: EntityTypeRef,
@@ -69,6 +70,16 @@ unsafe impl DowncastType for BlazeEntity {
 }
 
 impl BlazeEntity {
+    /// Vanilla `SpawnPlacements` predicate: `Monster.checkAnyLightMonsterSpawnRules`.
+    pub(crate) const SPAWN_RULE: SpawnRule = |entity_type, level, spawn_reason, pos, _random| {
+        <Self as Monster>::check_any_light_monster_spawn_rules(
+            entity_type,
+            level,
+            spawn_reason,
+            pos,
+        )
+    };
+
     /// Creates a new blaze.
     #[must_use]
     pub fn new(entity_type: EntityTypeRef, id: i32, position: DVec3, world: Weak<World>) -> Self {
