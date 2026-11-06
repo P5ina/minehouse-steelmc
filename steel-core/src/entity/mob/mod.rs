@@ -1536,6 +1536,11 @@ pub trait Mob: LivingEntity + Leashable {
     /// Returns the bounding box used for melee range checks, expanded
     /// horizontally and extended to cover a ridden vehicle.
     fn attack_bounding_box(&self, horizontal_expansion: f64) -> WorldAabb {
+        self.default_attack_bounding_box(horizontal_expansion)
+    }
+
+    /// Vanilla `Mob.getAttackBoundingBox`, callable from overrides as `super`.
+    fn default_attack_bounding_box(&self, horizontal_expansion: f64) -> WorldAabb {
         let own_aabb = self.bounding_box();
         let base = if let Some(vehicle) = self.vehicle() {
             let mount_aabb = vehicle.bounding_box();

@@ -656,6 +656,11 @@ pub trait LivingEntity: Entity {
 
     /// Returns whether this entity has an unobstructed line of sight to target's eyes.
     fn has_line_of_sight(&self, target: &dyn Entity) -> bool {
+        self.default_has_line_of_sight(target)
+    }
+
+    /// Vanilla `LivingEntity.hasLineOfSight`, callable from overrides as `super`.
+    fn default_has_line_of_sight(&self, target: &dyn Entity) -> bool {
         self.has_line_of_sight_with(
             target,
             ClipBlockShape::Collider,
