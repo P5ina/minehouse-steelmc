@@ -53,6 +53,12 @@ chunk_generation = 0
 # Worker threads for the Rayon chunk encoding pool.
 chunk_encoding = 0
 
+# Velocity modern forwarding, for running behind Velocity or Gate.
+# Requires online_mode = false and encryption = false. STEEL_VELOCITY_SECRET overrides the secret.
+[server.proxy]
+enabled = false
+# velocity_secret = ""
+
 # Compression settings
 [server.compression]
 threshold = 256

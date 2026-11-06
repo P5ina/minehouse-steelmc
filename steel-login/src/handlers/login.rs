@@ -5,7 +5,9 @@ use sha2::Digest;
 use steel_core::{player::GameProfile, server::DuplicatePlayerWaitError};
 use steel_crypto::key_store::{DecryptError, KeyStore};
 use steel_protocol::{
-    packets::login::{CHello, CLoginCompression, CLoginFinished, SHello, SKey},
+    packets::login::{
+        CCustomQuery, CHello, CLoginCompression, CLoginFinished, SCustomQueryAnswer, SHello, SKey,
+    },
     utils::ConnectionProtocol,
 };
 use steel_utils::translations;
@@ -14,7 +16,11 @@ use text_components::TextComponent;
 use crate::{
     AuthError, is_valid_player_name, mojang_authenticate, offline_uuid, signed_bytes_be_to_hex,
     tcp_client::{ConnectionAction, ConnectionUpdate, JavaTcpClient},
+    velocity,
 };
+
+/// Shown when someone connects straight to a backend that only accepts proxied players.
+const PROXY_ONLY_MESSAGE: &str = "This server can only be joined through its proxy";
 
 impl JavaTcpClient {
     async fn disconnect_duplicate_player(&self, profile: &GameProfile) -> bool {
@@ -82,6 +88,24 @@ impl JavaTcpClient {
             return ConnectionAction::none();
         }
 
+        if self.server.config.velocity_secret.is_some() {
+            let transaction_id = rand::random::<i32>() & i32::MAX;
+            let sequence_result = self
+                .pre_play_state
+                .lock()
+                .wait_for_forwarding(transaction_id);
+            if let Err(error) = sequence_result {
+                return self.reject_unexpected_packet(error).await;
+            }
+            self.send_bare_packet_now(CCustomQuery::new(
+                transaction_id,
+                velocity::channel(),
+                Box::new([velocity::MODERN_DEFAULT]),
+            ))
+            .await;
+            return ConnectionAction::none();
+        }
+
         if self.server.config.encryption {
             let sequence_result = self.pre_play_state.lock().wait_for_key(requested_username);
             if let Err(error) = sequence_result {
@@ -110,6 +134,41 @@ impl JavaTcpClient {
             return ConnectionAction::none();
         };
         self.finish_verified_login(profile, None).await
+    }
+
+    /// Handles the proxy's answer to the Velocity forwarding query.
+    pub(crate) async fn handle_custom_query_answer(
+        &self,
+        packet: SCustomQueryAnswer,
+    ) -> ConnectionAction {
+        let sequence_result = self
+            .pre_play_state
+            .lock()
+            .receive_forwarding(packet.transaction_id);
+        if let Err(error) = sequence_result {
+            return self.reject_unexpected_packet(error).await;
+        }
+        let Some(secret) = self.server.config.velocity_secret.as_deref() else {
+            self.close();
+            return ConnectionAction::none();
+        };
+        match velocity::read_forwarded_player(secret.as_bytes(), packet.payload.as_deref()) {
+            Ok(player) => {
+                log::info!(
+                    "Client {} forwarded by proxy as {} ({}) from {}",
+                    self.id,
+                    player.profile.name(),
+                    player.profile.id(),
+                    player.address
+                );
+                self.finish_verified_login(player.profile, None).await
+            }
+            Err(error) => {
+                log::warn!("Client {} failed proxy forwarding: {error}", self.id);
+                self.kick(PROXY_ONLY_MESSAGE.into()).await;
+                ConnectionAction::none()
+            }
+        }
     }
 
     /// Handles the key packet during the login state, used for encryption.

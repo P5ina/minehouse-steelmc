@@ -29,7 +29,7 @@ use steel_protocol::{
         common::{CDisconnect, SClientInformation, SCustomPayload, SPingRequest},
         config::SSelectKnownPacks,
         handshake::{ClientIntent, SClientIntention},
-        login::{CLoginDisconnect, SHello, SKey},
+        login::{CLoginDisconnect, SCustomQueryAnswer, SHello, SKey},
     },
     utils::{ConnectionProtocol, PacketError, RawPacket},
 };
@@ -769,6 +769,14 @@ impl JavaTcpClient {
                     return Ok(self.reject_unexpected_packet(error).await);
                 }
                 Ok(self.handle_key(SKey::read_packet(data)?).await)
+            }
+            login_packets::S_CUSTOM_QUERY_ANSWER => {
+                if let Err(error) = self.expect_pre_play_packet(PrePlayPacket::CustomQueryAnswer) {
+                    return Ok(self.reject_unexpected_packet(error).await);
+                }
+                Ok(self
+                    .handle_custom_query_answer(SCustomQueryAnswer::read_packet(data)?)
+                    .await)
             }
             login_packets::S_LOGIN_ACKNOWLEDGED => {
                 if let Err(error) = self.expect_pre_play_packet(PrePlayPacket::LoginAcknowledged) {

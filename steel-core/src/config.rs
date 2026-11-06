@@ -72,6 +72,9 @@ pub struct RuntimeConfig {
     pub services_server: Option<String>,
     /// Whether the server should use encryption. Required in online mode.
     pub encryption: bool,
+    /// Shared secret for Velocity modern forwarding. When set, players are accepted
+    /// only through a proxy that signs their profile with this secret.
+    pub velocity_secret: Option<String>,
     /// Whether vanilla floating/flying movement checks permit unauthorized flight.
     pub allow_flight: bool,
     /// The message of the day.
@@ -112,6 +115,7 @@ impl Default for RuntimeConfig {
             profile_server: None,
             services_server: None,
             encryption: true,
+            velocity_secret: None,
             allow_flight: false,
             motd: "A Steel Server".to_owned(),
             use_favicon: true,
