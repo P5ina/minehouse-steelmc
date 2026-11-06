@@ -52,6 +52,8 @@ pub enum NavigationKind {
     WaterBound { allow_breaching: bool },
     /// `AmphibiousPathNavigation`: walks on land and swims through water.
     Amphibious,
+    /// `FlyingPathNavigation`.
+    Flying,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -228,7 +230,7 @@ impl PathNavigation {
     #[must_use]
     pub const fn max_vertical_distance_to_waypoint(&self) -> f64 {
         match self.kind {
-            NavigationKind::Ground | NavigationKind::Amphibious => 1.0,
+            NavigationKind::Ground | NavigationKind::Amphibious | NavigationKind::Flying => 1.0,
             NavigationKind::WaterBound { .. } => 0.5,
         }
     }
@@ -288,6 +290,15 @@ impl PathNavigation {
     #[must_use]
     pub const fn tick_count(&self) -> i32 {
         self.tick
+    }
+
+    /// Creates a vanilla `FlyingPathNavigation`.
+    #[must_use]
+    pub fn flying() -> Self {
+        Self {
+            kind: NavigationKind::Flying,
+            ..Self::new()
+        }
     }
 
     #[must_use]
@@ -605,11 +616,18 @@ impl PathNavigation {
             return None;
         };
 
-        if context.ground_mob_position.y > target.y
-            && !on_ground
-            && fast_floor(context.ground_mob_position.x) == fast_floor(target.x)
-            && fast_floor(context.ground_mob_position.z) == fast_floor(target.z)
-        {
+        let reached_node = if self.kind == NavigationKind::Flying {
+            // `FlyingPathNavigation.tick`: advance once inside the node's block.
+            fast_floor(context.mob_position.x) == fast_floor(target.x)
+                && fast_floor(context.mob_position.y) == fast_floor(target.y)
+                && fast_floor(context.mob_position.z) == fast_floor(target.z)
+        } else {
+            context.ground_mob_position.y > target.y
+                && !on_ground
+                && fast_floor(context.ground_mob_position.x) == fast_floor(target.x)
+                && fast_floor(context.ground_mob_position.z) == fast_floor(target.z)
+        };
+        if reached_node {
             path.advance();
         }
 

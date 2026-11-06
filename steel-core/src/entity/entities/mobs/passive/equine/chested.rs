@@ -33,7 +33,7 @@ use crate::player::Player;
 use crate::world::World;
 
 /// Vanilla `AbstractChestedHorse` baby scale.
-const CHESTED_BABY_SCALE: f32 = 0.5;
+pub(super) const CHESTED_BABY_SCALE: f32 = 0.5;
 /// Vanilla `AbstractChestedHorse.getInventoryColumns` with a chest.
 const CHEST_COLUMNS: usize = 5;
 

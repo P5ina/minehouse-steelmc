@@ -10,6 +10,7 @@ use steel_utils::types::GameType;
 
 use super::advancement::PlayerAdvancement;
 use super::advancement::progress::AdvancementProgress;
+use super::shoulder::{shoulder_tag_from_bytes, shoulder_tag_to_bytes};
 use super::{
     Player, PlayerRespawnConfig, abilities::Abilities, experience::Experience, food_data::FoodData,
     player_inventory::PlayerInventory,
@@ -26,7 +27,7 @@ use crate::{
 
 /// Current data version for player saves.
 /// Increment when making breaking changes to the format.
-pub const PLAYER_DATA_VERSION: i32 = 7;
+pub const PLAYER_DATA_VERSION: i32 = 8;
 
 /// Persistent player data saved by Steel's storage backend.
 ///
@@ -135,6 +136,12 @@ pub struct PersistentPlayerData {
 
     /// Persisted advancement progress keyed by advancement identifier.
     pub advancements: Vec<(Identifier, AdvancementProgress)>,
+
+    /// Vanilla `ShoulderEntityLeft` as compound NBT bytes; empty when free.
+    pub shoulder_entity_left: Vec<u8>,
+
+    /// Vanilla `ShoulderEntityRight` as compound NBT bytes; empty when free.
+    pub shoulder_entity_right: Vec<u8>,
 }
 
 /// A vanilla `RootVehicle` tree persisted with player data.
@@ -296,6 +303,8 @@ impl PersistentPlayerData {
             ender_items,
             stats,
             advancements,
+            shoulder_entity_left: shoulder_tag_to_bytes(&player.shoulder_entity_left()),
+            shoulder_entity_right: shoulder_tag_to_bytes(&player.shoulder_entity_right()),
         }
     }
 
@@ -527,6 +536,8 @@ impl PersistentPlayerData {
         }
         player.set_score(self.score);
         player.set_seen_credits(self.seen_credits);
+        player.set_shoulder_entity_left(shoulder_tag_from_bytes(&self.shoulder_entity_left));
+        player.set_shoulder_entity_right(shoulder_tag_from_bytes(&self.shoulder_entity_right));
 
         // Statistics
         {

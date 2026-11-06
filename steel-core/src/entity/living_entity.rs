@@ -1767,6 +1767,16 @@ pub trait LivingEntity: Entity {
         }
 
         self.tick_living_air_supply();
+
+        // Vanilla `LivingEntity.baseTick`: `onChangedBlock` when the block
+        // position differs from `lastPos`.
+        let pos = self.block_position();
+        if self.living_base().update_last_block_pos(pos)
+            && let Some(world) = self.level()
+            && let Some(living) = self.as_living_entity()
+        {
+            enchantment_helper::run_location_changed_effects(&world, living);
+        }
     }
 
     /// Returns whether this entity is affected by fluid physics; true by default.
@@ -2133,9 +2143,25 @@ pub trait LivingEntity: Entity {
             return;
         }
 
+        // Vanilla `collectEquipmentChanges`: stop the previous items' location
+        // effects first, then install the new items and run theirs.
+        if let Some(living) = self.as_living_entity() {
+            for (slot, previous, _) in &changes {
+                if !previous.is_empty() {
+                    enchantment_helper::stop_location_based_effects_in_slot(living, *slot);
+                }
+            }
+        }
         for (slot, _, current) in &changes {
             self.living_base()
                 .refresh_equipment_attribute_modifiers(*slot, current);
+            if !current.is_empty()
+                && !current.is_broken()
+                && let Some(world) = self.level()
+                && let Some(living) = self.as_living_entity()
+            {
+                enchantment_helper::run_location_changed_effects_in_slot(&world, living, *slot);
+            }
         }
 
         let main_hand = changes
@@ -2197,6 +2223,9 @@ pub trait LivingEntity: Entity {
     fn on_equipped_item_broken(&self, _item: ItemRef, slot: EquipmentSlot) {
         self.broadcast_entity_event(slot.into());
         self.refresh_equipment_attribute_modifiers(slot);
+        if let Some(living) = self.as_living_entity() {
+            enchantment_helper::stop_location_based_effects_in_slot(living, slot);
+        }
     }
 
     /// Returns vanilla `LivingEntity.canFreeze()` after concrete entity exemptions.
@@ -2850,10 +2879,20 @@ pub trait LivingEntity: Entity {
         }
     }
 
+    /// Vanilla `omnidirectionalAirMover`: flying animals such as parrots
+    /// brake vertically as hard as horizontally.
+    fn omnidirectional_air_mover(&self) -> bool {
+        false
+    }
+
     /// Returns the vertical friction used by `travelInAir`.
     fn air_travel_vertical_friction(&self, _horizontal_friction: f32) -> f32 {
-        // TODO: FlyingAnimal uses horizontal friction here once animal types exist.
-        0.98
+        if self.omnidirectional_air_mover() {
+            // Vanilla `airDrag`: the 0.91 air friction with the drag modifier.
+            self.get_air_drag() as f32
+        } else {
+            0.98
+        }
     }
 
     /// Clamps movement while on a climbable block: caps horizontal and

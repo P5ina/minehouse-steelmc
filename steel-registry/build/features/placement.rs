@@ -7,7 +7,7 @@ use super::{
     generate_vec, generate_vertical_anchor, quote,
 };
 
-pub(super) fn generate_block_predicate(predicate: &BlockPredicate) -> TokenStream {
+pub(crate) fn generate_block_predicate(predicate: &BlockPredicate) -> TokenStream {
     match predicate {
         BlockPredicate::True => quote! { BlockPredicate::True },
         BlockPredicate::AllOf { predicates } => {
@@ -49,6 +49,10 @@ pub(super) fn generate_block_predicate(predicate: &BlockPredicate) -> TokenStrea
         BlockPredicate::Replaceable { offset } => {
             let offset = generate_offset(offset);
             quote! { BlockPredicate::Replaceable { offset: #offset } }
+        }
+        BlockPredicate::Unobstructed { offset } => {
+            let offset = generate_offset(offset);
+            quote! { BlockPredicate::Unobstructed { offset: #offset } }
         }
         BlockPredicate::HasSturdyFace { direction, offset } => {
             let direction = generate_direction(*direction);

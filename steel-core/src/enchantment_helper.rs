@@ -1,15 +1,17 @@
 mod item_in_use;
+mod location;
 
 use std::sync::Arc;
 
 use item_in_use::EnchantedItemInUse;
 
 use steel_registry::attribute::AttributeRef;
+use steel_registry::blocks::block_state_ext::BlockStateExt as _;
 use steel_registry::enchantment_effect::{
-    CrossbowChargingSounds, DamageSourcePredicate, EnchantmentEffectComponent,
+    CrossbowChargingSounds, DamageSourcePredicate, EnchantmentBlockSet, EnchantmentEffectComponent,
     EnchantmentEffectRequirements, EnchantmentEntityEffect, EnchantmentEntityTarget,
     EnchantmentTarget, EntityPredicate, EntityTypePredicate, EntityTypeSpecificPredicate,
-    EntityVehiclePredicate, MobEffectSelection,
+    EntityVehiclePredicate, MobEffectSelection, MovementAffectedByPredicate,
 };
 use steel_registry::entity_type::EntityTypeRef;
 use steel_registry::item_stack::ItemStack;
@@ -24,6 +26,11 @@ use crate::inventory::equipment::EquipmentSlot;
 use crate::world::World;
 
 mod selection;
+
+pub(crate) use location::{
+    run_location_changed_effects, run_location_changed_effects_in_slot,
+    stop_location_based_effects, stop_location_based_effects_in_slot,
+};
 
 pub(crate) use selection::{EnchantmentInstance, get_enchantment_cost, select_enchantment};
 
@@ -721,7 +728,8 @@ fn entity_effect_is_supported(effect: &EnchantmentEntityEffect) -> bool {
         | EnchantmentEntityEffect::Unsupported { .. } => false,
         EnchantmentEntityEffect::ChangeItemDamage { .. }
         | EnchantmentEntityEffect::DamageEntity { .. }
-        | EnchantmentEntityEffect::Ignite { .. } => true,
+        | EnchantmentEntityEffect::Ignite { .. }
+        | EnchantmentEntityEffect::ReplaceDisk { .. } => true,
         EnchantmentEntityEffect::ApplyMobEffect { to_apply, .. } => {
             matches!(to_apply, MobEffectSelection::Single(_))
         }
@@ -803,6 +811,12 @@ fn apply_supported_entity_effect(
             ));
             false
         }
+        EnchantmentEntityEffect::ReplaceDisk { .. } => {
+            if let Some(world) = entity.level() {
+                location::replace_disk(&world, effect, level, entity, entity.position());
+            }
+            false
+        }
         EnchantmentEntityEffect::ApplyMobEffect { .. }
         | EnchantmentEntityEffect::ApplyExhaustion { .. }
         | EnchantmentEntityEffect::ApplyImpulse { .. }
@@ -831,7 +845,8 @@ fn post_piercing_entity_effect_is_supported(effect: &EnchantmentEntityEffect) ->
             .all(|effect| post_piercing_entity_effect_is_supported(effect)),
         EnchantmentEntityEffect::ChangeItemDamage { .. }
         | EnchantmentEntityEffect::ApplyExhaustion { .. }
-        | EnchantmentEntityEffect::Ignite { .. } => true,
+        | EnchantmentEntityEffect::Ignite { .. }
+        | EnchantmentEntityEffect::ReplaceDisk { .. } => true,
         EnchantmentEntityEffect::PlaySound { sounds, .. } => !sounds.is_empty(),
         EnchantmentEntityEffect::ApplyImpulse { direction, .. } => {
             direction.x == 0.0 && direction.y == 0.0
@@ -893,6 +908,12 @@ fn apply_supported_post_piercing_entity_effect(
         } => {
             let index = (level - 1).clamp(0, sounds.len() as i32 - 1) as usize;
             user.play_sound(sounds[index], *volume, *pitch);
+            false
+        }
+        EnchantmentEntityEffect::ReplaceDisk { .. } => {
+            if let Some(world) = user.level() {
+                location::replace_disk(&world, effect, level, user, user.position());
+            }
             false
         }
         EnchantmentEntityEffect::Ignite { .. } | EnchantmentEntityEffect::ApplyMobEffect { .. } => {
@@ -981,6 +1002,8 @@ fn requirements_state(
         EnchantmentEffectRequirements::DamageSourceProperties(predicate) => Some(
             damage_source_predicate_matches(predicate, context.damage_source),
         ),
+        // `ENCHANTMENT_ACTIVE` is only present in the location context.
+        EnchantmentEffectRequirements::EnchantmentActiveCheck { .. } => Some(false),
         EnchantmentEffectRequirements::RandomChance { .. }
         | EnchantmentEffectRequirements::MatchTool { .. }
         | EnchantmentEffectRequirements::Unsupported { .. } => None,
@@ -1027,6 +1050,7 @@ fn requirements_state_with_random(
         EnchantmentEffectRequirements::RandomChance { chance } => {
             Some(rand::random::<f32>() < chance.calculate(level))
         }
+        EnchantmentEffectRequirements::EnchantmentActiveCheck { .. } => Some(false),
         EnchantmentEffectRequirements::MatchTool { .. }
         | EnchantmentEffectRequirements::Unsupported { .. } => None,
     }
@@ -1042,21 +1066,25 @@ fn entity_requirements_match(
     };
 
     matches!(
-        entity_requirements_state(requirements, entity, level),
+        entity_requirements_state(requirements, entity, level, None),
         Some(true)
     )
 }
 
+/// Evaluates requirements in a context whose only entity is `this`.
+/// `enchantment_active` is vanilla's `ENCHANTMENT_ACTIVE` parameter, present
+/// only in the `location_changed` context.
 fn entity_requirements_state(
     requirements: &'static EnchantmentEffectRequirements,
     entity: &dyn Entity,
     level: i32,
+    enchantment_active: Option<bool>,
 ) -> Option<bool> {
     match requirements {
         EnchantmentEffectRequirements::AllOf(terms) => {
             let mut has_unknown = false;
             for term in *terms {
-                match entity_requirements_state(term, entity, level) {
+                match entity_requirements_state(term, entity, level, enchantment_active) {
                     Some(true) => {}
                     Some(false) => return Some(false),
                     None => has_unknown = true,
@@ -1067,7 +1095,7 @@ fn entity_requirements_state(
         EnchantmentEffectRequirements::AnyOf(terms) => {
             let mut has_unknown = false;
             for term in *terms {
-                match entity_requirements_state(term, entity, level) {
+                match entity_requirements_state(term, entity, level, enchantment_active) {
                     Some(true) => return Some(true),
                     Some(false) => {}
                     None => has_unknown = true,
@@ -1076,7 +1104,8 @@ fn entity_requirements_state(
             if has_unknown { None } else { Some(false) }
         }
         EnchantmentEffectRequirements::Inverted(term) => {
-            entity_requirements_state(term, entity, level).map(|matched| !matched)
+            entity_requirements_state(term, entity, level, enchantment_active)
+                .map(|matched| !matched)
         }
         EnchantmentEffectRequirements::EntityProperties {
             entity: EnchantmentEntityTarget::This,
@@ -1084,6 +1113,9 @@ fn entity_requirements_state(
         } => entity_predicate_matches_entity(predicate, entity),
         EnchantmentEffectRequirements::RandomChance { chance } => {
             Some(rand::random::<f32>() < chance.calculate(level))
+        }
+        EnchantmentEffectRequirements::EnchantmentActiveCheck { active } => {
+            Some(enchantment_active == Some(*active))
         }
         EnchantmentEffectRequirements::EntityProperties { .. }
         | EnchantmentEffectRequirements::DamageSourceProperties(_)
@@ -1099,6 +1131,10 @@ fn entity_predicate_matches_type(
     if predicate.unsupported
         || !matches!(predicate.vehicle, EntityVehiclePredicate::Any)
         || predicate.flags.has_constraints()
+        || !matches!(
+            predicate.movement_affected_by,
+            MovementAffectedByPredicate::Any
+        )
     {
         return None;
     }
@@ -1149,16 +1185,42 @@ fn entity_predicate_matches_entity(
         EntityVehiclePredicate::Unsupported => return None,
     }
 
+    match &predicate.movement_affected_by {
+        MovementAffectedByPredicate::Any => {}
+        MovementAffectedByPredicate::Blocks(blocks) => {
+            if !movement_affected_by_matches(blocks, entity) {
+                return Some(false);
+            }
+        }
+        MovementAffectedByPredicate::Unsupported => return None,
+    }
+
     if predicate.flags.unsupported {
         return None;
     }
-    if let Some(expected) = predicate.flags.is_fall_flying {
-        let is_fall_flying = entity
-            .as_living_entity()
-            .is_some_and(LivingEntity::is_fall_flying);
-        if is_fall_flying != expected {
+    if let Some(expected) = predicate.flags.is_on_ground
+        && entity.on_ground() != expected
+    {
+        return Some(false);
+    }
+    if let Some(expected) = predicate.flags.is_flying {
+        // Vanilla `EntityFlagsPredicate`: elytra flight or creative flight.
+        let is_flying = entity.as_living_entity().is_some_and(|living| {
+            living.is_fall_flying()
+                || entity
+                    .as_player()
+                    .is_some_and(|player| player.abilities.lock().flying)
+        });
+        if is_flying != expected {
             return Some(false);
         }
+    }
+    // Vanilla only tests `is_fall_flying` against living entities.
+    if let Some(expected) = predicate.flags.is_fall_flying
+        && let Some(living) = entity.as_living_entity()
+        && living.is_fall_flying() != expected
+    {
+        return Some(false);
     }
     if let Some(expected) = predicate.flags.is_in_water
         && entity.is_in_water() != expected
@@ -1192,6 +1254,21 @@ fn entity_predicate_matches_entity(
             Some(true)
         }
     }
+}
+
+/// Vanilla `MovementAffectedByPredicate` with a `block.blocks` location
+/// predicate: the block under the entity that affects its movement, which
+/// must be loaded.
+fn movement_affected_by_matches(blocks: &EnchantmentBlockSet, entity: &dyn Entity) -> bool {
+    let Some(world) = entity.level() else {
+        return false;
+    };
+    let Some(pos) = entity.block_pos_below_that_affects_movement() else {
+        return false;
+    };
+    world
+        .loaded_block_state(pos)
+        .is_some_and(|state| blocks.contains(state.get_block()))
 }
 
 fn entity_type_predicate_matches(

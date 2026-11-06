@@ -22,6 +22,7 @@ pub mod player_data_storage;
 pub mod player_inventory;
 mod profile;
 mod session;
+mod shoulder;
 mod sleep;
 mod sleep_state;
 mod spam_throttler;
@@ -288,6 +289,8 @@ pub struct Player {
     /// In-flight ender pearls thrown by this player, kept weakly so they persist
     /// with the player and re-spawn on login (vanilla `ServerPlayer.enderPearls`).
     ender_pearls: SyncMutex<Vec<Weak<dyn Entity>>>,
+    /// Vanilla `shoulderEntityLeft`/`shoulderEntityRight`: perched parrots.
+    shoulder_entities: SyncMutex<shoulder::ShoulderEntities>,
 
     /// Active fishing hook, kept weakly because the world owns live entities.
     pub(crate) fishing: SyncMutex<Option<Weak<FishingHookEntity>>>,
@@ -662,6 +665,7 @@ impl Player {
             chunk_send_epoch: SyncMutex::new(0),
             residence: SyncMutex::new(PlayerResidenceState::new()),
             ender_pearls: SyncMutex::new(Vec::new()),
+            shoulder_entities: SyncMutex::new(shoulder::ShoulderEntities::default()),
             fishing: SyncMutex::new(None),
             stats: SyncMutex::new(StatsCounter::new()),
             last_action_time: SyncMutex::new(Instant::now()),
@@ -839,10 +843,11 @@ impl Player {
             }
         }
 
-        // TODO: reset player noActionTime and remove shoulder entities.
+        // TODO: reset player noActionTime.
         if self.get_health() <= 0.0 {
             return false;
         }
+        self.remove_entities_on_shoulder();
 
         // Difficulty scaling (vanilla: Player.hurtServer)
         let mut amount = amount;
@@ -1003,7 +1008,7 @@ impl Player {
             });
         }
 
-        // TODO: remove entities on shoulder
+        self.remove_entities_on_shoulder();
         if world.get_game_rule(&FORGIVE_DEAD_PLAYERS) {
             self.tell_neutral_mobs_that_i_died(&world);
         }
@@ -1301,6 +1306,14 @@ impl Player {
             .collect::<Vec<_>>();
         if !ender_pearls.is_empty() {
             nbt.insert("ender_pearls", NbtList::Compound(ender_pearls));
+        }
+        let shoulder_left = self.shoulder_entity_left();
+        if !shoulder_left.is_empty() {
+            nbt.insert("ShoulderEntityLeft", NbtTag::Compound(shoulder_left));
+        }
+        let shoulder_right = self.shoulder_entity_right();
+        if !shoulder_right.is_empty() {
+            nbt.insert("ShoulderEntityRight", NbtTag::Compound(shoulder_right));
         }
     }
 
@@ -2181,6 +2194,7 @@ impl LivingEntity for Player {
         if self.get_health() > 0.0 {
             self.touch_nearby_items();
         }
+        self.handle_shoulder_entities();
         result
     }
 
@@ -2238,6 +2252,7 @@ impl LivingEntity for Player {
     fn on_equipped_item_broken(&self, item: ItemRef, slot: EquipmentSlot) {
         self.broadcast_entity_event(slot.into());
         self.refresh_equipment_attribute_modifiers(slot);
+        enchantment_helper::stop_location_based_effects_in_slot(self, slot);
         self.award_stat(&vanilla_stat_types::ITEM_BROKEN, item);
     }
 }
