@@ -195,10 +195,13 @@ pub trait PathfinderMob: Mob {
             return;
         };
         let game_time = world.game_time();
+        // `can_update_path` reads the navigation kind, so it must run
+        // before the navigation lock is taken.
+        let can_update_path = self.can_update_path();
         let recompute_request = {
             let mut navigation = self.mob_base().navigation().lock();
             navigation.tick();
-            navigation.take_delayed_recompute_request(game_time, self.can_update_path())
+            navigation.take_delayed_recompute_request(game_time, can_update_path)
         };
         if let Some(request) = recompute_request {
             self.recompute_path(request);
