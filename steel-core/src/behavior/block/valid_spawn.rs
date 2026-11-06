@@ -105,7 +105,7 @@ pub(crate) fn properties_is_valid_spawn(
     entity_type: EntityTypeRef,
 ) -> bool {
     let block = state.get_block();
-    let is_any = |blocks: &[BlockRef]| blocks.iter().any(|candidate| *candidate == block);
+    let is_any = |blocks: &[BlockRef]| blocks.contains(&block);
     if is_any(&NEVER) {
         false
     } else if is_any(&ALWAYS) {
