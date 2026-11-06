@@ -880,11 +880,12 @@ pub(crate) use neutral_mob::{NeutralMob, NeutralMobState};
 pub(crate) use patrolling_monster::{PatrollingMonster, PatrollingMonsterState};
 pub(crate) use potion_contents::apply_potion_contents;
 pub use projectile::{
-    ARROW_BASE_DAMAGE, ARROW_GRAVITY, AbstractArrow, AbstractThrownPotion, ArrowBase, ArrowPickup,
-    EntityHitResult, Projectile, ProjectileBase, ProjectileDeflection, ProjectileEventSource,
-    ProjectileHit, SPLASH_HORIZONTAL_REACH, SPLASH_RANGE_SQ, SPLASH_VERTICAL_REACH,
-    ThrowableItemProjectile, ThrowableProjectile, ViewVectorHitResult, compute_margin,
-    get_hit_result_on_view_vector, spawn_mob_throwable_item_projectile,
+    ARROW_BASE_DAMAGE, ARROW_GRAVITY, AbstractArrow, AbstractHurtingProjectile,
+    AbstractThrownPotion, ArrowBase, ArrowPickup, EntityHitResult, HurtingProjectileBase,
+    INITIAL_ACCELERATION_POWER, Projectile, ProjectileBase, ProjectileDeflection,
+    ProjectileEventSource, ProjectileHit, SPLASH_HORIZONTAL_REACH, SPLASH_RANGE_SQ,
+    SPLASH_VERTICAL_REACH, ThrowableItemProjectile, ThrowableProjectile, ViewVectorHitResult,
+    compute_margin, get_hit_result_on_view_vector, spawn_mob_throwable_item_projectile,
     spawn_throwable_item_projectile,
 };
 pub use pushing::{DefaultEntityPush, EntityPushSnapshot};
