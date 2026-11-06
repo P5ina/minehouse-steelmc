@@ -247,9 +247,12 @@ pub trait AgeableMob: Mob {
         let mut group_data = match group_data {
             Some(SpawnGroupData::AgeableMob(group_data)) => group_data,
             // Vanilla only replaces a missing group; other mob groups never reach an ageable mob.
-            Some(SpawnGroupData::SpiderEffects(_) | SpawnGroupData::Zombie(_)) | None => {
-                AgeableMobGroupData::with_should_spawn_baby(true)
-            }
+            Some(
+                SpawnGroupData::SpiderEffects(_)
+                | SpawnGroupData::Zombie(_)
+                | SpawnGroupData::School(_),
+            )
+            | None => AgeableMobGroupData::with_should_spawn_baby(true),
         };
         if group_data.finalize_ageable_spawn(rand::random::<f32>) {
             self.set_age(self.get_baby_start_age());

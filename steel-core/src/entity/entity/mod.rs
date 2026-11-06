@@ -1,8 +1,8 @@
 use std::collections::BTreeSet;
 
 use super::*;
-use crate::entity::entities::LightningBoltEntity;
 use crate::entity::entities::mobs::hostile::cube_mob::AbstractCubeMob;
+use crate::entity::entities::{LightningBoltEntity, Squid};
 use crate::entity::{leash::Leashable, pushing::EntityPush};
 use rand::{RngExt, rng};
 use steel_math::DEGREE_90;
@@ -1664,6 +1664,21 @@ pub trait Entity: EntityEventSource + ErasedType + Send + Sync + 'static {
     /// Returns this entity as an animal when it has animal behavior.
     fn as_animal(&self) -> Option<&dyn Animal> {
         try_as_dyn::<Self, dyn Animal>(self)
+    }
+
+    /// Returns this entity as a fish when it has vanilla `AbstractFish` behavior.
+    fn as_abstract_fish(&self) -> Option<&dyn AbstractFish> {
+        try_as_dyn::<Self, dyn AbstractFish>(self)
+    }
+
+    /// Returns this entity as a schooling fish (vanilla `AbstractSchoolingFish`).
+    fn as_schooling_fish(&self) -> Option<&dyn AbstractSchoolingFish> {
+        try_as_dyn::<Self, dyn AbstractSchoolingFish>(self)
+    }
+
+    /// Returns this entity as a squid (vanilla `Squid`, including glow squids).
+    fn as_squid(&self) -> Option<&dyn Squid> {
+        try_as_dyn::<Self, dyn Squid>(self)
     }
 
     /// Returns true for entities that implement vanilla hostile-mob behavior.

@@ -45,7 +45,7 @@ const SQUID_BABY_WIDTH: f32 = 0.5;
 const SQUID_BABY_HEIGHT: f32 = 0.5;
 const SQUID_BABY_EYE_HEIGHT: f32 = 0.37;
 
-const SQUID_BABY_DIMENSIONS: EntityDimensions = EntityDimensions::new_with_attachments(
+pub(super) const SQUID_BABY_DIMENSIONS: EntityDimensions = EntityDimensions::new_with_attachments(
     SQUID_BABY_WIDTH,
     SQUID_BABY_HEIGHT,
     SQUID_BABY_EYE_HEIGHT,
@@ -53,13 +53,13 @@ const SQUID_BABY_DIMENSIONS: EntityDimensions = EntityDimensions::new_with_attac
 );
 
 const SQUID_AIR_DRAG: f32 = 0.98;
-const SQUID_GRAVITY: f64 = 0.08;
-const SQUID_SOUND_VOLUME: f32 = 0.4;
+pub(super) const SQUID_GRAVITY: f64 = 0.08;
+pub(super) const SQUID_SOUND_VOLUME: f32 = 0.4;
 const INK_PARTICLE_COUNT: u32 = 30;
 const ADULT_POSITION_SCALE: f32 = 0.3;
 const BABY_POSITION_SCALE: f32 = 0.1;
 /// Const version of Vanilla `AgeableWaterCreature.getAmbientSoundInterval` function.
-const SQUID_AMBIENT_SOUND_INTERVAL: i32 = 120;
+pub(super) const SQUID_AMBIENT_SOUND_INTERVAL: i32 = 120;
 
 const SQUID_SQUIRT_SOUND: SoundEventRef = &sound_events::ENTITY_SQUID_SQUIRT;
 const SQUID_MOVEMENT_THRESHOLD: f64 = 1.0e-5;
@@ -106,21 +106,6 @@ impl SquidEntity {
         )
     }
 
-    /// Checks if the squid has a movement vector.
-    pub fn has_movement_vector(&self) -> bool {
-        self.state.lock().movement_vector.length_squared() > SQUID_MOVEMENT_THRESHOLD
-    }
-
-    /// Sets the squid's movement vector
-    pub fn set_movement_vector(&self, new_vec: DVec3) {
-        self.state.lock().movement_vector = new_vec;
-    }
-
-    /// Returns the squid's movement vector
-    pub fn movement_vector(&self) -> DVec3 {
-        self.state.lock().movement_vector
-    }
-
     /// Recreates a squid from saved entity state
     #[must_use]
     pub fn from_saved(entity_type: EntityTypeRef, load: EntityBaseLoad) -> Self {
@@ -130,24 +115,111 @@ impl SquidEntity {
         )
     }
 
+    fn new_with_base(base: EntityBase, entity_type: EntityTypeRef) -> Self {
+        let living_base = LivingEntityBase::new(entity_type);
+        let mob_base = MobBase::new();
+        init_squid(&living_base, &mob_base);
+
+        let mut entity_data = SquidEntityData::new();
+        living_base.initialize_synced_data(&mut entity_data);
+
+        Self {
+            base,
+            entity_type,
+            living_base,
+            mob_base,
+            ageable_base: AgeableMobBase::new(),
+            entity_data: SyncMutex::new(entity_data),
+            state: SyncMutex::new(SquidState::new()),
+        }
+    }
+}
+
+/// Vanilla `Squid` constructor and `registerGoals`, shared with glow squids.
+pub(crate) fn init_squid(living_base: &LivingEntityBase, mob_base: &MobBase) {
+    living_base
+        .attributes()
+        .lock()
+        .set_base_value(vanilla_attributes::MAX_HEALTH, SQUID_DEFAULT_HEALTH);
+    mob_base
+        .pathfinding_malus()
+        .lock()
+        .set(PathType::Water, 0.0);
+
+    let mut goal_selector = mob_base.goal_selector().lock();
+    goal_selector.add_goal(0, SquidRandomMovementGoal::new());
+    goal_selector.add_goal(1, SquidFleeGoal::new());
+}
+
+impl SquidState {
+    /// Vanilla `Squid` field initializers.
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            x_body_rot: 0.0,
+            x_body_rot_old: 0.0,
+            movement_vector: DVec3::ZERO,
+            tentacle_speed: 1.0 / (rand::random::<f32>() + 1.0) * 0.2,
+            tentacle_movement: 0.0,
+        }
+    }
+}
+
+impl Default for SquidState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Vanilla `Squid` behavior shared by squids and glow squids.
+pub trait Squid: PathfinderMob + AgeableMob {
+    /// The squid's body rotation and swim state.
+    fn squid_state(&self) -> &SyncMutex<SquidState>;
+
+    /// Vanilla `Squid.getInkParticle`.
+    fn ink_particle(&self) -> ParticleData {
+        ParticleData::simple(&vanilla_particle_types::SQUID_INK)
+    }
+
+    /// Vanilla `Squid.getSquirtSound`.
+    fn squirt_sound(&self) -> SoundEventRef {
+        SQUID_SQUIRT_SOUND
+    }
+
+    /// Checks if the squid has a movement vector.
+    fn has_movement_vector(&self) -> bool {
+        self.squid_state().lock().movement_vector.length_squared() > SQUID_MOVEMENT_THRESHOLD
+    }
+
+    /// Sets the squid's movement vector
+    fn set_movement_vector(&self, new_vec: DVec3) {
+        self.squid_state().lock().movement_vector = new_vec;
+    }
+
+    /// Returns the squid's movement vector
+    fn movement_vector(&self) -> DVec3 {
+        self.squid_state().lock().movement_vector
+    }
+
     /// Vanilla `Squid.rotateVector`, squid-local space into world space.
-    fn rotate_vector(&self, vector: DVec3) -> DVec3 {
-        let x_rot = self.state.lock().x_body_rot_old.to_radians();
+    fn squid_rotate_vector(&self, vector: DVec3) -> DVec3 {
+        let x_rot = self.squid_state().lock().x_body_rot_old.to_radians();
         let y_rot = -self.living_rotation_state().y_body_rot_o().to_radians();
 
         vector::y_rot(vector::x_rot(vector, x_rot), y_rot)
     }
 
-    fn spawn_ink(&self) {
+    /// Vanilla `Squid.spawnInk`: squirt sound and ink particles behind the squid.
+    fn squid_spawn_ink(&self) {
         let Some(world) = self.level() else {
             return;
         };
 
-        self.make_sound(Some(self::SQUID_SQUIRT_SOUND));
+        self.make_sound(Some(self.squirt_sound()));
 
-        let position = self.position() + self.rotate_vector(DVec3::new(0.0, -1.0, 0.0));
+        let position = self.position() + self.squid_rotate_vector(DVec3::new(0.0, -1.0, 0.0));
         let particle_position = position + DVec3::new(0.0, 0.5, 0.0);
-        let particle = ParticleData::simple(&vanilla_particle_types::SQUID_INK);
+        let particle = self.ink_particle();
         let position_scale = if AgeableMob::is_baby(self) {
             BABY_POSITION_SCALE
         } else {
@@ -155,7 +227,7 @@ impl SquidEntity {
         };
 
         for _ in 0..INK_PARTICLE_COUNT {
-            let direction = self.rotate_vector(DVec3::new(
+            let direction = self.squid_rotate_vector(DVec3::new(
                 rand::random_range(-0.3..0.3),
                 -1.0,
                 rand::random_range(-0.3..0.3),
@@ -165,9 +237,10 @@ impl SquidEntity {
         }
     }
 
+    /// Vanilla `Squid.aiStep` movement: tentacle animation and swim velocity.
     fn tick_squid_movement(&self) {
         let (tentacle_movement, movement_vector, animation_sync) = {
-            let mut state = self.state.lock();
+            let mut state = self.squid_state().lock();
 
             state.tentacle_movement += state.tentacle_speed;
 
@@ -230,13 +303,14 @@ impl SquidEntity {
 
     /// Copies the body pitch to vanilla `xBodyRotO`, which
     /// [`Self::rotate_vector`] reads. `yBodyRotO` is advanced by the base tick.
-    fn advance_body_rotation(&self) {
-        let mut state = self.state.lock();
+    fn advance_squid_body_rotation(&self) {
+        let mut state = self.squid_state().lock();
         state.x_body_rot_old = state.x_body_rot;
     }
 
+    /// Vanilla `Squid.aiStep` body rotation toward the swim direction.
     fn update_squid_rotation(&self) {
-        let mut state = self.state.lock();
+        let mut state = self.squid_state().lock();
 
         if self.is_in_water() {
             let movement = self.velocity();
@@ -255,7 +329,8 @@ impl SquidEntity {
         }
     }
 
-    fn handle_air_supply(&self, pre_tick_air_supply: i32) {
+    /// Vanilla `AgeableWaterCreature.handleAirSupply`: drowns on land.
+    fn handle_squid_air_supply(&self, pre_tick_air_supply: i32) {
         if LivingEntity::is_alive(self) && !self.is_in_water() {
             self.set_air_supply(pre_tick_air_supply - 1);
             if self.should_take_drowning_damage() {
@@ -273,45 +348,34 @@ impl SquidEntity {
         }
     }
 
-    fn new_with_base(base: EntityBase, entity_type: EntityTypeRef) -> Self {
-        let living_base = LivingEntityBase::new(entity_type);
-        living_base
-            .attributes()
-            .lock()
-            .set_base_value(vanilla_attributes::MAX_HEALTH, SQUID_DEFAULT_HEALTH);
+    /// Vanilla `Squid.hurtServer`: inks when hurt by a mob.
+    fn squid_hurt(&self, world: &World, source: &DamageSource, amount: f32) -> bool {
+        let hurt = LivingEntity::hurt_server(self, world, source, amount);
 
-        let mob_base = MobBase::new();
-        mob_base
-            .pathfinding_malus()
-            .lock()
-            .set(PathType::Water, 0.0);
-
-        let ageable_base = AgeableMobBase::new();
-
-        let mut entity_data = SquidEntityData::new();
-        living_base.initialize_synced_data(&mut entity_data);
-
-        {
-            let mut goal_selector = mob_base.goal_selector().lock();
-            goal_selector.add_goal(0, SquidRandomMovementGoal::new());
-            goal_selector.add_goal(1, SquidFleeGoal::new());
+        if hurt && self.last_hurt_by_mob().is_some() {
+            self.squid_spawn_ink();
+            return true;
         }
 
-        Self {
-            base,
-            entity_type,
-            living_base,
-            mob_base,
-            ageable_base,
-            entity_data: SyncMutex::new(entity_data),
-            state: SyncMutex::new(SquidState {
-                x_body_rot: 0.0,
-                x_body_rot_old: 0.0,
-                movement_vector: DVec3::ZERO,
-                tentacle_speed: 1.0 / (rand::random::<f32>() + 1.0) * 0.2,
-                tentacle_movement: 0.0,
-            }),
-        }
+        false
+    }
+
+    /// Vanilla `Squid.aiStep`.
+    fn squid_ai_step(&self, entity: &SharedEntity) -> Option<MoveResult> {
+        let result = Mob::mob_ai_step(self, entity);
+
+        self.advance_squid_body_rotation();
+        self.tick_squid_movement();
+        self.update_squid_rotation();
+
+        AgeableMob::tick_ageable_mob(self);
+        result
+    }
+}
+
+impl Squid for SquidEntity {
+    fn squid_state(&self) -> &SyncMutex<SquidState> {
+        &self.state
     }
 }
 
@@ -321,14 +385,7 @@ impl Entity for SquidEntity {
     }
 
     fn hurt(&self, world: &World, source: &DamageSource, amount: f32) -> bool {
-        let hurt = LivingEntity::hurt_server(self, world, source, amount);
-
-        if hurt && self.last_hurt_by_mob().is_some() {
-            self.spawn_ink();
-            return true;
-        }
-
-        false
+        self.squid_hurt(world, source, amount)
     }
 
     fn movement_emission(&self) -> EntityMovementEmission {
@@ -342,7 +399,7 @@ impl Entity for SquidEntity {
     fn base_tick(&self) {
         let air_supply = self.air_supply();
         Mob::base_tick_mob(self);
-        self.handle_air_supply(air_supply);
+        self.handle_squid_air_supply(air_supply);
     }
 
     fn get_default_gravity(&self) -> f64 {
@@ -407,14 +464,7 @@ impl LivingEntity for SquidEntity {
     }
 
     fn ai_step(&self, entity: &SharedEntity) -> Option<MoveResult> {
-        let result = Mob::mob_ai_step(self, entity);
-
-        self.advance_body_rotation();
-        self.tick_squid_movement();
-        self.update_squid_rotation();
-
-        AgeableMob::tick_ageable_mob(self);
-        result
+        self.squid_ai_step(entity)
     }
 
     fn hurt_sound(&self, _source: &DamageSource) -> Option<SoundEventRef> {
@@ -496,6 +546,9 @@ impl Mob for SquidEntity {
 }
 
 impl PathfinderMob for SquidEntity {}
+
+mod glow_squid;
+pub use glow_squid::GlowSquidEntity;
 
 #[cfg(test)]
 mod tests;
