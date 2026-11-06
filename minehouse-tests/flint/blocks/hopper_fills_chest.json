@@ -1,0 +1,109 @@
+{
+  "$schema": "https://raw.githubusercontent.com/FlintTestMC/flint-core/refs/heads/main/flint-content/test_spec_schema.json",
+  "flintVersion": "1.0.0",
+  "name": "minehouse_hopper_fills_chest",
+  "description": "A hopper moves its diamond into the chest below.",
+  "tags": [
+    "minehouse",
+    "container",
+    "hopper"
+  ],
+  "minecraftIds": [
+    "minecraft:chest",
+    "minecraft:hopper",
+    "minecraft:stone"
+  ],
+  "dependencies": [],
+  "setup": {
+    "cleanup": {
+      "region": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          3,
+          0
+        ]
+      ]
+    }
+  },
+  "timeline": [
+    {
+      "at": 0,
+      "do": "fill",
+      "region": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0
+        ]
+      ],
+      "with": {
+        "id": "minecraft:stone"
+      }
+    },
+    {
+      "at": 0,
+      "do": "place_each",
+      "blocks": [
+        {
+          "pos": [
+            0,
+            1,
+            0
+          ],
+          "block": {
+            "id": "minecraft:chest",
+            "facing": "north",
+            "type": "single",
+            "waterlogged": false
+          }
+        },
+        {
+          "pos": [
+            0,
+            2,
+            0
+          ],
+          "block": {
+            "id": "minecraft:hopper",
+            "facing": "down",
+            "enabled": true,
+            "nbt": {
+              "Items": "[{Slot: 0b, count: 1, id: \"minecraft:diamond\"}]",
+              "TransferCooldown": 0
+            }
+          }
+        }
+      ]
+    },
+    {
+      "at": 40,
+      "do": "assert",
+      "checks": [
+        {
+          "pos": [
+            0,
+            1,
+            0
+          ],
+          "is": {
+            "id": "minecraft:chest",
+            "nbt": {
+              "Items[0].id": "minecraft:diamond"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "breakpoints": []
+}

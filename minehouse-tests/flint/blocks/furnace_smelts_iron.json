@@ -1,0 +1,94 @@
+{
+  "$schema": "https://raw.githubusercontent.com/FlintTestMC/flint-core/refs/heads/main/flint-content/test_spec_schema.json",
+  "flintVersion": "1.0.0",
+  "name": "minehouse_furnace_smelts_iron",
+  "description": "A furnace with raw iron and coal smelts one iron ingot.",
+  "tags": [
+    "minehouse",
+    "container",
+    "furnace"
+  ],
+  "minecraftIds": [
+    "minecraft:furnace",
+    "minecraft:stone"
+  ],
+  "dependencies": [],
+  "setup": {
+    "cleanup": {
+      "region": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          0
+        ]
+      ]
+    }
+  },
+  "timeline": [
+    {
+      "at": 0,
+      "do": "fill",
+      "region": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0
+        ]
+      ],
+      "with": {
+        "id": "minecraft:stone"
+      }
+    },
+    {
+      "at": 0,
+      "do": "place_each",
+      "blocks": [
+        {
+          "pos": [
+            0,
+            1,
+            0
+          ],
+          "block": {
+            "id": "minecraft:furnace",
+            "facing": "north",
+            "lit": false,
+            "nbt": {
+              "Items": "[{Slot: 0b, count: 1, id: \"minecraft:raw_iron\"}, {Slot: 1b, count: 1, id: \"minecraft:coal\"}]"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "at": 320,
+      "do": "assert",
+      "checks": [
+        {
+          "pos": [
+            0,
+            1,
+            0
+          ],
+          "is": {
+            "id": "minecraft:furnace",
+            "nbt": {
+              "Items[0].id": "minecraft:iron_ingot"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "breakpoints": []
+}

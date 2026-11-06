@@ -1,0 +1,239 @@
+{
+  "$schema": "https://raw.githubusercontent.com/FlintTestMC/flint-core/refs/heads/main/flint-content/test_spec_schema.json",
+  "flintVersion": "1.0.0",
+  "name": "minehouse_water_meets_lava_obsidian",
+  "description": "Water flows onto a lava source and turns it into obsidian.",
+  "tags": [
+    "minehouse",
+    "dispenser",
+    "fluid"
+  ],
+  "minecraftIds": [
+    "minecraft:dispenser",
+    "minecraft:glass",
+    "minecraft:stone"
+  ],
+  "dependencies": [],
+  "setup": {
+    "cleanup": {
+      "region": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          4,
+          3,
+          2
+        ]
+      ]
+    }
+  },
+  "timeline": [
+    {
+      "at": 0,
+      "do": "fill",
+      "region": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          4,
+          0,
+          2
+        ]
+      ],
+      "with": {
+        "id": "minecraft:stone"
+      }
+    },
+    {
+      "at": 0,
+      "do": "place_each",
+      "blocks": [
+        {
+          "pos": [
+            0,
+            1,
+            0
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            0,
+            1,
+            2
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            1,
+            1,
+            0
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            1,
+            1,
+            2
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            2,
+            1,
+            0
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            2,
+            1,
+            2
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            3,
+            1,
+            0
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            3,
+            1,
+            2
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            4,
+            1,
+            0
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            4,
+            1,
+            2
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            0,
+            1,
+            1
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            4,
+            1,
+            1
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            1,
+            2,
+            1
+          ],
+          "block": {
+            "id": "minecraft:dispenser",
+            "facing": "down",
+            "triggered": false,
+            "nbt": {
+              "Items": "[{Slot: 0b, count: 1, id: \"minecraft:lava_bucket\"}]"
+            }
+          }
+        },
+        {
+          "pos": [
+            3,
+            2,
+            1
+          ],
+          "block": {
+            "id": "minecraft:dispenser",
+            "facing": "down",
+            "triggered": false,
+            "nbt": {
+              "Items": "[{Slot: 0b, count: 1, id: \"minecraft:water_bucket\"}]"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "at": 1,
+      "do": "place",
+      "pos": [
+        2,
+        2,
+        1
+      ],
+      "block": {
+        "id": "minecraft:redstone_block"
+      }
+    },
+    {
+      "at": 100,
+      "do": "assert",
+      "checks": [
+        {
+          "pos": [
+            1,
+            1,
+            1
+          ],
+          "is": {
+            "id": "minecraft:obsidian"
+          }
+        }
+      ]
+    }
+  ],
+  "breakpoints": []
+}

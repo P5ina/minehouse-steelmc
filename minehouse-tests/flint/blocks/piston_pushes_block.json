@@ -1,0 +1,111 @@
+{
+  "$schema": "https://raw.githubusercontent.com/FlintTestMC/flint-core/refs/heads/main/flint-content/test_spec_schema.json",
+  "flintVersion": "1.0.0",
+  "name": "minehouse_piston_pushes_block",
+  "description": "A powered piston pushes a gold block one block east.",
+  "tags": [
+    "minehouse",
+    "redstone",
+    "piston"
+  ],
+  "minecraftIds": [
+    "minecraft:gold_block",
+    "minecraft:piston",
+    "minecraft:stone"
+  ],
+  "dependencies": [],
+  "setup": {
+    "cleanup": {
+      "region": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          3,
+          2,
+          2
+        ]
+      ]
+    }
+  },
+  "timeline": [
+    {
+      "at": 0,
+      "do": "fill",
+      "region": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          3,
+          0,
+          2
+        ]
+      ],
+      "with": {
+        "id": "minecraft:stone"
+      }
+    },
+    {
+      "at": 0,
+      "do": "place_each",
+      "blocks": [
+        {
+          "pos": [
+            1,
+            1,
+            1
+          ],
+          "block": {
+            "id": "minecraft:piston",
+            "facing": "east",
+            "extended": false
+          }
+        },
+        {
+          "pos": [
+            2,
+            1,
+            1
+          ],
+          "block": {
+            "id": "minecraft:gold_block"
+          }
+        }
+      ]
+    },
+    {
+      "at": 1,
+      "do": "place",
+      "pos": [
+        0,
+        1,
+        1
+      ],
+      "block": {
+        "id": "minecraft:redstone_block"
+      }
+    },
+    {
+      "at": 40,
+      "do": "assert",
+      "checks": [
+        {
+          "pos": [
+            3,
+            1,
+            1
+          ],
+          "is": {
+            "id": "minecraft:gold_block"
+          }
+        }
+      ]
+    }
+  ],
+  "breakpoints": []
+}

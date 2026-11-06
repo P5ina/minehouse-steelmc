@@ -1,0 +1,121 @@
+{
+  "$schema": "https://raw.githubusercontent.com/FlintTestMC/flint-core/refs/heads/main/flint-content/test_spec_schema.json",
+  "flintVersion": "1.0.0",
+  "name": "minehouse_hopper_picks_up_item",
+  "description": "A hopper picks up a dropped emerald and passes it to the chest below.",
+  "tags": [
+    "minehouse",
+    "container",
+    "hopper",
+    "item-entity"
+  ],
+  "minecraftIds": [
+    "minecraft:chest",
+    "minecraft:hopper",
+    "minecraft:stone"
+  ],
+  "dependencies": [],
+  "setup": {
+    "cleanup": {
+      "region": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          4,
+          0
+        ]
+      ]
+    }
+  },
+  "timeline": [
+    {
+      "at": 0,
+      "do": "fill",
+      "region": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0
+        ]
+      ],
+      "with": {
+        "id": "minecraft:stone"
+      }
+    },
+    {
+      "at": 0,
+      "do": "place_each",
+      "blocks": [
+        {
+          "pos": [
+            0,
+            1,
+            0
+          ],
+          "block": {
+            "id": "minecraft:chest",
+            "facing": "north",
+            "type": "single",
+            "waterlogged": false
+          }
+        },
+        {
+          "pos": [
+            0,
+            2,
+            0
+          ],
+          "block": {
+            "id": "minecraft:hopper",
+            "facing": "down",
+            "enabled": true,
+            "nbt": {
+              "TransferCooldown": 0
+            }
+          }
+        }
+      ]
+    },
+    {
+      "at": 1,
+      "do": "summon",
+      "entity_alias": "emerald",
+      "entity_type": "minecraft:item",
+      "pos": [
+        0.5,
+        3.7,
+        0.5
+      ],
+      "Item": "{count: 1, id: \"minecraft:emerald\"}"
+    },
+    {
+      "at": 60,
+      "do": "assert",
+      "checks": [
+        {
+          "pos": [
+            0,
+            1,
+            0
+          ],
+          "is": {
+            "id": "minecraft:chest",
+            "nbt": {
+              "Items[0].id": "minecraft:emerald"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "breakpoints": []
+}

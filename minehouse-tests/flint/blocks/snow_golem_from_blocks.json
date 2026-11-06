@@ -1,0 +1,119 @@
+{
+  "$schema": "https://raw.githubusercontent.com/FlintTestMC/flint-core/refs/heads/main/flint-content/test_spec_schema.json",
+  "flintVersion": "1.0.0",
+  "name": "minehouse_snow_golem_from_blocks",
+  "description": "A dispenser puts a carved pumpkin on two snow blocks and a snow golem appears.",
+  "tags": [
+    "minehouse",
+    "dispenser",
+    "golem",
+    "entity"
+  ],
+  "minecraftIds": [
+    "minecraft:dispenser",
+    "minecraft:snow_block",
+    "minecraft:stone"
+  ],
+  "dependencies": [],
+  "setup": {
+    "cleanup": {
+      "region": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          5,
+          0
+        ]
+      ]
+    }
+  },
+  "timeline": [
+    {
+      "at": 0,
+      "do": "fill",
+      "region": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          0,
+          0
+        ]
+      ],
+      "with": {
+        "id": "minecraft:stone"
+      }
+    },
+    {
+      "at": 0,
+      "do": "place_each",
+      "blocks": [
+        {
+          "pos": [
+            0,
+            1,
+            0
+          ],
+          "block": {
+            "id": "minecraft:snow_block"
+          }
+        },
+        {
+          "pos": [
+            0,
+            2,
+            0
+          ],
+          "block": {
+            "id": "minecraft:snow_block"
+          }
+        },
+        {
+          "pos": [
+            0,
+            4,
+            0
+          ],
+          "block": {
+            "id": "minecraft:dispenser",
+            "facing": "down",
+            "triggered": false,
+            "nbt": {
+              "Items": "[{Slot: 0b, count: 1, id: \"minecraft:carved_pumpkin\"}]"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "at": 1,
+      "do": "place",
+      "pos": [
+        1,
+        4,
+        0
+      ],
+      "block": {
+        "id": "minecraft:redstone_block"
+      }
+    },
+    {
+      "at": 40,
+      "do": "assert",
+      "checks": [
+        {
+          "is": "minecraft:snow_golem",
+          "exists": true
+        }
+      ]
+    }
+  ],
+  "breakpoints": []
+}

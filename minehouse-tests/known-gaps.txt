@@ -1,0 +1,15 @@
+# MineHouse parity specs that pass on vanilla 26.3 but not yet on SteelMC.
+# CI fails when a spec not listed here fails. A listed spec that passes is
+# reported; remove it from the list in the same change that fixes it.
+
+# containers: chest, hopper, dispenser are not implemented yet
+minehouse_comparator_reads_chest
+minehouse_hopper_fills_chest
+minehouse_hopper_picks_up_item
+minehouse_dispenser_water_flows_7
+minehouse_water_meets_lava_obsidian
+minehouse_iron_golem_from_blocks
+minehouse_snow_golem_from_blocks
+minehouse_nether_portal_lights
+# furnace lights but does not finish smelting within 320 ticks
+minehouse_furnace_smelts_iron

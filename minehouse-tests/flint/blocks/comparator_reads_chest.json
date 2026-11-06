@@ -1,0 +1,121 @@
+{
+  "$schema": "https://raw.githubusercontent.com/FlintTestMC/flint-core/refs/heads/main/flint-content/test_spec_schema.json",
+  "flintVersion": "1.0.0",
+  "name": "minehouse_comparator_reads_chest",
+  "description": "A hopper fills a chest; the comparator reading the chest turns on.",
+  "tags": [
+    "minehouse",
+    "redstone",
+    "container"
+  ],
+  "minecraftIds": [
+    "minecraft:chest",
+    "minecraft:comparator",
+    "minecraft:hopper",
+    "minecraft:stone"
+  ],
+  "dependencies": [],
+  "setup": {
+    "cleanup": {
+      "region": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          4,
+          3,
+          0
+        ]
+      ]
+    }
+  },
+  "timeline": [
+    {
+      "at": 0,
+      "do": "fill",
+      "region": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          4,
+          0,
+          0
+        ]
+      ],
+      "with": {
+        "id": "minecraft:stone"
+      }
+    },
+    {
+      "at": 0,
+      "do": "place_each",
+      "blocks": [
+        {
+          "pos": [
+            0,
+            1,
+            0
+          ],
+          "block": {
+            "id": "minecraft:chest",
+            "facing": "north",
+            "type": "single",
+            "waterlogged": false
+          }
+        },
+        {
+          "pos": [
+            0,
+            2,
+            0
+          ],
+          "block": {
+            "id": "minecraft:hopper",
+            "facing": "down",
+            "enabled": true,
+            "nbt": {
+              "Items": "[{Slot: 0b, count: 64, id: \"minecraft:cobblestone\"}]",
+              "TransferCooldown": 0
+            }
+          }
+        },
+        {
+          "pos": [
+            1,
+            1,
+            0
+          ],
+          "block": {
+            "id": "minecraft:comparator",
+            "facing": "west",
+            "mode": "compare",
+            "powered": false
+          }
+        }
+      ]
+    },
+    {
+      "at": 40,
+      "do": "assert",
+      "checks": [
+        {
+          "pos": [
+            1,
+            1,
+            0
+          ],
+          "is": {
+            "id": "minecraft:comparator",
+            "powered": true
+          }
+        }
+      ]
+    }
+  ],
+  "breakpoints": []
+}

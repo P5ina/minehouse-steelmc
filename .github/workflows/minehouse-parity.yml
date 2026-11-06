@@ -1,0 +1,32 @@
+name: MineHouse parity
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  parity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "steel-flint"
+          save-if: false
+
+      - name: Run MineHouse specs
+        # The runner fails whenever a spec fails; check.py decides against known-gaps.txt.
+        continue-on-error: true
+        timeout-minutes: 30
+        env:
+          TEST_PATH: ${{ github.workspace }}/minehouse-tests/flint
+        run: cargo test -p steel-flint --profile cicd --lib test_run_flint_selected -- --ignored --nocapture
+
+      - name: Compare with known gaps
+        run: python3 minehouse-tests/check.py steel-flint/log/flint_summary.json
