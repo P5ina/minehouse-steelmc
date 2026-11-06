@@ -6,9 +6,9 @@ use glam::DVec3;
 use rand::{Rng, RngExt as _};
 use steel_registry::vanilla_entities::PILLAGER;
 use steel_registry::vanilla_game_rules::SPAWN_PATROLS;
-use steel_utils::{BlockPos, ChunkPos};
+use steel_utils::BlockPos;
 
-use super::CustomSpawner;
+use super::{CustomSpawner, has_chunks_at};
 use crate::chunk::heightmap::HeightmapType;
 use crate::entity::entities::mobs::raiders::PillagerEntity;
 use crate::entity::{
@@ -99,18 +99,6 @@ fn patrol_offset(random: &mut impl Rng) -> i32 {
     } else {
         distance
     }
-}
-
-/// Vanilla `LevelReader.hasChunksAt(x0, z0, x1, z1)`: every chunk in the block
-/// rectangle is loaded.
-fn has_chunks_at(world: &World, min_x: i32, min_z: i32, max_x: i32, max_z: i32) -> bool {
-    let min = ChunkPos::from_block_pos(BlockPos::new(min_x, 0, min_z));
-    let max = ChunkPos::from_block_pos(BlockPos::new(max_x, 0, max_z));
-    (min.0.x..=max.0.x).all(|chunk_x| {
-        (min.0.y..=max.0.y).all(|chunk_z| {
-            world.is_full_chunk_loaded_at(BlockPos::new(chunk_x << 4, 0, chunk_z << 4))
-        })
-    })
 }
 
 /// Vanilla's group loop: `ceil(effective difficulty) + 1` pillagers, the first
