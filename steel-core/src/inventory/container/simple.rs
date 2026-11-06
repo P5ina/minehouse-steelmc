@@ -60,6 +60,17 @@ impl SimpleContainer {
         }
     }
 
+    /// Vanilla `SimpleContainer.canAddItem`: an empty slot or a matching stack
+    /// with room.
+    #[must_use]
+    pub fn can_add_item(&self, item_stack: &ItemStack) -> bool {
+        self.items.iter().any(|target| {
+            target.is_empty()
+                || (ItemStack::is_same_item_same_components(target, item_stack)
+                    && target.count() < target.max_stack_size())
+        })
+    }
+
     fn move_item_to_empty_slots(&mut self, source: &mut ItemStack) {
         for slot in 0..self.items.len() {
             if self.items[slot].is_empty() {

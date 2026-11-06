@@ -19,6 +19,7 @@ pub use mobs::passive::*;
 pub use mobs::raiders::{
     EvokerEntity, IllusionerEntity, PillagerEntity, RavagerEntity, VindicatorEntity, WitchEntity,
 };
+pub use mobs::villagers::VillagerEntity;
 pub use objects::display_ui::{BlockDisplayEntity, ItemFrameEntity, LeashFenceKnotEntity};
 pub use objects::effects::{AreaEffectCloudEntity, LightningBoltEntity};
 pub use objects::explosives::{EndCrystalEntity, PrimedTntEntity};

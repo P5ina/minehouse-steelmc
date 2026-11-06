@@ -1,5 +1,6 @@
 use super::*;
 use crate::entity::{ENTITY_LOAD_MAX_HORIZONTAL_POSITION, ENTITY_LOAD_MAX_VERTICAL_POSITION};
+use crate::test_support::unimplemented_entity_type;
 use steel_registry::RegistryEntry as _;
 use steel_registry::data_components::vanilla_components::{CUSTOM_NAME, REPAIR_COST};
 use steel_registry::item_stack::ItemStack;
@@ -419,7 +420,7 @@ fn unsupported_persistent_entity_is_dropped_after_load_and_resave() {
         panic!("forced proto chunk save should prepare");
     };
     let mut unsupported = test_persistent_end_crystal(DVec3::new(5.5, 6.0, 7.5));
-    unsupported.entity_type = vanilla_entities::VILLAGER.key.clone();
+    unsupported.entity_type = unimplemented_entity_type().key.clone();
     prepared.persistent.entities.push(unsupported);
 
     let loaded = ChunkStorage::persistent_to_chunk(
