@@ -12,7 +12,7 @@ use crate::fluid::FluidStateExt as _;
 
 const RANDOM_POS_ATTEMPTS: usize = 10;
 
-pub(super) fn default_random_pos(
+pub(crate) fn default_random_pos(
     mob: &(impl PathfinderMob + ?Sized),
     horizontal_dist: i32,
     vertical_dist: i32,
@@ -24,7 +24,7 @@ pub(super) fn default_random_pos(
     })
 }
 
-pub(super) fn default_random_pos_towards(
+pub(crate) fn default_random_pos_towards(
     mob: &(impl PathfinderMob + ?Sized),
     horizontal_dist: i32,
     vertical_dist: i32,
@@ -51,7 +51,7 @@ pub(super) fn default_random_pos_towards(
     })
 }
 
-pub(super) fn default_random_pos_away(
+pub(crate) fn default_random_pos_away(
     mob: &(impl PathfinderMob + ?Sized),
     horizontal_dist: i32,
     vertical_dist: i32,
@@ -77,7 +77,7 @@ pub(super) fn default_random_pos_away(
     })
 }
 
-pub(super) fn land_random_pos(
+pub(crate) fn land_random_pos(
     mob: &(impl PathfinderMob + ?Sized),
     horizontal_dist: i32,
     vertical_dist: i32,

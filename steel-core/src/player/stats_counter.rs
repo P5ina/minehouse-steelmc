@@ -175,6 +175,12 @@ impl Player {
         // TODO: Add score to the objectives having the criterion of this stat for the player.
     }
 
+    /// Vanilla `ServerStatsCounter.getValue` for a custom stat.
+    #[must_use]
+    pub fn custom_stat_value(&self, stat: CustomStatRef) -> i32 {
+        self.stats.lock().get(&vanilla_stat_types::CUSTOM.get(stat))
+    }
+
     /// Resets the counter of a stat from this player to zero.
     pub fn reset_stat(&self, stat: Stat) {
         self.stats.lock().set(stat, 0);

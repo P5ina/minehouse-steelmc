@@ -113,6 +113,7 @@ mod block_updates;
 mod border;
 mod broadcasts;
 pub(crate) mod clock;
+mod custom_spawner;
 mod difficulty;
 mod domain_entity_directory;
 mod entity_management;
@@ -320,6 +321,8 @@ pub struct World {
         SyncMutex<Option<Arc<tick_scheduler::ScheduledTickRunBatch<FluidRef>>>>,
     /// Point of interest storage for efficient spatial queries of special blocks.
     pub poi_storage: SyncMutex<PointOfInterestStorage>,
+    /// Vanilla `ServerLevel.customSpawners`, ticked after natural spawning.
+    custom_spawners: SyncMutex<Vec<Box<dyn custom_spawner::CustomSpawner>>>,
     /// World-change requests queued by world-local ticks for server safe-point processing.
     pending_world_changes: SyncMutex<Vec<(SharedEntity, WorldChangeRequest)>>,
 }
@@ -471,6 +474,9 @@ impl World {
                 scheduled_block_ticks_this_tick: SyncMutex::new(None),
                 scheduled_fluid_ticks_this_tick: SyncMutex::new(None),
                 poi_storage: SyncMutex::new(PointOfInterestStorage::new()),
+                custom_spawners: SyncMutex::new(custom_spawner::custom_spawners_for(
+                    dimension_type,
+                )),
                 pending_world_changes: SyncMutex::new(Vec::new()),
             }
         }))

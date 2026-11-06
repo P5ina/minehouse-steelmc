@@ -955,6 +955,13 @@ impl ChunkMap {
                 }
                 timings.tick_chunks += start.elapsed();
             }
+
+            if runs_normally {
+                let _span = tracing::trace_span!("custom_spawners").entered();
+                let start = Instant::now();
+                world.tick_custom_spawners();
+                timings.tick_chunks += start.elapsed();
+            }
             timings.lookup_cache.merge(lookup_cache_scope.finish());
         }
 

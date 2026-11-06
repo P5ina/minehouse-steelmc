@@ -4,10 +4,8 @@
 
 # mobs: the entity (or the mob it converts into) does not exist in SteelMC yet
 minehouse_mob_allay
-minehouse_mob_armadillo
 minehouse_mob_axolotl
 minehouse_mob_bee
-minehouse_mob_blaze
 minehouse_mob_bogged
 minehouse_mob_breeze
 minehouse_mob_camel
