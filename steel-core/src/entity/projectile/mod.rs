@@ -9,6 +9,7 @@
 //!
 //! The block + entity move-vector raycast mirrors `ProjectileUtil`.
 
+mod hurting;
 mod throwable;
 mod throwable_item;
 mod thrown_potion;
@@ -46,6 +47,9 @@ use super::{
     BUBBLE_COLUMN_INSIDE_UP_ACCELERATION,
 };
 
+pub use hurting::{
+    AbstractHurtingProjectile, HurtingProjectileBase, INITIAL_ACCELERATION_POWER, normalize_or_zero,
+};
 pub use throwable::ThrowableProjectile;
 pub use throwable_item::ThrowableItemProjectile;
 pub use thrown_potion::{
@@ -461,6 +465,15 @@ pub trait Projectile: Entity + ProjectileEventSource {
         self.projectile_base().state.lock().owner = new_owner;
         self.on_deflection(by_attack);
         true
+    }
+
+    /// Vanilla `Projectile.isPickable`: only redirectable projectiles (fireballs,
+    /// wind charges) can be hit. Concrete projectiles opt in by forwarding
+    /// `Entity::is_pickable` here.
+    fn projectile_is_pickable(&self) -> bool {
+        REGISTRY
+            .entity_types
+            .is_in_tag(self.entity_type(), &EntityTypeTag::REDIRECTABLE_PROJECTILE)
     }
 
     /// Called after a successful Vanilla projectile deflection.

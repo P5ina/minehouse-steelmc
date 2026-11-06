@@ -2,6 +2,7 @@
 
 mod ender_pearl;
 mod eye_of_ender;
+mod fireball;
 mod firework_rocket;
 mod fishing_hook;
 mod lingering_potion;
@@ -11,6 +12,7 @@ mod thrown_egg;
 
 pub use ender_pearl::EnderPearlEntity;
 pub use eye_of_ender::EyeOfEnderEntity;
+pub use fireball::{Fireball, LargeFireballEntity, SmallFireballEntity};
 pub use firework_rocket::FireworkRocketEntity;
 pub use fishing_hook::{FishingHookEntity, FishingHookState};
 pub use lingering_potion::LingeringPotionEntity;

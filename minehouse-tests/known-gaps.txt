@@ -11,7 +11,6 @@ minehouse_mob_allay
 minehouse_mob_armadillo
 minehouse_mob_axolotl
 minehouse_mob_bee
-minehouse_mob_blaze
 minehouse_mob_bogged
 minehouse_mob_breeze
 minehouse_mob_camel

@@ -17,3 +17,7 @@ pub use cube_mob::{MagmaCubeEntity, SlimeEntity};
 /// Hostile spider and cave spider entity module.
 pub mod spider;
 pub use spider::{CaveSpiderEntity, SpiderEntity};
+
+/// Blaze, the Nether fortress fireball shooter.
+pub mod blaze;
+pub use blaze::BlazeEntity;

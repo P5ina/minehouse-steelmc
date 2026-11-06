@@ -67,17 +67,26 @@ pub trait Monster: PathfinderMob + Enemy {
         &sound_events::ENTITY_HOSTILE_SWIM
     }
 
-    /// Adds two idle ticks in bright light to hasten despawning.
-    fn update_no_action_time(&self) {
+    /// Vanilla `Entity.getLightLevelDependentMagicValue`: curved brightness at
+    /// the eyes. Blazes override it to always count as fully lit.
+    fn light_level_dependent_magic_value(&self) -> f32 {
         let Some(world) = self.level() else {
-            return;
+            return 0.0;
         };
         let eye_pos = BlockPos::new(
             fast_floor(self.position().x),
             fast_floor(self.get_eye_y()),
             fast_floor(self.position().z),
         );
-        if world.light_level_dependent_magic_value(eye_pos) > LIGHT_MAGIC_VALUE_BRIGHTNESS_GATE {
+        world.light_level_dependent_magic_value(eye_pos)
+    }
+
+    /// Adds two idle ticks in bright light to hasten despawning.
+    fn update_no_action_time(&self) {
+        if self.level().is_none() {
+            return;
+        }
+        if self.light_level_dependent_magic_value() > LIGHT_MAGIC_VALUE_BRIGHTNESS_GATE {
             self.set_no_action_time(self.no_action_time() + BRIGHT_LIGHT_NO_ACTION_TIME_INCREMENT);
         }
     }
