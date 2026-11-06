@@ -4,7 +4,10 @@ use std::sync::Weak;
 use std::{
     any::try_as_dyn,
     borrow::Cow,
-    sync::{Arc, LazyLock},
+    sync::{
+        Arc,
+        atomic::{AtomicI32, Ordering},
+    },
 };
 
 use glam::DVec3;
@@ -137,7 +140,7 @@ fn remove_entity_name_actions(mut component: TextComponent) -> TextComponent {
 ///
 /// Each new entity increments this counter to get a unique network ID. Starts
 /// at 1 (0 is reserved).
-static ENTITY_COUNTER: LazyLock<SyncMutex<i32>> = LazyLock::new(|| SyncMutex::new(1));
+static ENTITY_COUNTER: AtomicI32 = AtomicI32::new(1);
 const MOVEMENT_RECORD_EPSILON: f64 = 1.0e-7;
 const NO_PHYSICS_COLLISION_EPSILON: f64 = 1.0e-7;
 const IN_WALL_EYE_BOX_HEIGHT: f64 = 1.0e-6;
@@ -503,13 +506,10 @@ fn physics_state_for_move(entity: &dyn Entity) -> EntityPhysicsState {
 /// Allocates a new unique entity ID.
 ///
 /// This is the primary way to get entity IDs for spawning entities.
-/// Thread-safe through the shared counter lock.
+/// Lock-free so parallel tick work can allocate IDs; `fetch_add` wraps on overflow.
 #[must_use]
 pub fn next_entity_id() -> i32 {
-    let mut counter = ENTITY_COUNTER.lock();
-    let id = *counter;
-    *counter = counter.wrapping_add(1);
-    id
+    ENTITY_COUNTER.fetch_add(1, Ordering::Relaxed)
 }
 
 fn apply_block_effect_segment(

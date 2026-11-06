@@ -138,6 +138,7 @@ mod sleep_status;
 mod spawn;
 pub mod structure_search;
 mod thunder;
+pub(crate) mod tick_pool;
 pub mod tick_scheduler;
 mod village;
 mod weather;

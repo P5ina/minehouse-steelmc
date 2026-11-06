@@ -1,8 +1,10 @@
 //! Natural spawner tests.
 
 use std::convert::Infallible;
+use std::hint::black_box;
 use std::ptr;
 use std::sync::Arc;
+use std::time::Instant;
 
 use glam::DVec3;
 use rand::{SeedableRng as _, TryRng, rngs::StdRng};
@@ -29,10 +31,10 @@ use crate::chunk::chunk_pyramid::GENERATION_PYRAMID;
 use crate::chunk::chunk_ticket_manager::ChunkTicketLevel;
 use crate::chunk::section::{ChunkSection, Sections};
 use crate::chunk::status::ChunkStatus;
-use crate::entity::{Entity as _, init_entities};
+use crate::entity::{Entity as _, create_entity_instance, init_entities};
 use crate::player::ResetReason;
 use crate::test_support::{
-    TestPlayerBuilder, fresh_test_world_in_domain, fresh_test_world_with_dimension_type,
+    TestPlayerBuilder, TestWorld, fresh_test_world_in_domain, fresh_test_world_with_dimension_type,
     insert_ready_full_chunk,
 };
 use crate::world::World;
@@ -357,4 +359,138 @@ fn decoration_seed_is_deterministic_per_chunk() {
     let mut other_chunk = LegacyRandom::from_seed(1);
     set_decoration_seed(&mut other_chunk, 42, 32, -32);
     assert_ne!(first.next_i64(), other_chunk.next_i64());
+}
+
+/// Fills `clusters` square areas of `side × side` chunks, far apart like separate
+/// player groups, with `per_chunk` mobs each and one player per cluster.
+fn crowded_spawn_state_world(
+    key: &'static str,
+    clusters: i32,
+    side: i32,
+    per_chunk: usize,
+) -> TestWorld {
+    init_vanilla_registry();
+    init_behaviors();
+    init_entities();
+    let world_fixture = fresh_test_world_in_domain("spawn_state", key);
+    let world = &world_fixture.world;
+    let mob_types = [
+        &vanilla_entities::ZOMBIE,
+        &vanilla_entities::SPIDER,
+        &vanilla_entities::COW,
+        &vanilla_entities::SQUID,
+    ];
+    let mut spawned = 0usize;
+    for cluster in 0..clusters {
+        let origin_x = cluster * 200;
+        for cx in origin_x..origin_x + side {
+            for cz in 0..side {
+                insert_ready_full_chunk(world, ChunkPos::new(cx, cz));
+                for i in 0..per_chunk {
+                    let entity_type = mob_types[(spawned + i) % mob_types.len()];
+                    let position = DVec3::new(
+                        f64::from(cx * 16) + (i % 16) as f64 + 0.5,
+                        65.0,
+                        f64::from(cz * 16) + (i / 16 % 16) as f64 + 0.5,
+                    );
+                    let entity = create_entity_instance(world, entity_type, position)
+                        .expect("test mob should be created");
+                    world
+                        .try_add_fresh_entity_with_passengers(entity)
+                        .expect("test mob should be added");
+                }
+                spawned += per_chunk;
+            }
+        }
+        let center = f64::from((origin_x + side / 2) * 16);
+        let player = TestPlayerBuilder::new(
+            Arc::clone(world),
+            format!("Group{cluster}"),
+            1_000_000 + cluster,
+        )
+        .build();
+        player.snap_to(DVec3::new(center, 65.0, f64::from(side * 8)), 0.0, 0.0);
+        assert!(world.add_player(player, ResetReason::InitialJoin));
+    }
+    world_fixture
+}
+
+/// The vanilla `createState` loop run on one thread, as the reference result.
+fn sequential_spawn_state(world: &World, spawnable_chunk_count: usize) -> SpawnState {
+    use steel_utils::SectionPos;
+    let mut state = SpawnState::empty(i32::try_from(spawnable_chunk_count).unwrap_or(i32::MAX));
+    for entity in world.entity_manager.get_accessible_entities() {
+        let mob = entity.as_mob();
+        if mob.is_some_and(|mob| mob.is_persistence_required() || mob.requires_custom_persistence())
+        {
+            continue;
+        }
+        let entity_type = entity.entity_type();
+        let category = entity_type.mob_category;
+        if category == MobCategory::Misc {
+            continue;
+        }
+        let pos = entity.block_position();
+        let chunk_pos = ChunkPos::new(
+            SectionPos::block_to_section_coord(pos.x()),
+            SectionPos::block_to_section_coord(pos.z()),
+        );
+        if world.chunk_map.with_full_chunk(chunk_pos, |_| ()).is_none() {
+            continue;
+        }
+        let charge = world
+            .biome_at(pos)
+            .and_then(|biome| biome.spawn_costs.get(&entity_type.key))
+            .map(|cost| cost.charge);
+        if let Some(charge) = charge {
+            state.spawn_potential.add_charge(pos, charge);
+        }
+        if mob.is_some() {
+            state
+                .local_mob_cap_calculator
+                .add_mob(world, chunk_pos, category);
+        }
+        *state.mob_category_counts.entry(category).or_insert(0) += 1;
+    }
+    state
+}
+
+#[test]
+fn parallel_spawn_state_matches_sequential_pass() {
+    let world_fixture = crowded_spawn_state_world("parallel_matches", 3, 4, 12);
+    let world = &world_fixture.world;
+    let parallel = SpawnState::create(world, 48);
+    let sequential = sequential_spawn_state(world, 48);
+    assert!(parallel.mob_count(MobCategory::Monster) > 0);
+    // Charges must keep entity order: `potential_energy_change` sums them in order.
+    assert_eq!(format!("{parallel:?}"), format!("{sequential:?}"));
+}
+
+/// Timing check for `createState` on a prod-sized crowd (about 3000 mobs in six
+/// groups). Run with `cargo test -p steel-core --release spawn_state_timing -- --ignored --nocapture`.
+#[test]
+#[ignore = "timing benchmark"]
+#[expect(clippy::print_stdout, reason = "the benchmark reports its timings")]
+fn spawn_state_timing() {
+    let world_fixture = crowded_spawn_state_world("timing", 6, 10, 5);
+    let world = &world_fixture.world;
+    let chunks = 6 * 10 * 10;
+    let entities = world.entity_manager.get_accessible_entities().len();
+    let rounds = 50;
+    // Warm the tick pool and caches.
+    let _ = SpawnState::create(world, chunks);
+    let start = Instant::now();
+    for _ in 0..rounds {
+        black_box(sequential_spawn_state(world, chunks));
+    }
+    let sequential = start.elapsed() / rounds;
+    let start = Instant::now();
+    for _ in 0..rounds {
+        black_box(SpawnState::create(world, chunks));
+    }
+    let parallel = start.elapsed() / rounds;
+    println!(
+        "createState: {entities} entities, sequential {sequential:?}, parallel {parallel:?}, x{:.2}",
+        sequential.as_secs_f64() / parallel.as_secs_f64()
+    );
 }
