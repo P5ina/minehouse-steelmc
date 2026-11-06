@@ -5,7 +5,7 @@ use std::backtrace::{Backtrace, BacktraceStatus};
 use std::panic::AssertUnwindSafe;
 use std::path::Path;
 use std::sync::Arc;
-use std::{env, panic, thread};
+use std::{env, panic, process, thread};
 
 use crossterm::style::Attribute::{Bold, Dim, Reset};
 use crossterm::style::{Color, ResetColor, SetForegroundColor};
@@ -28,6 +28,8 @@ use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitEx
 #[cfg(feature = "jaeger")]
 use tracing_subscriber::{Layer, registry::LookupSpan};
 
+/// `steel import-anvil` world conversion.
+mod import_anvil;
 /// Cross-platform shutdown signal handling.
 mod shutdown;
 
@@ -149,6 +151,14 @@ fn main() {
 fn steel_main() {
     #[cfg(feature = "dhat-heap")]
     let _profiler = dhat::Profiler::new_heap();
+
+    let args: Vec<String> = env::args().skip(1).collect();
+    if args
+        .first()
+        .is_some_and(|command| command == "import-anvil")
+    {
+        process::exit(import_anvil::run(&args[1..]));
+    }
 
     // Load config once at startup
     let steel_config = match config::load_or_create(Path::new("config/config.toml")) {
