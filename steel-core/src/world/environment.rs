@@ -11,6 +11,7 @@ const SKY_LIGHT_LEVEL_ATTRIBUTE: &str = "minecraft:gameplay/sky_light_level";
 const SUN_ANGLE_ATTRIBUTE: &str = "minecraft:visual/sun_angle";
 const MONSTERS_BURN_ATTRIBUTE: &str = "minecraft:gameplay/monsters_burn";
 const MOON_PHASE_ATTRIBUTE: &str = "minecraft:visual/moon_phase";
+const CAN_PILLAGER_PATROL_SPAWN_ATTRIBUTE: &str = "minecraft:gameplay/can_pillager_patrol_spawn";
 const DEFAULT_SKY_LIGHT_LEVEL: f32 = 15.0;
 const DEFAULT_SUN_ANGLE: f32 = 0.0;
 const MIN_SKY_LIGHT_LEVEL: f32 = 0.0;
@@ -82,6 +83,26 @@ pub(super) fn monsters_burn(
     let mut value = false;
     for_each_timeline(dimension_type, |timeline| {
         value = apply_timeline_bool_track(value, timeline, clock_manager, MONSTERS_BURN_ATTRIBUTE);
+    });
+    value
+}
+
+/// Applies the dimension timelines to `CAN_PILLAGER_PATROL_SPAWN` over the
+/// positional `base` value.
+#[must_use]
+pub(super) fn can_pillager_patrol_spawn(
+    base: bool,
+    dimension_type: DimensionTypeRef,
+    clock_manager: &WorldClockManager,
+) -> bool {
+    let mut value = base;
+    for_each_timeline(dimension_type, |timeline| {
+        value = apply_timeline_bool_track(
+            value,
+            timeline,
+            clock_manager,
+            CAN_PILLAGER_PATROL_SPAWN_ATTRIBUTE,
+        );
     });
     value
 }
@@ -692,5 +713,39 @@ mod tests {
         init_vanilla_registry();
 
         assert!(!monsters_burn(&THE_NETHER, &clock_manager_at(6_000)));
+    }
+
+    #[test]
+    fn pillager_patrols_wait_for_the_early_game_timeline() {
+        init_vanilla_registry();
+
+        for ticks in [0, 119_999] {
+            assert!(!can_pillager_patrol_spawn(
+                true,
+                &OVERWORLD,
+                &clock_manager_at(ticks)
+            ));
+        }
+        assert!(can_pillager_patrol_spawn(
+            true,
+            &OVERWORLD,
+            &clock_manager_at(120_000)
+        ));
+        assert!(can_pillager_patrol_spawn(
+            true,
+            &OVERWORLD,
+            &clock_manager_at(1_000_000)
+        ));
+        // A biome that turns patrols off wins over the timeline's `and`.
+        assert!(!can_pillager_patrol_spawn(
+            false,
+            &OVERWORLD,
+            &clock_manager_at(1_000_000)
+        ));
+        assert!(can_pillager_patrol_spawn(
+            true,
+            &THE_NETHER,
+            &clock_manager_at(0)
+        ));
     }
 }

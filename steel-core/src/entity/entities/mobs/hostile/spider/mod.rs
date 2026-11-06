@@ -20,7 +20,7 @@ use steel_registry::{
 };
 use steel_utils::locks::SyncMutex;
 use steel_utils::types::Difficulty;
-use steel_utils::{BlockPos, BlockStateId, ChunkPos, DowncastType, DowncastTypeKey};
+use steel_utils::{BlockPos, BlockStateId, ChunkPos, Downcast as _, DowncastType, DowncastTypeKey};
 
 use crate::entity::ai::goal::{
     FloatGoal, Goal, GoalControls, HurtByTargetGoal, LeapAtTargetGoal, LookAtPlayerGoal,
@@ -28,7 +28,9 @@ use crate::entity::ai::goal::{
     WaterAvoidingRandomStrollGoal,
 };
 use crate::entity::damage::DamageSource;
+use crate::entity::entities::SkeletonEntity;
 use crate::entity::entity::EntityEventSource as _;
+use crate::entity::spawn::create_entity_instance;
 use crate::entity::{
     DefaultEntityPush, Entity, EntityBase, EntityBaseLoad, EntityMovementEmission, EntityPose,
     EntitySpawnReason, EntitySyncedData, LivingEntity, LivingEntityBase, Mob, MobBase,
@@ -43,6 +45,8 @@ const XP_REWARD: i32 = 5;
 const CLIMBING_FLAG: i8 = 1;
 /// Vanilla `Spider.SPIDER_SPECIAL_EFFECT_CHANCE`.
 const SPIDER_SPECIAL_EFFECT_CHANCE: f32 = 0.1;
+/// Vanilla `random.nextInt(100) == 0`: one spider in a hundred is a jockey.
+const SKELETON_JOCKEY_BOUND: i32 = 100;
 /// Brightness at which spiders stop picking and keeping targets.
 const BRIGHT_LIGHT: f32 = 0.5;
 const STEP_SOUND_VOLUME: f32 = 0.15;
@@ -441,6 +445,29 @@ impl SpiderEntity {
 }
 
 impl SpiderEntity {
+    /// The skeleton half of vanilla `Spider.finalizeSpawn`: a fresh skeleton
+    /// that rides this spider.
+    pub(crate) fn spawn_skeleton_jockey_rider(
+        &self,
+        world: &Arc<World>,
+        spawn_reason: EntitySpawnReason,
+    ) {
+        let Ok(skeleton) =
+            create_entity_instance(world, &vanilla_entities::SKELETON, self.position())
+        else {
+            return;
+        };
+        let (yaw, _) = self.rotation();
+        skeleton.set_rotation((yaw, 0.0));
+        if let Some(skeleton_mob) = skeleton.as_mob() {
+            let _ = skeleton_mob.finalize_spawn(world, spawn_reason, None);
+        }
+        if let Some(rider) = skeleton.downcast_ref::<SkeletonEntity>() {
+            rider.ride_once_spawned(self.id());
+        }
+        let _ = world.try_add_entity(skeleton);
+    }
+
     /// Vanilla `Spider.finalizeSpawn`.
     fn finalize_spider_spawn(
         &self,
@@ -450,8 +477,9 @@ impl SpiderEntity {
     ) -> Option<SpawnGroupData> {
         let difficulty = world.current_difficulty_at(self.block_position());
         let group_data = self.finalize_spawn_mob_base(world, spawn_reason, group_data);
-        // Vanilla rolls a 1/100 skeleton jockey here; skeletons are not
-        // implemented in Steel yet.
+        if rand::random_range(0..SKELETON_JOCKEY_BOUND) == 0 {
+            self.spawn_skeleton_jockey_rider(world, spawn_reason);
+        }
         let group_data = group_data.or_else(|| {
             let effect = (world.difficulty() == Difficulty::Hard
                 && rand::random::<f32>()

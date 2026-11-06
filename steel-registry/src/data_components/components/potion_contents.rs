@@ -61,6 +61,14 @@ impl PotionContents {
         }
     }
 
+    /// Vanilla `PotionContents.withEffectAdded`.
+    #[must_use]
+    pub fn with_effect_added(&self, effect: MobEffectInstance) -> Self {
+        let mut contents = self.clone();
+        contents.custom_effects.push(effect);
+        contents
+    }
+
     #[must_use]
     pub const fn of(potion: PotionRef) -> Self {
         Self::new(Some(RegistryReference::new(potion)), None, Vec::new(), None)

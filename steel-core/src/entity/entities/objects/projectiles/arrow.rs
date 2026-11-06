@@ -15,6 +15,7 @@ use steel_registry::data_components::PotionContents;
 use steel_registry::data_components::vanilla_components::{POTION_CONTENTS, POTION_DURATION_SCALE};
 use steel_registry::entity_type::EntityTypeRef;
 use steel_registry::item_stack::ItemStack;
+use steel_registry::mob_effect_instance::MobEffectInstance as RegistryMobEffectInstance;
 use steel_registry::vanilla_entity_data::{ArrowEntityData, SpectralArrowEntityData};
 use steel_registry::{vanilla_items, vanilla_mob_effects};
 use steel_utils::entity_events::EntityStatus;
@@ -252,6 +253,19 @@ impl ArrowEntity {
             contents.get_color()
         };
         self.entity_data.lock().id_effect_color.set(color);
+    }
+
+    /// Vanilla `Arrow.setPotionContents`: stores the contents on the pickup
+    /// stack and refreshes the color.
+    fn set_potion_contents(&self, contents: PotionContents) {
+        let mut stack = self.pickup_item_stack();
+        stack.set(POTION_CONTENTS, contents);
+        self.set_pickup_item_stack(stack);
+    }
+
+    /// Vanilla `Arrow.addEffect`.
+    pub fn add_effect(&self, effect: RegistryMobEffectInstance) {
+        self.set_potion_contents(self.potion_contents().with_effect_added(effect));
     }
 
     /// Vanilla `Arrow.getColor`: the synced potion color, `-1` for none.

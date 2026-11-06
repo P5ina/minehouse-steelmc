@@ -845,12 +845,14 @@ pub trait Mob: LivingEntity + Leashable {
         if !current.is_empty()
             && (rand::random::<f32>() - REPLACED_EQUIPMENT_DROP_BIAS).max(0.0) < drop_chance
         {
-            self.spawn_at_location(current, 0.0);
+            self.spawn_at_location(current.clone(), 0.0);
         }
 
         let to_equip = slot.limit(&mut item_stack);
         let equipped = to_equip.copy_with_count(to_equip.count());
         self.living_base().equipment().lock().set(slot, to_equip);
+        // Vanilla `setItemSlot` -> `onEquipItem`.
+        self.on_equip_item(slot, &current, &equipped);
         self.set_guaranteed_drop(slot);
         self.set_persistence_required();
         equipped
