@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["CUB_SEARCH_XZ","CUB_SEARCH_Y","STAND_UP_TICKS","WARNING_DISTANCE"],"fn":["is_adult_polar_bear","is_baby"],"struct":["PolarBearAttackPlayersGoal","PolarBearHurtByTargetGoal","PolarBearMeleeAttackGoal"]};

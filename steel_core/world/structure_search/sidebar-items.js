@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["PendingRequest","SearchPhase","StructureSearchPoll"],"struct":["FoundStructure","LocatedCandidate","StructureSearch"]};

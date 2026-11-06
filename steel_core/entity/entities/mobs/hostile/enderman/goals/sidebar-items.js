@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["FREEZE_DISTANCE_SQR","LEAVE_BLOCK_CHANCE","STARED_TELEPORT_AWAY_DISTANCE_SQR","TAKE_BLOCK_CHANCE","TELEPORT_TOWARDS_DISTANCE_SQR"],"fn":["adjusted_tick_delay","enderman","follow_distance","is_anger_inducing","mob_griefing"],"struct":["EndermanFreezeWhenLookedAt","EndermanLeaveBlockGoal","EndermanLookForPlayerGoal","EndermanTakeBlockGoal"]};

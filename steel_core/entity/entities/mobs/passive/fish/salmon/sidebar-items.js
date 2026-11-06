@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["SALMON_MAX_SCHOOL_SIZE"],"enum":["SalmonVariant"],"struct":["SalmonEntity"]};

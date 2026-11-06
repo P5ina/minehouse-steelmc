@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["COPPER_STEP_CANDIDATES","DAMAGE_HEIGHT","DAMAGE_RADIUS","START_LIFE"],"fn":["clear_copper_on_lightning_strike","first_copper_state","place_fire","previous_copper_state","random_step_cleaning_copper","random_walk_cleaning_copper"],"struct":["LightningBoltEntity","LightningBoltState"]};

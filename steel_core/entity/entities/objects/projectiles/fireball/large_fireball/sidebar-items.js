@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["DEFAULT_EXPLOSION_POWER","EXPLOSION_POWER_TAG","IMPACT_DAMAGE"],"struct":["LargeFireballEntity"]};

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"mod":["evoker","illusioner","pillager","ravager","vindicator","witch"]};

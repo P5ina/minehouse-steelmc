@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["difficulty_by_name","game_rules","import_level_data","read_gzip_root","read_saved_data","read_shared_state","respawn","tag_value","weather_state","world_border","world_clocks"],"struct":["LevelReport","SharedLevelState"]};

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["AVOID_DISTANCE","DEFAULT_STEP_HEIGHT","TARGET_UNSEEN_MEMORY_TICKS","XP_REWARD"],"fn":["is_raider"],"struct":["EvokerEntity"]};

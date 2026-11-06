@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["BEG_MIN_TICKS","LLAMA_AVOID_DISTANCE","LLAMA_AVOID_SPEED","LLAMA_STRENGTH_ROLL"],"fn":["is_llama"],"struct":["BegGoal","WolfAvoidLlamaGoal"]};

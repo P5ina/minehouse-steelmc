@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["DISPENSER_SLOTS"],"struct":["DispenserBlockEntity","DispenserContainer"]};

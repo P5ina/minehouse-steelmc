@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["PROXY_ONLY_MESSAGE"]};

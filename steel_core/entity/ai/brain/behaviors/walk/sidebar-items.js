@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["MAX_XZ_DIST","MAX_Y_DIST"],"fn":["baby_follow_adult","random_stroll","set_walk_target_from_look_target"]};

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["NO_ANGER_END_TIME","TAG_ANGER_END_TIME","TAG_ANGRY_AT","TAG_LEGACY_ANGER_TIME"],"fn":["is_creative_or_spectator","is_valid_player_target"],"struct":["NeutralMobState"],"trait":["NeutralMob"]};

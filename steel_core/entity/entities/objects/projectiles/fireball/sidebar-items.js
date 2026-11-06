@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["default_fireball_item","fireball_damage_source","fireball_post_attack_effects"],"mod":["large_fireball","small_fireball"],"trait":["Fireball"]};

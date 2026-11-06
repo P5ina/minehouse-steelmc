@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["BIOMES_PER_SECTION","BLOCKS_PER_SECTION","BLOCK_ENTITY_METADATA_KEYS","FULL_STATUS","HEIGHTMAPS","MIN_BLOCK_BITS"],"enum":["ChunkConversion","LocalPalette"],"fn":["check_data_version","convert_chunk","local_palette","structure_references"],"struct":["ChunkConverter"]};

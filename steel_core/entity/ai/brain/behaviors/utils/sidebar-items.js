@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["entity_is_visible","is_visible_by","lock_gaze_and_walk_to_each_other","look_at_entity","set_walk_and_look_target_memories"]};

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["FISH_SWIM_INTERVAL","FISH_SWIM_SPEED_MODIFIER"],"struct":["FishSwimGoal"]};

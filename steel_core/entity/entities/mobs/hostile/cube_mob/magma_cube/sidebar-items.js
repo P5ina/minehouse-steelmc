@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["PLAYER_TARGET_MAX_Y_DIFFERENCE"],"struct":["MagmaCubeEntity"]};

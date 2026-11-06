@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["BACKED_UP_CLOSE_ENOUGH_DIST","DEFAULT_CLOSE_ENOUGH_DIST","FOLLOW_TEMPTATION_ENTRY","TEMPTATION_COOLDOWN"],"struct":["FollowTemptation"],"type":["PerBody"]};

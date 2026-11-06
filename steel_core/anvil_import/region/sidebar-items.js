@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["CHUNKS_PER_REGION","COMPRESSION_CUSTOM","COMPRESSION_GZIP","COMPRESSION_LZ4","COMPRESSION_NONE","COMPRESSION_ZLIB","EXTERNAL_FLAG","HEADER_SIZE","SECTOR_SIZE"],"fn":["list_region_files","parse_region_file_name"],"struct":["AnvilRegion"]};

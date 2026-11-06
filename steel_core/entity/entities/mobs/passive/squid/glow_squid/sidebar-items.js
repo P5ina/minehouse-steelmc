@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["DARK_TICKS_AFTER_HURT","GLOW_SQUID_MIN_SPAWN_DEPTH"],"fn":["check_glow_squid_spawn_rules"],"struct":["GlowSquidEntity"]};

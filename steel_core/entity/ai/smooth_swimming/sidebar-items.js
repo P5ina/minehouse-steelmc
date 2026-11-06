@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["ANGLE_EPSILON","BODY_CATCH_UP","FULL_SPEED_TURN_THRESHOLD","HEAD_TILT_X","HEAD_TILT_Y","IN_WATER_LIFT","MIN_DISTANCE_SQR","STOP_TURN_THRESHOLD","X_ROT_STEP"],"fn":["atan2_degrees","look_x_rot_d","look_y_rot_d","tick_smooth_swimming_look_control","to_radians"],"struct":["SmoothSwimmingMoveControl"]};

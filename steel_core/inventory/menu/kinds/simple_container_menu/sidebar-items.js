@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["dispenser","hopper","simple_container_menu"]};

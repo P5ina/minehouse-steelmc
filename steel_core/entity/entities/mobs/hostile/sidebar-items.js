@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"mod":["blaze","creeper","cube_mob","enderman","endermite","ghast","guardian","phantom","silverfish","skeleton","spider","vex","zombie"]};

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["CATCH_UP_DISTANCE","FALL_BEHIND_DISTANCE","GO_IN_ENTITY_DIRECTION_SPEED","GO_TO_ENTITY_SPEED","LEAD_BLOCKS","MOVED_EPSILON","RECALC_PATH_TICKS","SEARCH_INFLATE"],"enum":["FollowEntityGoal"],"fn":["block_coords","facing","has_moved_horizontally_recently"],"struct":["FollowPlayerRiddenEntityGoal"]};

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["HOMING_DISTANCE_SQR","MIN_CHARGE_DISTANCE_SQR","MOVE_CHANCE_TICKS","RANDOM_MOVE_ATTEMPTS","RANDOM_MOVE_SPEED"],"fn":["eye_position","owner_target","vex"],"struct":["VexChargeAttackGoal","VexCopyOwnerTargetGoal","VexRandomMoveGoal"]};

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"mod":["adult","hurt_by","mob","nearest_living_entities","tempting"]};

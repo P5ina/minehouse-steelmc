@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["POTION_FADE_TICKS","SPECTRAL_DEFAULT_DURATION"],"macro":[["arrow_entity_common",1],["arrow_projectile_common",1],["arrow_synced_accessors",1]],"struct":["ArrowEntity","SpectralArrowEntity"]};

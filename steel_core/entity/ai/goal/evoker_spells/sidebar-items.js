@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["CLOSE_FANGS_DISTANCE_SQR","MAX_VEX_ROLL","VEXES_PER_CAST","VEX_COUNT_RANGE","VEX_LIFE_SPREAD_SECONDS","VEX_MIN_LIFE_SECONDS","WOLOLO_RANGE","WOLOLO_VERTICAL_RANGE"],"fn":["create_spell_entity"],"struct":["FangsSpell","SummonVexSpell","WololoSpell","WololoTarget"]};

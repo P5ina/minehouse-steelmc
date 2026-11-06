@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["FLAG_SITTING","FLAG_TAME","TAG_OWNER","TAG_SITTING","TELEPORT_ATTEMPTS","TELEPORT_TO_OWNER_DISTANCE_SQR"],"fn":["death_message"],"struct":["TamableAnimalBase"],"trait":["TamableAnimal"]};

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["SpawnPlacementType"],"fn":["immune_to","is_block_dangerous","is_valid_empty_spawn_block","spawn_aabb"],"struct":["SpawnPlacements"]};

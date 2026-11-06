@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["HORIZONTAL_FACING"],"fn":["golem_spawn_position","is_air","is_iron_block","is_pumpkin","is_snow_block","spawn_golem_in_world"],"static":["IRON_GOLEM_BASE","IRON_GOLEM_FULL","SNOW_GOLEM_BASE","SNOW_GOLEM_FULL"],"struct":["CarvedPumpkinBlock"]};

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["BLINDNESS_TICKS","MIRROR_INVISIBILITY_TICKS"],"struct":["BlindnessSpell","MirrorSpell"]};

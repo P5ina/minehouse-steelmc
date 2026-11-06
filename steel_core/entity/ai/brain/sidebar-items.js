@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"mod":["activity","behavior","behaviors","memory","memory_types","nearest_visible","sensor","sensors"],"struct":["ActivityData","ActivityState","Brain","PriorityGroup"],"type":["ActivityBehaviors"]};

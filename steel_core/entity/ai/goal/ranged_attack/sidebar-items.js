@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["LOOK_MAX_ROTATION","SEE_TIME_TO_STOP"],"fn":["is_alive"],"struct":["RangedAttackGoal"]};

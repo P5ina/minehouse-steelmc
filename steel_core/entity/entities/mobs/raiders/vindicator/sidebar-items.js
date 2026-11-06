@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["AVOID_CREAKING_DISTANCE","DEFAULT_STEP_HEIGHT","HOLD_GROUND_RADIUS","JOHNNY_NAME","TAG_JOHNNY","XP_REWARD"],"fn":["is_raider"],"struct":["VindicatorEntity"]};

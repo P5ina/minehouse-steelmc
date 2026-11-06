@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["EXTRA_HORSEMEN","HORSE_PUSH_DEVIATION","LIGHTNING_INVULNERABLE_TICKS","TRIGGER_RANGE"],"fn":["create_horse","create_skeleton","trap_horse"],"struct":["SkeletonTrapGoal"]};

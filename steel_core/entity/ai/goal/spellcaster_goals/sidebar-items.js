@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["DEFAULT_CAST_WARMUP_TIME"],"fn":["look_at_entity"],"struct":["SpellcasterCastingSpellGoal","SpellcasterUseSpellGoal"],"trait":["Spell"],"type":["CastingLookFallback"]};

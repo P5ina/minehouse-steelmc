@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["translate_and_rotate"],"struct":["BlockPattern","BlockPatternMatch"],"type":["BlockPredicate","CellPredicate"]};

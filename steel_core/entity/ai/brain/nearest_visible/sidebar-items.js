@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["follow_range","is_entity_attackable","is_entity_attackable_ignoring_line_of_sight","is_entity_targetable"],"struct":["Inner","NearestVisibleLivingEntities"]};

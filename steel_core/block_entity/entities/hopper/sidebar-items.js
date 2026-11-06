@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["HOPPER_SLOTS","MOVE_ITEM_SPEED","SUCK_AABB"],"enum":["Intake"],"mod":["transfer"],"struct":["HopperBlockEntity","HopperContainer"]};

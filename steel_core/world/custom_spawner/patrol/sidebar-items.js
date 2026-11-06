@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["BASE_TICK_DELAY","LOADED_AREA_RADIUS","MEMBER_SPREAD","MIN_PLAYER_DISTANCE","PLAYER_DISTANCE_SPREAD","SPAWN_ATTEMPT_ROLL","TICK_DELAY_SPREAD","VILLAGE_SECTION_DISTANCE"],"fn":["has_chunks_at","patrol_offset","patrol_spawn_pos","spawn_patrol","spawn_patrol_member"],"struct":["PatrolSpawner"]};

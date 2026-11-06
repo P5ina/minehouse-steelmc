@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["HEAL_RAIDER_COOLDOWN","HEAL_RAIDER_RANDOM_INTERVAL"],"struct":["CanAttackFlag","HealCooldown","NearestAttackableWitchTargetGoal","NearestHealableRaiderTargetGoal"]};

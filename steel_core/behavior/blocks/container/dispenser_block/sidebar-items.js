@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["TRIGGER_DELAY"],"fn":["analog_output","drop_into_container_or_world"],"macro":[["impl_dispenser_block",1]],"struct":["DispenserBlock","DropperBlock","Kind"]};

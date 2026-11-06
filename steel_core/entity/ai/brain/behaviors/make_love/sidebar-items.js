@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["BREED_RANGE","MAKE_LOVE_ENTRY","MAX_DURATION","MIN_DURATION"],"fn":["entity_is_panicking"],"struct":["AnimalMakeLove"]};

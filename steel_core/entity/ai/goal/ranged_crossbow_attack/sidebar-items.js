@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["LOOK_MAX_ROTATION","PATHFINDING_DELAY_MAX","PATHFINDING_DELAY_MIN","SEE_TIME_TO_STOP"],"enum":["CrossbowState"],"fn":["is_holding_crossbow","is_valid_target"],"struct":["RangedCrossbowAttackGoal"]};

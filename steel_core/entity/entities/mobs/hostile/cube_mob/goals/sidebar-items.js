@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["ATTACK_LOOK_MAX_ROT","FLOAT_JUMP_CHANCE","FLOAT_SPEED_MODIFIER","GROW_TIRED_TICKS"],"fn":["can_attack_target"],"struct":["CubeMobAttackGoal","CubeMobFloatGoal","CubeMobKeepOnJumpingGoal","CubeMobRandomDirectionGoal"]};

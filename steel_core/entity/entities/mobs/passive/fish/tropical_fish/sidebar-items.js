@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["COMMON_TROPICAL_FISH_VARIANTS"],"enum":["TropicalFishBase","TropicalFishPattern"],"fn":["check_tropical_fish_spawn_rules"],"struct":["TropicalFishEntity","TropicalFishVariant"]};

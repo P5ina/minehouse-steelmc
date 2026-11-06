@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["FULL_DRAW_POWER","MIN_DRAW_POWER","USE_DURATION"],"fn":["get_power_for_time"],"struct":["BowItem"]};

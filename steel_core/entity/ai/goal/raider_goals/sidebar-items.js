@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["AMBIENT_SOUND_CHANCE","SHOUT_RANGE"],"struct":["HoldGroundAttackGoal","RaiderOpenDoorGoal"]};

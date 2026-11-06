@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["RAIDER_NO_ACTION_TIME_INCREMENT","TAG_CAN_JOIN_RAID","TAG_WAVE"],"fn":["ominous_banner_instance"],"struct":["RaiderState"],"trait":["Raider"]};

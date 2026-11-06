@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["is_abstract_illager","is_abstract_villager"],"trait":["AbstractIllager"]};

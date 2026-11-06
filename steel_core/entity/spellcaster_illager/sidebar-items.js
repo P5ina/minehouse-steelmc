@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["TAG_SPELL_TICKS"],"enum":["IllagerSpell"],"struct":["SpellcasterState"],"trait":["SpellcasterIllager"]};

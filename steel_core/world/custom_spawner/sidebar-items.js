@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["custom_spawners_for"],"mod":["patrol","phantom"],"trait":["CustomSpawner"]};

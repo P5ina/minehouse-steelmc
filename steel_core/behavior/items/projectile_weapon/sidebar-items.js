@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["ARROW_SPAWN_EYE_OFFSET"],"enum":["AmmoSlot"],"fn":["as_abstract_arrow","create_arrow","draw_player_ammo","find_player_arrow","find_player_projectile","get_mob_arrow","is_arrow","is_arrow_or_firework","monster_projectile","shoot_from_rotation","spawn_arrow","spawn_arrow_using_shoot","use_ammo","use_player_ammo"]};

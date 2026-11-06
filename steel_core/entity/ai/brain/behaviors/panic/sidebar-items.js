@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["PANIC_ENTRY"],"fn":["look_for_water"],"struct":["AnimalPanic"],"type":["PanicCauses","PositionGetter"]};

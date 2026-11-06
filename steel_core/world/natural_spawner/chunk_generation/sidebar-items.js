@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["ATTEMPTS_PER_MOB"],"fn":["add_fresh_entity_with_passengers","clamp","set_decoration_seed","spawn_mobs_for_chunk_generation","top_non_colliding_pos","try_spawn_at"]};

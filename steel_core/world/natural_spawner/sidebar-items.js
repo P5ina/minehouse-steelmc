@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["MIN_SPAWN_DISTANCE_SQR","SPAWNING_CATEGORIES"],"fn":["filtered_spawning_categories"],"mod":["chunk_generation","spawn_list","spawn_state"]};

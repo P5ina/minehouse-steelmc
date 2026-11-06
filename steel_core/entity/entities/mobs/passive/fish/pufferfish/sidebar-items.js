@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["PUFF_STATE_FULL","PUFF_STATE_MID","PUFF_STATE_SMALL"],"fn":["puff_scale","targeting_conditions"],"struct":["PuffTimers","PufferfishEntity","PufferfishPuffGoal"]};

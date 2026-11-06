@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["DEFAULT_STEP_HEIGHT","HOST_BLOCK_WALK_VALUE","SPAWN_PLAYER_DISTANCE","WAKE_DELAY_TICKS","WAKE_RADIUS_XZ","WAKE_RADIUS_Y","XP_REWARD"],"fn":["outward_offsets"],"struct":["MergeWithStoneGoal","SilverfishEntity","WakeUpFriendsGoal"]};

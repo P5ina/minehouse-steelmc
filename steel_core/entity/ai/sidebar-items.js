@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"mod":["brain","control","goal","navigation","node","node_evaluator","path","pathfinder","sensing","smooth_swimming","swim","targeting","walk"]};

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["MOUNT_MENU_REACH_BUFFER"],"fn":["equipment_section","horse_inventory_menu","open_horse_inventory"],"struct":["MountEquipmentContainer","MountEquipmentSlot","MountMenuKind"]};

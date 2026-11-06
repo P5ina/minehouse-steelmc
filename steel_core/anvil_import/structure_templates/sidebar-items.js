@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["SHIPWRECK_PIVOT"],"fn":["end_city","igloo","int","mirror","nether_fossil","ocean_ruin","rotation","ruined_portal","shipwreck","template_bounding_box","template_payload","template_size","woodland_mansion"],"struct":["Base","Family"]};

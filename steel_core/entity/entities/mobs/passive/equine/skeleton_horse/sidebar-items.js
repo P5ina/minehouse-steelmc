@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["BABY_DIMENSIONS","BABY_PASSENGER","TRAP_MAX_LIFE"],"struct":["SkeletonHorseEntity"]};

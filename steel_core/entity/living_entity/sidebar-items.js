@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["BED_SLEEP_POSITION_OFFSET","LIVING_FLAG_OFF_HAND_ACTIVE","LIVING_FLAG_USING_ITEM"],"fn":["blocks_in_aabb_match","death_loot_items_with_rng","hand_slot","shearing_loot_items_with_rng"],"trait":["LivingEntity"]};

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["FOLLOW_OWNER_RECALC_TICKS","NON_TAME_TARGET_INTERVAL","OWNER_DAMAGE_TIMEOUT_TICKS","OWNER_NEARBY_DISTANCE_SQR"],"enum":["OwnerFight"],"fn":["is_no_wolf_retaliation","same_level","tamable"],"struct":["FollowOwnerGoal","NonTameRandomTargetGoal","OwnerTargetGoal","SitWhenOrderedToGoal","TamableAnimalPanicGoal"]};

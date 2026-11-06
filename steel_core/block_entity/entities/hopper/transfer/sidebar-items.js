@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["add_item","can_merge_items","can_take_item_from_container","get_slots","is_empty","is_full_container","item_at","shorten_hopper_cooldown","try_move_in_item","try_take_in_item_from_slot"],"struct":["SlotRef"]};

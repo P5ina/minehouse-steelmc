@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["MAGIC_NUMBER","SPAWN_DISTANCE_SQR"],"fn":["dist_sqr","spawn_charge"],"struct":["LocalMobCapCalculator","PotentialCalculator","SpawnState"]};

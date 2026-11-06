@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["LOOK_AT_TARGET_SINK_ENTRY","RANDOM_LOOK_AROUND_ENTRY"],"fn":["set_entity_look_target_sometimes"],"struct":["LookAtTargetSink","RandomLookAround","Ticker"]};

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["ENTITY_BASE_KEYS"],"fn":["convert_entity","convert_entity_chunk","count_unknown","entity_uuid","uuid"]};

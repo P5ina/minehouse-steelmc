@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["START_DISTANCE_SQR","STOP_DISTANCE_SQR"],"fn":["creeper"],"struct":["SwellGoal"]};

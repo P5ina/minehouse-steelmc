@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["default_ranged_attack_uncertainty"],"trait":["RangedAttackMob"]};

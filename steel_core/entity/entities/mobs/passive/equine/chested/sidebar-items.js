@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["CHESTED_BABY_SCALE","CHEST_COLUMNS","DONKEY_BABY_DIMENSIONS","DONKEY_BABY_PASSENGER","MULE_BABY_DIMENSIONS","MULE_BABY_PASSENGER"],"macro":[["chested_entity",1]],"struct":["DonkeyEntity","MuleEntity"],"trait":["AbstractChestedHorse"]};

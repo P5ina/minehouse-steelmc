@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["NATURAL_SPAWN_CHUNK_DISTANCE"],"fn":["player_loading_ticket","player_simulation_ticket"],"struct":["PlayerTicketTracker"]};

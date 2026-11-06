@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["ChestCombineResult"],"fn":["chest_container","connected_direction","custom_name","is_chest_blocked_at"],"macro":[["impl_chest_block",1]],"struct":["ChestBehavior","ChestBlock","TrappedChestBlock"]};

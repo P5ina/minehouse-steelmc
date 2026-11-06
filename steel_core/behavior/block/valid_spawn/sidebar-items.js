@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["properties_is_valid_spawn"],"static":["ALWAYS","NEVER","OCELOT_OR_PARROT"]};

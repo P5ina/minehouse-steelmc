@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["ADVANCEMENT_DATE_FORMAT","EQUIPMENT_SLOTS"],"fn":["convert_advancements","convert_player","convert_player_data","convert_stats","import_players","item_stack","items","list_player_files","read_json","respawn_config"],"struct":["PlayerReport"]};

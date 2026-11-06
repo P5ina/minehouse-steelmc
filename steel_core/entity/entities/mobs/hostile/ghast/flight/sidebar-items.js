@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["FACE_TARGET_DISTANCE_SQR","FLY_TO_RANGE","MAX_FLY_TO_ATTEMPTS"],"fn":["block_traversal_possible","can_reach","face_movement_direction","heading","is_good_target","random_position","random_position_with_restriction","suitable_fly_to_position","tick_ghast_move_control"],"struct":["GhastLookGoal","GhastMoveState","RandomFloatAroundGoal"]};

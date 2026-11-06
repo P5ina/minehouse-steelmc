@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["END_TAG","INVALID_START","JIGSAW_PIECE"],"fn":["bounding_box","compound_list","int","jigsaw_piece","junction","pool_element","single_element","structure_piece","structure_start","structure_starts"]};

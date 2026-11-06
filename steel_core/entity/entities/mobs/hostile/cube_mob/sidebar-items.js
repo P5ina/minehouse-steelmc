@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["MAX_SIZE","MIN_SIZE","MOVE_CONTROL_MAX_TURN","SIZE_TAG","SPLIT_SPAWN_Y_OFFSET","WAS_ON_GROUND_TAG"],"mod":["goals","magma_cube","slime"],"struct":["CubeMobBase","CubeMoveState"],"trait":["AbstractCubeMob"]};

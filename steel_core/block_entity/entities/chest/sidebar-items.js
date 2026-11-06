@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["CHEST_SLOTS"],"struct":["ChestBlockEntity","ChestContainer"]};

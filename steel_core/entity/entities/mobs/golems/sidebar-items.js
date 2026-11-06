@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"mod":["iron_golem","snow_golem"],"struct":["IronGolemEntity","SnowGolemEntity"]};

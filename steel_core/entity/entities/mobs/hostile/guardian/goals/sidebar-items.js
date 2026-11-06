@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["ATTACK_WARMUP_TICKS","BASE_BEAM_DAMAGE","BEAM_DAMAGE_BONUS"],"fn":["look_at_target","move_and_look"],"struct":["GuardianAttackGoal","GuardianRandomStrollGoal","MoveAndLookGoal"]};

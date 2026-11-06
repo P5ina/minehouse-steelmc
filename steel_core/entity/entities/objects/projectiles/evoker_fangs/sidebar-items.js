@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["BITE_DAMAGE","BITE_REACH","BITE_TICK","START_LIFE_TICKS","TAG_OWNER","TAG_WARMUP"],"fn":["deal_damage_to"],"struct":["EvokerFangsEntity","EvokerFangsState"]};

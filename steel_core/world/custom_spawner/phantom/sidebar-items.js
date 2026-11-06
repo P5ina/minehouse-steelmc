@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["MIN_SKY_DARKEN","MIN_TICKS_SINCE_REST"],"fn":["phantom_spawn_pos","spawn_phantom_group"],"struct":["PhantomSpawner"]};
