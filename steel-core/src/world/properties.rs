@@ -1,4 +1,8 @@
+use glam::DVec3;
+use steel_registry::vanilla_game_rules;
 use steel_utils::types::GameType;
+
+use crate::entity::Entity as _;
 
 use super::{
     ADVANCE_TIME, BlockPos, CChangeDifficulty, ChunkPos, Difficulty, Digest, ErasedGameRuleRef,
@@ -26,6 +30,26 @@ impl World {
     /// Returns vanilla level difficulty.
     pub fn difficulty(&self) -> Difficulty {
         self.level_data.read().data().difficulty
+    }
+
+    /// Vanilla `ServerLevel.canSpreadFireAround`: fire may spread or be lit by lightning
+    /// at `pos` when a non-spectator player is closer than the
+    /// `fire_spread_radius_around_player` game rule (`-1` means anywhere).
+    pub fn can_spread_fire_around(&self, pos: BlockPos) -> bool {
+        let radius = self.get_game_rule(&vanilla_game_rules::FIRE_SPREAD_RADIUS_AROUND_PLAYER);
+        if radius == -1 {
+            return true;
+        }
+        let target = DVec3::new(f64::from(pos.x()), f64::from(pos.y()), f64::from(pos.z()));
+        let mut close_enough = false;
+        self.players.iter_players(|_, player| {
+            if !player.is_spectator() && player.position().distance(target) < f64::from(radius) {
+                close_enough = true;
+                return false;
+            }
+            true
+        });
+        close_enough
     }
 
     /// Sets the level difficulty and broadcasts the new value to its players.

@@ -159,14 +159,14 @@ fn mooshroom_thunder_hit_swaps_variant() {
     assert_eq!(mooshroom.variant(), MooshroomVariant::Red);
 
     let bolt1 = Uuid::new_v4();
-    mooshroom.thunder_hit(bolt1);
+    mooshroom.convert_by_lightning(bolt1);
     assert_eq!(mooshroom.variant(), MooshroomVariant::Brown);
 
-    mooshroom.thunder_hit(bolt1);
+    mooshroom.convert_by_lightning(bolt1);
     assert_eq!(mooshroom.variant(), MooshroomVariant::Brown);
 
     let bolt2 = Uuid::new_v4();
-    mooshroom.thunder_hit(bolt2);
+    mooshroom.convert_by_lightning(bolt2);
     assert_eq!(mooshroom.variant(), MooshroomVariant::Red);
 }
 

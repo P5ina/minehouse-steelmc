@@ -5,6 +5,7 @@ use std::sync::{Arc, Weak};
 use crate::behavior::InteractionResult;
 use crate::entity::block_attached_entity::{BlockAttachedEntity, BlockAttachedEntityBase};
 use crate::entity::damage::DamageSource;
+use crate::entity::entities::LightningBoltEntity;
 use crate::entity::{
     Entity, EntityBase, EntityBaseLoad, EntityBaseState, EntityMoveError, RemovalReason,
     SharedEntity, next_entity_id,
@@ -165,6 +166,9 @@ impl LeashFenceKnotEntity {
 }
 
 impl Entity for LeashFenceKnotEntity {
+    /// Vanilla `BlockAttachedEntity.thunderHit` ignores lightning.
+    fn thunder_hit(&self, _world: &World, _lightning: &LightningBoltEntity) {}
+
     fn base(&self) -> &EntityBase {
         &self.base
     }

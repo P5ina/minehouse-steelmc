@@ -25,6 +25,7 @@ use crate::entity::ai::goal::{
 };
 use crate::entity::damage::DamageSource;
 use crate::entity::entities::AreaEffectCloudEntity;
+use crate::entity::entities::LightningBoltEntity;
 use crate::entity::entity::EntityEventSource as _;
 use crate::entity::{
     DefaultEntityPush, Entity, EntityBase, EntityBaseLoad, EntityMovementEmission, EntityPose,
@@ -284,6 +285,11 @@ impl Entity for CreeperEntity {
 
     fn movement_emission(&self) -> EntityMovementEmission {
         EntityMovementEmission::All
+    }
+
+    fn thunder_hit(&self, world: &World, _lightning: &LightningBoltEntity) {
+        self.default_thunder_hit(world);
+        self.set_powered(true);
     }
 
     fn tick(self: Arc<Self>) {
