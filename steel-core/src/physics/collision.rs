@@ -10,7 +10,7 @@ use steel_utils::{BlockLocalAabb, BlockPos, BlockStateId, WorldAabb};
 use crate::behavior::{
     BLOCK_BEHAVIORS, BlockCollisionBoxes, BlockCollisionContext, blocks::PowderSnowBlock,
 };
-use crate::entity::{Entity, EntityCollisionCandidates};
+use crate::entity::{Entity, EntityCollisionCandidates, liquid_stand_of};
 use crate::physics::shapes::join_is_not_empty;
 use crate::physics::{COLLISION_EPSILON, block_state_may_expand_collision_cursor};
 use crate::world::{BlockRegionBounds, LevelReader, World};
@@ -423,6 +423,7 @@ impl<'a> WorldCollisionProvider<'a> {
                     source,
                 ))
                 .with_falling_block(source.entity_type() == &vanilla_entities::FALLING_BLOCK)
+                .with_liquid_stand(liquid_stand_of(source))
         } else {
             context
         }

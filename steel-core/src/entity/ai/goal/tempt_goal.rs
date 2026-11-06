@@ -137,6 +137,10 @@ impl Goal for TemptGoal {
         GoalControls::MOVE | GoalControls::LOOK
     }
 
+    fn is_tempt_goal(&self) -> bool {
+        true
+    }
+
     fn can_use(&mut self, mob: &dyn PathfinderMob) -> bool {
         if self.calm_down > 0 {
             self.calm_down -= 1;

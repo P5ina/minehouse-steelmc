@@ -26,6 +26,8 @@ use steel_math::{DEGREE_90, DEGREE_360};
 use steel_registry::entity_data::EntityPose;
 use steel_registry::entity_type::EntityDimensions;
 use steel_registry::vanilla_entities;
+
+use crate::behavior::LiquidStand;
 use steel_utils::locks::SyncMutex;
 use steel_utils::{BlockPos, BlockStateId, WorldAabb};
 use text_components::TextComponent;
@@ -83,6 +85,7 @@ pub(crate) struct EntityPhysicsStateInput {
     pub(crate) descending: bool,
     pub(crate) can_walk_on_powder_snow: bool,
     pub(crate) is_falling_block: bool,
+    pub(crate) liquid_stand: Option<LiquidStand>,
 }
 
 pub(crate) struct EntityPushState {
@@ -568,6 +571,7 @@ impl EntityBase {
             .with_descending(input.descending)
             .with_can_walk_on_powder_snow(input.can_walk_on_powder_snow)
             .with_falling_block(input.is_falling_block)
+            .with_liquid_stand(input.liquid_stand)
     }
 
     /// Gets the entity's current pose.

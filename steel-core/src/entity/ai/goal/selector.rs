@@ -91,6 +91,11 @@ pub trait Goal: Send {
         false
     }
 
+    /// Identifies vanilla `TemptGoal`, for mobs that check `temptGoal.isRunning()`.
+    fn is_tempt_goal(&self) -> bool {
+        false
+    }
+
     /// Identifies vanilla `BreakDoorGoal` so mobs can add and remove it as
     /// their door-breaking ability changes.
     fn is_break_door_goal(&self) -> bool {
@@ -179,6 +184,10 @@ impl WrappedGoal {
 
     fn is_panic_goal(&self) -> bool {
         self.goal.is_panic_goal()
+    }
+
+    fn is_tempt_goal(&self) -> bool {
+        self.goal.is_tempt_goal()
     }
 }
 
@@ -302,6 +311,14 @@ impl GoalSelector {
         self.available_goals
             .iter()
             .any(|goal| goal.is_running() && goal.is_panic_goal())
+    }
+
+    /// Whether a vanilla `TemptGoal` is running.
+    #[must_use]
+    pub(crate) fn has_running_tempt_goal(&self) -> bool {
+        self.available_goals
+            .iter()
+            .any(|goal| goal.is_running() && goal.is_tempt_goal())
     }
 
     #[cfg(test)]

@@ -63,6 +63,7 @@ use text_components::{
 };
 use uuid::Uuid;
 
+use crate::behavior::LiquidStand;
 use crate::behavior::{
     BLOCK_BEHAVIORS, BlockCollisionContext, BlockStateBehaviorExt as _, EntityFallOnContext,
     EntityLandingContext, FLUID_BEHAVIORS, InteractionResult,
@@ -79,6 +80,8 @@ use crate::physics::{
 use crate::world::game_event::GameEventContext;
 use crate::world::{ClipBlockShape, ClipFluid, Explosion, LevelReader, World};
 use crate::{enchantment_helper, entity::damage::DamageSource, player::Player};
+use steel_registry::blocks::shapes::VoxelShape;
+use steel_registry::vanilla_fluids;
 
 use entities::ExperienceOrbEntity;
 
@@ -497,6 +500,22 @@ fn physics_state_for_move(entity: &dyn Entity) -> EntityPhysicsState {
         descending: entity.is_descending(),
         can_walk_on_powder_snow: PowderSnowBlock::can_entity_walk_on_powder_snow(entity),
         is_falling_block: entity.entity_type() == &vanilla_entities::FALLING_BLOCK,
+        liquid_stand: liquid_stand_of(entity),
+    })
+}
+
+/// Vanilla `EntityCollisionContext` liquid standing: the mover's
+/// `getLiquidCollisionShape` and `canStandOnFluid` for source liquids.
+pub(crate) fn liquid_stand_of(entity: &dyn Entity) -> Option<LiquidStand> {
+    let living = entity.as_living_entity()?;
+    let shape = living.liquid_collision_shape();
+    if shape.is_empty() {
+        return None;
+    }
+    Some(LiquidStand {
+        shape,
+        on_lava: living.can_stand_on_fluid(FluidState::source(&vanilla_fluids::LAVA)),
+        on_water: living.can_stand_on_fluid(FluidState::source(&vanilla_fluids::WATER)),
     })
 }
 

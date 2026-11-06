@@ -66,6 +66,7 @@ pub mod weathering;
 #[path = "generated/skull_types.rs"]
 pub mod skull_types;
 
+pub use block::LiquidStand;
 pub use block::{
     BlockBehavior, BlockBehaviorRegistry, BlockCollisionBoxes, BlockCollisionContext,
     BlockEntityCreation, BlockLootContext, BrushableData, DefaultBlockBehavior, EntityFallDamage,
