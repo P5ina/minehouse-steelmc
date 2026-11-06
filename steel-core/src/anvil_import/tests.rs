@@ -87,6 +87,7 @@ fn vanilla_full_chunk_loads_in_steel() {
     assert!(report.unknown_biomes.is_empty(), "{report}");
     assert!(report.invalid_block_states.is_empty(), "{report}");
     assert_eq!(report.chunks_without_light, 0);
+    assert_eq!(persistent.inhabited_time, 1234, "fixture InhabitedTime");
 
     let loaded = ChunkStorage::try_persistent_to_chunk(
         &persistent,

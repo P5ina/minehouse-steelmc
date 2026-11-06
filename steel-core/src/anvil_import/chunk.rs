@@ -127,6 +127,7 @@ pub fn convert_chunk(
         structure_starts: Vec::new(),
         structure_references,
         pois: poi_records,
+        inhabited_time: root.long("InhabitedTime").unwrap_or(0),
     })))
 }
 
