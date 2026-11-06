@@ -130,7 +130,7 @@ impl NearestAttackableTargetGoal {
             .is_none_or(|selector| selector(mob, target, world))
     }
 
-    fn find_target(&mut self, mob: &dyn PathfinderMob) {
+    pub(super) fn find_target(&mut self, mob: &dyn PathfinderMob) {
         let Some(world) = mob.level() else {
             self.target = None;
             return;
@@ -163,6 +163,11 @@ impl NearestAttackableTargetGoal {
 
     pub(crate) fn set_target(&mut self, target: Option<SharedEntity>) {
         self.target = target;
+    }
+
+    /// Whether the last search found a target.
+    pub(super) const fn has_target(&self) -> bool {
+        self.target.is_some()
     }
 }
 
