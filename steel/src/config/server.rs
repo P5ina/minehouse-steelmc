@@ -1,3 +1,5 @@
+use std::env;
+
 use reqwest::Url;
 use serde::Deserialize;
 use steel_core::{
@@ -56,6 +58,9 @@ pub struct ServerConfig {
     pub services_server: Option<String>,
     /// Whether the server should use encryption. Required in online mode.
     pub encryption: bool,
+    /// Velocity modern forwarding settings for running behind a proxy.
+    #[serde(default)]
+    pub proxy: ProxyConfig,
     /// Whether vanilla floating/flying movement checks permit unauthorized flight.
     #[serde(default)]
     pub allow_flight: bool,
@@ -100,6 +105,7 @@ impl ServerConfig {
             profile_server: self.profile_server,
             services_server: self.services_server,
             encryption: self.encryption,
+            velocity_secret: self.proxy.secret(),
             allow_flight: self.allow_flight,
             motd: self.motd,
             use_favicon: self.use_favicon,
@@ -113,6 +119,37 @@ impl ServerConfig {
             chunk_generation_threads: self.threads.chunk_generation,
             chunk_encoding_threads: self.threads.chunk_encoding,
         }
+    }
+}
+
+/// Environment variable that overrides `proxy.velocity_secret`, so the secret can stay out of the config file.
+pub const VELOCITY_SECRET_ENV: &str = "STEEL_VELOCITY_SECRET";
+
+/// Velocity modern forwarding settings.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct ProxyConfig {
+    /// Accept players only through a Velocity-compatible proxy (Velocity, Gate).
+    pub enabled: bool,
+    /// The forwarding secret shared with the proxy.
+    pub velocity_secret: Option<String>,
+}
+
+impl ProxyConfig {
+    /// The forwarding secret if the proxy is enabled, preferring the environment variable.
+    #[must_use]
+    pub fn secret(&self) -> Option<String> {
+        if !self.enabled {
+            return None;
+        }
+        env::var(VELOCITY_SECRET_ENV)
+            .ok()
+            .filter(|secret| !secret.is_empty())
+            .or_else(|| {
+                self.velocity_secret
+                    .clone()
+                    .filter(|secret| !secret.is_empty())
+            })
     }
 }
 
@@ -140,6 +177,23 @@ pub struct ThreadConfig {
 /// This function will return an error if the configuration is invalid.
 pub(super) fn validate(config: &ServerConfig) -> Result<(), &'static str> {
     validate_login_security(config.online_mode, config.encryption)?;
+    if config.proxy.enabled {
+        if config.online_mode {
+            return Err(
+                "online_mode must be false when proxy is enabled; the proxy authenticates players",
+            );
+        }
+        if config.encryption {
+            return Err(
+                "encryption must be false when proxy is enabled; the proxy encrypts the client connection",
+            );
+        }
+        if config.proxy.secret().is_none() {
+            return Err(
+                "proxy.velocity_secret or STEEL_VELOCITY_SECRET must be set when proxy is enabled",
+            );
+        }
+    }
     if !config.allow_extended_view_distance && !(1..=32).contains(&config.view_distance) {
         return Err("View distance must in range 1..32");
     }

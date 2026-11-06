@@ -13,6 +13,7 @@ use steel_protocol::utils::ConnectionProtocol;
 pub(crate) enum LoginPhase {
     Hello,
     Key,
+    Forwarding,
     Authenticating,
     ProtocolSwitching,
 }
@@ -40,6 +41,7 @@ impl Display for PrePlayPhase {
             Self::Status => formatter.write_str("status"),
             Self::Login(LoginPhase::Hello) => formatter.write_str("login hello"),
             Self::Login(LoginPhase::Key) => formatter.write_str("login key"),
+            Self::Login(LoginPhase::Forwarding) => formatter.write_str("login proxy forwarding"),
             Self::Login(LoginPhase::Authenticating) => formatter.write_str("login authentication"),
             Self::Login(LoginPhase::ProtocolSwitching) => {
                 formatter.write_str("login protocol switching")
@@ -60,6 +62,7 @@ pub(crate) enum PrePlayPacket {
     ClientIntention,
     Hello,
     Key,
+    CustomQueryAnswer,
     LoginAcknowledged,
     SelectKnownPacks,
     FinishConfiguration,
@@ -71,6 +74,7 @@ impl Display for PrePlayPacket {
             Self::ClientIntention => formatter.write_str("client intention"),
             Self::Hello => formatter.write_str("hello packet"),
             Self::Key => formatter.write_str("key packet"),
+            Self::CustomQueryAnswer => formatter.write_str("custom query answer"),
             Self::LoginAcknowledged => formatter.write_str("login acknowledgement"),
             Self::SelectKnownPacks => formatter.write_str("known-pack selection"),
             Self::FinishConfiguration => formatter.write_str("configuration acknowledgement"),
@@ -94,6 +98,7 @@ impl Display for PacketSequenceError {
 enum LoginState {
     Hello,
     Key { requested_username: String },
+    Forwarding { transaction_id: i32 },
     Authenticating,
     ProtocolSwitching { authenticated_profile: GameProfile },
 }
@@ -133,6 +138,9 @@ impl PrePlayState {
             State::Status => PrePlayPhase::Status,
             State::Login(LoginState::Hello) => PrePlayPhase::Login(LoginPhase::Hello),
             State::Login(LoginState::Key { .. }) => PrePlayPhase::Login(LoginPhase::Key),
+            State::Login(LoginState::Forwarding { .. }) => {
+                PrePlayPhase::Login(LoginPhase::Forwarding)
+            }
             State::Login(LoginState::Authenticating) => {
                 PrePlayPhase::Login(LoginPhase::Authenticating)
             }
@@ -166,6 +174,10 @@ impl PrePlayState {
             (State::Login(LoginState::Hello), PrePlayPacket::Hello)
                 | (State::Login(LoginState::Key { .. }), PrePlayPacket::Key)
                 | (
+                    State::Login(LoginState::Forwarding { .. }),
+                    PrePlayPacket::CustomQueryAnswer
+                )
+                | (
                     State::Login(LoginState::ProtocolSwitching { .. }),
                     PrePlayPacket::LoginAcknowledged
                 )
@@ -197,6 +209,32 @@ impl PrePlayState {
     ) -> Result<(), PacketSequenceError> {
         self.expect(PrePlayPacket::Hello)?;
         self.state = State::Login(LoginState::Key { requested_username });
+        Ok(())
+    }
+
+    /// Waits for the proxy's forwarding answer instead of a key exchange.
+    pub(crate) fn wait_for_forwarding(
+        &mut self,
+        transaction_id: i32,
+    ) -> Result<(), PacketSequenceError> {
+        self.expect(PrePlayPacket::Hello)?;
+        self.state = State::Login(LoginState::Forwarding { transaction_id });
+        Ok(())
+    }
+
+    /// Accepts the answer to the forwarding query; any other transaction id is rejected.
+    pub(crate) fn receive_forwarding(
+        &mut self,
+        answered_id: i32,
+    ) -> Result<(), PacketSequenceError> {
+        self.expect(PrePlayPacket::CustomQueryAnswer)?;
+        let State::Login(LoginState::Forwarding { transaction_id }) = self.state else {
+            return Err(self.unexpected(PrePlayPacket::CustomQueryAnswer));
+        };
+        if transaction_id != answered_id {
+            return Err(self.unexpected(PrePlayPacket::CustomQueryAnswer));
+        }
+        self.state = State::Login(LoginState::Authenticating);
         Ok(())
     }
 
@@ -296,6 +334,24 @@ mod tests {
             .select_protocol(ConnectionProtocol::Login)
             .expect("handshake should enter login");
         state
+    }
+
+    #[test]
+    fn proxy_flow_waits_for_the_matching_forwarding_answer() {
+        let mut state = login_state();
+        state
+            .wait_for_forwarding(7)
+            .expect("hello should start forwarding");
+        assert_eq!(state.phase(), PrePlayPhase::Login(LoginPhase::Forwarding));
+        assert!(state.expect(PrePlayPacket::Key).is_err());
+        assert!(state.receive_forwarding(8).is_err());
+        state
+            .receive_forwarding(7)
+            .expect("matching answer should be accepted");
+        state
+            .complete_login(profile(Uuid::from_u128(3), "Steve"))
+            .expect("forwarded profile should complete login");
+        assert!(state.receive_forwarding(7).is_err());
     }
 
     #[test]

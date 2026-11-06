@@ -14,6 +14,7 @@ mod connection;
 mod handlers;
 mod pre_play_state;
 mod tcp_client;
+pub mod velocity;
 
 // Authentication
 pub use authentication::{AuthError, TextureError, mojang_authenticate, signed_bytes_be_to_hex};

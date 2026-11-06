@@ -73,6 +73,22 @@
           "description": "Whether to enable encryption for client-server communication. Required in online mode.",
           "default": true
         },
+        "proxy": {
+          "type": "object",
+          "description": "Velocity modern forwarding, for running behind Velocity or Gate. Requires online_mode = false and encryption = false.",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Accept players only through the proxy.",
+              "default": false
+            },
+            "velocity_secret": {
+              "type": "string",
+              "description": "Forwarding secret shared with the proxy. The STEEL_VELOCITY_SECRET environment variable overrides it."
+            }
+          }
+        },
         "allow_flight": {
           "type": "boolean",
           "description": "Whether the server allows unauthorised client flight",

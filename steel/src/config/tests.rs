@@ -65,6 +65,7 @@ fn packaged_config_matches_the_runtime_config_defaults() {
         profile_server,
         services_server,
         encryption,
+        velocity_secret,
         allow_flight,
         motd,
         use_favicon,
@@ -92,6 +93,7 @@ fn packaged_config_matches_the_runtime_config_defaults() {
     assert_eq!(profile_server, defaults.profile_server);
     assert_eq!(services_server, defaults.services_server);
     assert_eq!(encryption, defaults.encryption);
+    assert_eq!(velocity_secret, defaults.velocity_secret);
     assert_eq!(allow_flight, defaults.allow_flight);
     assert_eq!(motd, defaults.motd);
     assert_eq!(use_favicon, defaults.use_favicon);
