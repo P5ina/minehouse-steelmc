@@ -5,7 +5,7 @@ pub mod objects;
 
 pub use mobs::ambient::BatEntity;
 pub use mobs::golems::{IronGolemEntity, SnowGolemEntity};
-pub use mobs::hostile::{CreeperEntity, EndermiteEntity};
+pub use mobs::hostile::{CaveSpiderEntity, CreeperEntity, EndermiteEntity, SpiderEntity};
 pub use mobs::passive::*;
 pub use objects::display_ui::{BlockDisplayEntity, ItemFrameEntity, LeashFenceKnotEntity};
 pub use objects::effects::{AreaEffectCloudEntity, LightningBoltEntity};

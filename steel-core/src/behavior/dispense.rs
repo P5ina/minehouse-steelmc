@@ -4,6 +4,7 @@ use std::mem;
 use std::sync::Arc;
 
 use glam::DVec3;
+use steel_protocol::packets::game::SoundSource;
 use steel_registry::blocks::BlockRef;
 use steel_registry::blocks::block_state_ext::BlockStateExt as _;
 use steel_registry::blocks::properties::{Axis, BlockStateProperties, Direction};
@@ -72,13 +73,15 @@ pub(crate) enum DispenseBehavior {
     BoneMeal,
     /// Places a shulker box in front.
     ShulkerBox,
+    /// Shears the entity in front.
+    Shears,
     /// Completes a golem in front, or puts the pumpkin on an entity's head.
     CarvedPumpkin,
 }
 
 impl DispenseBehavior {
     /// The behavior Vanilla registers for `item` in `DispenserBlock.DISPENSER_REGISTRY`.
-    // TODO: Projectiles, armor, boats, minecarts, spawn eggs, shears, fish and powder snow buckets and the other
+    // TODO: Projectiles, armor, boats, minecarts, spawn eggs, fish and powder snow buckets and the other
     // `DispenseItemBehavior.bootStrap` entries still use the default drop.
     pub(crate) fn for_item(item: &ItemStack) -> Self {
         if item.is(&vanilla_items::WATER_BUCKET) {
@@ -91,6 +94,8 @@ impl DispenseBehavior {
             Self::FlintAndSteel
         } else if item.is(&vanilla_items::BONE_MEAL) {
             Self::BoneMeal
+        } else if item.is(&vanilla_items::SHEARS) {
+            Self::Shears
         } else if item.is(&vanilla_items::CARVED_PUMPKIN) {
             Self::CarvedPumpkin
         } else if shulker_box_block(item).is_some() {
@@ -114,10 +119,15 @@ impl DispenseBehavior {
                 play_default_sound_and_animation(source);
                 result
             }
-            Self::FlintAndSteel | Self::BoneMeal | Self::ShulkerBox | Self::CarvedPumpkin => {
+            Self::FlintAndSteel
+            | Self::BoneMeal
+            | Self::ShulkerBox
+            | Self::Shears
+            | Self::CarvedPumpkin => {
                 let (result, success) = match self {
                     Self::FlintAndSteel => flint_and_steel(source, stack),
                     Self::BoneMeal => bone_meal(source, stack),
+                    Self::Shears => shears(source, stack),
                     Self::CarvedPumpkin => carved_pumpkin(source, stack),
                     _ => shulker_box(source, stack),
                 };
@@ -322,6 +332,49 @@ fn bone_meal(source: &BlockSource<'_>, mut stack: ItemStack) -> (ItemStack, bool
         );
     }
     (stack, success)
+}
+
+/// Vanilla `ShearsDispenseItemBehavior`.
+// TODO: Harvest full beehives once beehive honey harvesting exists.
+fn shears(source: &BlockSource<'_>, mut stack: ItemStack) -> (ItemStack, bool) {
+    let pos = source.target();
+    let success = shear_entity(source.world, pos, &stack);
+    if success {
+        stack.hurt_and_break(1, false);
+    }
+    (stack, success)
+}
+
+fn shear_entity(world: &Arc<World>, pos: BlockPos, tool: &ItemStack) -> bool {
+    let aabb = WorldAabb::new(
+        f64::from(pos.x()),
+        f64::from(pos.y()),
+        f64::from(pos.z()),
+        f64::from(pos.x() + 1),
+        f64::from(pos.y() + 1),
+        f64::from(pos.z() + 1),
+    );
+    for entity in world.get_entities_in_aabb(&aabb) {
+        if entity.is_spectator() {
+            continue;
+        }
+        if entity.shear_off_all_leash_connections(None) {
+            return true;
+        }
+        if entity.is_alive()
+            && let Some(shearable) = entity.as_shearable()
+            && shearable.ready_for_shearing()
+        {
+            shearable.shear(world, SoundSource::Blocks, tool);
+            world.game_event(
+                &vanilla_game_events::SHEAR,
+                pos,
+                &GameEventContext::new(None, None),
+            );
+            return true;
+        }
+    }
+    false
 }
 
 /// The shulker box block a shulker box item places, if `item` is one.

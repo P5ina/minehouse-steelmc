@@ -786,6 +786,7 @@ mod ranged_attack_mob;
 mod reference;
 mod registry;
 pub(crate) mod selector;
+mod shearable;
 mod spawn;
 mod spawn_placements;
 mod storage;
@@ -860,6 +861,7 @@ pub(crate) use ranged_attack_mob::RangedAttackMob;
 pub use reference::EntityReference;
 pub(crate) use registry::SpawnRule;
 pub use registry::{ENTITIES, EntityLoadRequest, EntityRegistry, init_entities};
+pub(crate) use shearable::Shearable;
 pub(crate) use spawn::{
     AgeableMobGroupData, EntitySpawnPlacement, EntitySpawnReason, EntitySpawnRequest,
     SpawnGroupData, add_spawned_entity, apply_implicit_item_stack_components,

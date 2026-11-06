@@ -160,7 +160,7 @@ pub use explosion::{
     Explosion, ExplosionDamageCalculator, ExplosionInteraction, ExplosionOptions, ExplosionOutcome,
 };
 pub(crate) use explosion::{ExplosionBlockReader, ImmutableExplosionBlockCalculator};
-pub use level_reader::{LevelAccessor, LevelReader, ScheduledTickAccess};
+pub use level_reader::{LevelAccessor, LevelReader, ScheduledTickAccess, ServerLevelAccessor};
 pub use player_index::{PlayerAreaMap, PlayerMap};
 pub use raycast::{ClipBlockShape, ClipFluid, ClipHitResult, RaytraceAction};
 #[cfg(test)]
@@ -740,6 +740,15 @@ impl LevelReader for World {
         self.dimension_type.ambient_light
     }
 
+    fn height_at(&self, heightmap_type: HeightmapType, x: i32, z: i32) -> i32 {
+        let mapped_type = match heightmap_type {
+            HeightmapType::WorldSurfaceWg => HeightmapType::WorldSurface,
+            HeightmapType::OceanFloorWg => HeightmapType::OceanFloor,
+            other => other,
+        };
+        Self::height_at(self, mapped_type, x, z).unwrap_or_else(|| self.get_min_y())
+    }
+
     fn min_y(&self) -> i32 {
         self.get_min_y()
     }
@@ -750,6 +759,24 @@ impl LevelReader for World {
 
     fn sea_level(&self) -> i32 {
         self.sea_level
+    }
+}
+
+impl ServerLevelAccessor for World {
+    fn difficulty(&self) -> Difficulty {
+        Self::difficulty(self)
+    }
+
+    fn brightness(&self, layer: LightLayer, pos: BlockPos) -> u8 {
+        self.light_value_at(layer, pos)
+    }
+
+    fn is_thundering(&self) -> bool {
+        Self::is_thundering(self)
+    }
+
+    fn dimension_type(&self) -> DimensionTypeRef {
+        self.dimension_type
     }
 }
 
@@ -810,6 +837,24 @@ impl LevelReader for Arc<World> {
 
     fn sea_level(&self) -> i32 {
         self.as_ref().sea_level
+    }
+}
+
+impl ServerLevelAccessor for Arc<World> {
+    fn difficulty(&self) -> Difficulty {
+        self.as_ref().difficulty()
+    }
+
+    fn brightness(&self, layer: LightLayer, pos: BlockPos) -> u8 {
+        self.light_value_at(layer, pos)
+    }
+
+    fn is_thundering(&self) -> bool {
+        self.as_ref().is_thundering()
+    }
+
+    fn dimension_type(&self) -> DimensionTypeRef {
+        self.dimension_type
     }
 }
 

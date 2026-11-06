@@ -44,6 +44,7 @@ pub(crate) use eat_block_goal::EatBlockGoal;
 pub(crate) use float_goal::FloatGoal;
 pub(crate) use follow_parent::FollowParentGoal;
 pub(crate) use hurt_by_target::HurtByTargetGoal;
+pub(crate) use leap_at_target::LeapAtTargetGoal;
 pub(crate) use look_at_player::LookAtPlayerGoal;
 pub(crate) use melee_attack::MeleeAttackGoal;
 pub(crate) use move_towards_target::MoveTowardsTargetGoal;
@@ -52,9 +53,7 @@ pub(crate) use panic_goal::PanicGoal;
 pub(crate) use random_look_around::RandomLookAroundGoal;
 pub(crate) use ranged_attack::RangedAttackGoal;
 pub(crate) use reset_universal_anger_target::ResetUniversalAngerTargetGoal;
-#[cfg(test)]
-pub(crate) use selector::GoalControls;
-pub(crate) use selector::{Goal, GoalControl, GoalSelector};
+pub(crate) use selector::{Goal, GoalControl, GoalControls, GoalSelector};
 pub(crate) use squid_flee_goal::SquidFleeGoal;
 pub(crate) use squid_random_movement_goal::SquidRandomMovementGoal;
 pub(crate) use swell_goal::SwellGoal;

@@ -33,7 +33,8 @@ use crate::entity::living_entity::shearing_loot_items_with_rng;
 use crate::entity::{
     DefaultEntityPush, Entity, EntityBase, EntityBaseLoad, EntityMovementEmission, EntityPose,
     EntitySyncedData, LivingEntity, LivingEntityBase, Mob, MobBase, PathfinderMob, Projectile,
-    RangedAttackMob, SharedEntity, ThrowableItemProjectile, next_entity_id, sync_dirty_mob_effects,
+    RangedAttackMob, SharedEntity, Shearable, ThrowableItemProjectile, next_entity_id,
+    sync_dirty_mob_effects,
 };
 use crate::physics::MoveResult;
 use crate::player::Player;
@@ -134,35 +135,6 @@ impl SnowGolemEntity {
         });
     }
 
-    /// Vanilla `Shearable.readyForShearing`.
-    #[must_use]
-    pub fn ready_for_shearing(&self) -> bool {
-        self.has_pumpkin()
-    }
-
-    /// Vanilla `SnowGolem.shear`: drops the pumpkin from the golem's head.
-    pub fn shear(&self, world: &World, sound_source: SoundSource, tool: &ItemStack) {
-        world.play_sound_at(
-            &sound_events::ENTITY_SNOW_GOLEM_SHEAR,
-            sound_source,
-            self.position(),
-            1.0,
-            1.0,
-            None,
-        );
-        self.set_pumpkin(false);
-        let eye_height = self.get_eye_height();
-        let mut rng = rand::rng();
-        for drop in shearing_loot_items_with_rng(
-            self,
-            &vanilla_loot_tables::SHEARING_SNOW_GOLEM,
-            tool,
-            &mut rng,
-        ) {
-            let _ = self.spawn_at_location(drop, eye_height);
-        }
-    }
-
     /// Melts in hot biomes and leaves snow layers where it stands.
     fn snow_golem_ai_step(&self) {
         let Some(world) = self.level() else {
@@ -202,6 +174,35 @@ impl SnowGolemEntity {
 
     fn update_dirty_mob_effect_entity_data(&self) {
         sync_dirty_mob_effects(&self.living_base, &self.entity_data);
+    }
+}
+
+impl Shearable for SnowGolemEntity {
+    /// Vanilla `SnowGolem.shear`: drops the pumpkin from the golem's head.
+    fn shear(&self, world: &Arc<World>, sound_source: SoundSource, tool: &ItemStack) {
+        world.play_sound_at(
+            &sound_events::ENTITY_SNOW_GOLEM_SHEAR,
+            sound_source,
+            self.position(),
+            1.0,
+            1.0,
+            None,
+        );
+        self.set_pumpkin(false);
+        let eye_height = self.get_eye_height();
+        let mut rng = rand::rng();
+        for drop in shearing_loot_items_with_rng(
+            self,
+            &vanilla_loot_tables::SHEARING_SNOW_GOLEM,
+            tool,
+            &mut rng,
+        ) {
+            let _ = self.spawn_at_location(drop, eye_height);
+        }
+    }
+
+    fn ready_for_shearing(&self) -> bool {
+        self.has_pumpkin()
     }
 }
 
@@ -380,7 +381,7 @@ impl Mob for SnowGolemEntity {
             return InteractionResult::Pass;
         }
         if let Some(world) = self.level() {
-            self.shear(world.as_ref(), SoundSource::Players, &item_stack);
+            self.shear(&world, SoundSource::Players, &item_stack);
             self.game_event_with_source_entity(&vanilla_game_events::SHEAR, Some(player));
             player
                 .inventory

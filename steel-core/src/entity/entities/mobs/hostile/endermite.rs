@@ -25,7 +25,7 @@ use crate::entity::{
     PathfinderMob, RemovalReason, SharedEntity, SpawnRule, sync_dirty_mob_effects,
 };
 use crate::physics::MoveResult;
-use crate::world::{LevelReader, World};
+use crate::world::{ServerLevelAccessor, World};
 
 const DEFAULT_STEP_HEIGHT: f32 = 0.6;
 const MAX_LIFETIME: i32 = 2400;
@@ -55,7 +55,7 @@ impl EndermiteEntity {
     /// Checks the Endermite placement predicate for the spawner-only dispatcher.
     pub(crate) fn check_endermite_spawn_rules(
         _entity_type: EntityTypeRef,
-        _level: &dyn LevelReader,
+        _level: &dyn ServerLevelAccessor,
         spawn_reason: EntitySpawnReason,
         _pos: BlockPos,
         _random: &mut dyn Rng,
