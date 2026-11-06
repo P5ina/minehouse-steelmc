@@ -14,7 +14,6 @@ minehouse_mob_creaking
 minehouse_mob_drowned
 minehouse_mob_ender_dragon
 minehouse_mob_enderman
-minehouse_mob_evoker
 minehouse_mob_fox
 minehouse_mob_frog
 minehouse_mob_goat
@@ -27,9 +26,7 @@ minehouse_mob_parrot
 minehouse_mob_pig
 minehouse_mob_piglin
 minehouse_mob_piglin_brute
-minehouse_mob_pillager
 minehouse_mob_rabbit
-minehouse_mob_ravager
 minehouse_mob_shulker
 minehouse_mob_sniffer
 minehouse_mob_strider
@@ -37,8 +34,6 @@ minehouse_mob_sulfur_cube
 minehouse_mob_tadpole
 minehouse_mob_trader_llama
 minehouse_mob_turtle
-minehouse_mob_villager
-minehouse_mob_vindicator
 minehouse_mob_wandering_trader
 minehouse_mob_warden
 minehouse_mob_wither

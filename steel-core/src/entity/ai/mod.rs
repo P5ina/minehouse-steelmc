@@ -7,6 +7,7 @@
 pub mod brain;
 pub mod control;
 pub mod goal;
+pub mod gossip;
 pub mod navigation;
 pub mod node;
 pub mod node_evaluator;
