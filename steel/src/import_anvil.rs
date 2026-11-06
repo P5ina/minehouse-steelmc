@@ -7,7 +7,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use steel_core::anvil_import::{self, ImportReport};
+use steel_core::anvil_import::{self, AnvilImportError, ImportReport, LevelReport, PlayerReport};
 use steel_core::bootstrap::init_globals;
 use tokio::runtime::Builder;
 
@@ -15,7 +15,8 @@ const USAGE: &str =
     "usage: steel import-anvil <vanilla world dir> [--save-path <dir>] [--domain <name>]
 
 Converts the overworld, the nether and the end of a vanilla save into
-<save-path>/<domain>/worlds/<dimension> (region files and level.toml). Defaults: --save-path saves, --domain minecraft.
+<save-path>/<domain>/worlds/<dimension> (region files and level.toml), and the players into
+<save-path>/<domain>/players. Defaults: --save-path saves, --domain minecraft.
 The world must be saved by the Minecraft version Steel targets.";
 
 struct Options {
@@ -84,42 +85,64 @@ pub fn run(args: &[String]) -> i32 {
     };
 
     runtime.block_on(async {
-        let dimensions =
-            anvil_import::vanilla_dimensions(&options.world, &options.save_path, &options.domain);
-        let level = match anvil_import::import_level_data(&options.world, &dimensions) {
-            Ok(level) => level,
+        match import(&options, &pool).await {
+            Ok(summary) => summary.print(),
             Err(error) => {
                 eprintln!("{error}");
-                return 1;
-            }
-        };
-        print!("{level}");
-
-        let mut total = ImportReport::default();
-        for dimension in &dimensions {
-            println!(
-                "Importing {} into {}",
-                dimension.source.display(),
-                dimension.target.display()
-            );
-            match anvil_import::import_dimension(dimension, Arc::clone(&pool)).await {
-                Ok(report) => {
-                    print!("{report}");
-                    total.merge(report);
-                }
-                Err(error) => {
-                    eprintln!("{error}");
-                    return 1;
-                }
+                1
             }
         }
+    })
+}
 
+/// Reports of a finished import.
+struct Summary {
+    level: LevelReport,
+    players: PlayerReport,
+    chunks: ImportReport,
+}
+
+/// Imports level data and players first: they are small and validate the vanilla save before
+/// the chunks, which take most of the time.
+async fn import(
+    options: &Options,
+    pool: &Arc<rayon::ThreadPool>,
+) -> Result<Summary, AnvilImportError> {
+    let dimensions =
+        anvil_import::vanilla_dimensions(&options.world, &options.save_path, &options.domain);
+    let level = anvil_import::import_level_data(&options.world, &dimensions)?;
+    print!("{level}");
+    let players =
+        anvil_import::import_players(&options.world, &options.save_path, &options.domain).await?;
+    print!("{players}");
+
+    let mut chunks = ImportReport::default();
+    for dimension in &dimensions {
         println!(
-            "Done: {} chunks, seed {}. The seed, spawn, time, weather, difficulty and game rules \
-             are in each world's level.toml.",
-            total.chunks_imported, level.seed
+            "Importing {} into {}",
+            dimension.source.display(),
+            dimension.target.display()
         );
-        let game_mode = match level.game_type {
+        let report = anvil_import::import_dimension(dimension, Arc::clone(pool)).await?;
+        print!("{report}");
+        chunks.merge(report);
+    }
+    Ok(Summary {
+        level,
+        players,
+        chunks,
+    })
+}
+
+impl Summary {
+    /// Prints what is left to do by hand and returns the exit code.
+    fn print(&self) -> i32 {
+        println!(
+            "Done: {} chunks, {} players, seed {}. The seed, spawn, time, weather, difficulty and \
+             game rules are in each world's level.toml.",
+            self.chunks.chunks_imported, self.players.players, self.level.seed
+        );
+        let game_mode = match self.level.game_type {
             1 => Some("creative"),
             2 => Some("adventure"),
             3 => Some("spectator"),
@@ -131,17 +154,27 @@ pub fn run(args: &[String]) -> i32 {
                  \"{game_mode}\"` in config/worlds.toml."
             );
         }
-        if level.hardcore {
-            println!("The vanilla world is hardcore; Steel has no hardcore mode, so it runs as a normal world.");
+        if self.level.hardcore {
+            println!(
+                "The vanilla world is hardcore; Steel has no hardcore mode, so it runs as a \
+                 normal world."
+            );
         }
-        if total.failed_chunks.is_empty() {
-            0
-        } else {
+        let mut exit_code = 0;
+        if !self.chunks.failed_chunks.is_empty() {
             eprintln!(
                 "{} chunks failed and were not imported; Steel will generate them again.",
-                total.failed_chunks.len()
+                self.chunks.failed_chunks.len()
             );
-            1
+            exit_code = 1;
         }
-    })
+        if !self.players.failed_players.is_empty() {
+            eprintln!(
+                "{} players failed and were not imported; they start fresh on their next join.",
+                self.players.failed_players.len()
+            );
+            exit_code = 1;
+        }
+        exit_code
+    }
 }
