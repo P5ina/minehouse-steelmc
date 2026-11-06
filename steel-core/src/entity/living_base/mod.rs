@@ -1186,6 +1186,12 @@ impl LivingEntityBase {
         true
     }
 
+    /// Clears every active effect without attribute, sync or dirty updates, like
+    /// vanilla's `activeEffects.clear()` after the death hooks ran.
+    pub fn clear_mob_effects_no_update(&self) {
+        self.active_mob_effects.lock().clear();
+    }
+
     /// Ticks one active mob-effect duration after its server behavior has run.
     pub(super) fn tick_mob_effect_duration(&self, effect_key: MobEffectRef) {
         let (updated, removed) = {

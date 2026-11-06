@@ -1289,6 +1289,17 @@ pub trait Entity: EntityEventSource + ErasedType + Send + Sync + 'static {
 
     /// Marks the entity as removed with the given reason.
     fn set_removed(&self, reason: RemovalReason) {
+        self.default_set_removed(reason);
+    }
+
+    /// The base removal body, for overrides that call `super.remove`.
+    fn default_set_removed(&self, reason: RemovalReason) {
+        if matches!(reason, RemovalReason::Killed | RemovalReason::Discarded)
+            && let Some(living) = self.as_living_entity()
+            && let Some(world) = self.level()
+        {
+            living.trigger_on_death_mob_effects(&world, reason);
+        }
         self.base().set_removed(reason);
         // Vanilla `LivingEntity.remove` forgets everything the brain remembered.
         if let Some(memories) = self

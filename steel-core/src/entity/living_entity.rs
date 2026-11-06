@@ -838,6 +838,18 @@ pub trait LivingEntity: Entity {
         // TODO: Play secondary hurt sounds once equipment effects expose them.
 
         self.record_last_damage_source(source);
+        // TODO: skip when item blocking absorbed all the damage (`!blocked || damage > 0`),
+        // once blocking exists.
+        if let Some(world) = self.level() {
+            let dyn_self = self
+                .as_living_entity()
+                .expect("Self implements LivingEntity");
+            for effect in self.active_mob_effects() {
+                MOB_EFFECT_BEHAVIORS
+                    .get_behavior(effect.effect())
+                    .on_mob_hurt(&world, dyn_self, effect.amplifier(), source, damage);
+            }
+        }
 
         true
     }
@@ -1552,6 +1564,21 @@ pub trait LivingEntity: Entity {
         } else {
             self.remove_mob_effect(effect);
         }
+    }
+
+    /// Vanilla `LivingEntity.triggerOnDeathMobEffects`: runs every active
+    /// effect's removal hook, then forgets the effects without the usual
+    /// removal updates.
+    fn trigger_on_death_mob_effects(&self, world: &Arc<World>, reason: RemovalReason) {
+        let dyn_self = self
+            .as_living_entity()
+            .expect("Self implements LivingEntity");
+        for effect in self.active_mob_effects() {
+            MOB_EFFECT_BEHAVIORS
+                .get_behavior(effect.effect())
+                .on_mob_removed(world, dyn_self, effect.amplifier(), reason);
+        }
+        self.living_base().clear_mob_effects_no_update();
     }
 
     /// Removes active vanilla mob-effect state.
