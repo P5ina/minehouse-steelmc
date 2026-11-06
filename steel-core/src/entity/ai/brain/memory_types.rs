@@ -8,7 +8,7 @@ use steel_utils::{BlockPos, DowncastTypeKey, UuidExt as _};
 use uuid::Uuid;
 
 use super::memory::{MemoryCodec, MemoryModuleType, MemoryValue};
-use crate::entity::damage::DamageSource;
+use crate::entity::damage::RecentDamageSource;
 use crate::entity::{LivingEntity, SharedEntity};
 
 impl MemoryValue for () {
@@ -51,7 +51,7 @@ impl MemoryValue for Vec<SharedEntity> {
     }
 }
 
-impl MemoryValue for DamageSource {
+impl MemoryValue for RecentDamageSource {
     const KEY: DowncastTypeKey = DowncastTypeKey::new("steel:brain_memory/damage_source");
 }
 
@@ -242,7 +242,7 @@ pub static INTERACTION_TARGET: MemoryModuleType<SharedEntity> =
     MemoryModuleType::new("interaction_target");
 pub static BREED_TARGET: MemoryModuleType<SharedEntity> = MemoryModuleType::new("breed_target");
 pub static RIDE_TARGET: MemoryModuleType<SharedEntity> = MemoryModuleType::new("ride_target");
-pub static HURT_BY: MemoryModuleType<DamageSource> = MemoryModuleType::new("hurt_by");
+pub static HURT_BY: MemoryModuleType<RecentDamageSource> = MemoryModuleType::new("hurt_by");
 pub static HURT_BY_ENTITY: MemoryModuleType<SharedEntity> = MemoryModuleType::new("hurt_by_entity");
 pub static AVOID_TARGET: MemoryModuleType<SharedEntity> = MemoryModuleType::new("avoid_target");
 pub static NEAREST_HOSTILE: MemoryModuleType<SharedEntity> =
@@ -309,3 +309,7 @@ pub fn is_entity_memory(
             .is_some_and(|stored| stored.id() == entity_id)
     })
 }
+
+pub static NEAREST_VISIBLE_LIVING_ENTITIES: MemoryModuleType<
+    super::nearest_visible::NearestVisibleLivingEntities,
+> = MemoryModuleType::new("visible_mobs");

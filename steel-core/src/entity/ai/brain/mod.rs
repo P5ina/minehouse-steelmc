@@ -11,7 +11,9 @@ pub mod activity;
 pub mod behavior;
 pub mod memory;
 pub mod memory_types;
+pub mod nearest_visible;
 pub mod sensor;
+pub mod sensors;
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
