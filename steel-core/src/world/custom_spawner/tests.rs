@@ -6,28 +6,30 @@ use glam::DVec3;
 use rand::{SeedableRng as _, rngs::StdRng};
 use steel_registry::vanilla_custom_stats::TIME_SINCE_REST;
 use steel_registry::{
-    init_vanilla_registry, vanilla_blocks, vanilla_dimension_types, vanilla_entities,
-    vanilla_world_clocks,
+    RegistryEntry as _, init_vanilla_registry, vanilla_blocks, vanilla_dimension_types,
+    vanilla_entities, vanilla_poi_types, vanilla_world_clocks,
 };
 use steel_utils::types::{Difficulty, UpdateFlags};
 use steel_utils::{BlockPos, ChunkPos, WorldAabb};
 
+use super::cat::{spawn_in_hut, spawn_in_village};
 use super::custom_spawners_for;
 use super::patrol::{patrol_spawn_pos, spawn_patrol};
 use super::phantom::phantom_spawn_pos;
 use crate::behavior::init_behaviors;
-use crate::entity::{Entity as _, init_entities};
+use crate::entity::{Entity as _, SharedEntity, init_entities};
 use crate::player::ResetReason;
 use crate::test_support::{
     TestPlayerBuilder, fresh_test_world, fresh_test_world_with_dimension_type,
     insert_ready_full_chunk,
 };
+use crate::world::World;
 
 #[test]
 fn only_the_overworld_gets_custom_spawners() {
     assert_eq!(
         custom_spawners_for(&vanilla_dimension_types::OVERWORLD).len(),
-        2
+        3
     );
     assert!(custom_spawners_for(&vanilla_dimension_types::THE_NETHER).is_empty());
     assert!(custom_spawners_for(&vanilla_dimension_types::THE_END).is_empty());
@@ -194,4 +196,78 @@ fn a_patrol_stops_when_its_leader_cannot_spawn() {
             )
             .is_empty()
     );
+}
+
+fn cats_near(world: &World) -> Vec<SharedEntity> {
+    world.get_entities_in_aabb_matching(
+        &WorldAabb::new(-64.0, 0.0, -64.0, 64.0, 128.0, 64.0),
+        |entity| entity.entity_type() == &vanilla_entities::CAT,
+    )
+}
+
+#[test]
+fn a_witch_hut_keeps_one_persistent_cat() {
+    init_vanilla_registry();
+    init_behaviors();
+    init_entities();
+    let world_fixture = fresh_test_world("cat_hut");
+    let world = &world_fixture.world;
+    insert_ready_full_chunk(world, ChunkPos::new(0, 0));
+    let spawn_pos = BlockPos::new(8, 65, 8);
+
+    spawn_in_hut(world, spawn_pos);
+    let cats = cats_near(world);
+    assert_eq!(cats.len(), 1);
+    let cat = cats[0].as_mob().expect("cats are mobs");
+    assert!(cat.is_persistence_required(), "hut cats never despawn");
+    assert!((cats[0].position() - DVec3::new(8.5, 65.0, 8.5)).length() < 1.0e-9);
+
+    spawn_in_hut(world, spawn_pos);
+    assert_eq!(cats_near(world).len(), 1, "one cat per hut");
+}
+
+#[test]
+fn villages_need_five_claimed_beds_and_hold_up_to_five_cats() {
+    init_vanilla_registry();
+    init_behaviors();
+    init_entities();
+    let world_fixture = fresh_test_world("cat_village");
+    let world = &world_fixture.world;
+    insert_ready_full_chunk(world, ChunkPos::new(0, 0));
+    let spawn_pos = BlockPos::new(8, 65, 8);
+    let home = vanilla_poi_types::HOME
+        .try_id()
+        .expect("vanilla home POI type should be registered");
+    let claim_bed = |x: i32| {
+        let bed = BlockPos::new(x, 65, 0);
+        let mut storage = world.poi_storage.lock();
+        storage.add(bed, home, vanilla_poi_types::HOME.ticket_count);
+        assert!(storage.reserve_ticket(bed));
+    };
+
+    for x in 0..4 {
+        claim_bed(x);
+    }
+    // An unclaimed bed does not count.
+    world.poi_storage.lock().add(
+        BlockPos::new(10, 65, 0),
+        home,
+        vanilla_poi_types::HOME.ticket_count,
+    );
+    spawn_in_village(world, spawn_pos);
+    assert!(
+        cats_near(world).is_empty(),
+        "four claimed beds are not enough"
+    );
+
+    claim_bed(4);
+    for _ in 0..7 {
+        spawn_in_village(world, spawn_pos);
+    }
+    let cats = cats_near(world);
+    assert_eq!(cats.len(), 5, "villages stop at five cats");
+    assert!(cats.iter().all(|cat| {
+        cat.as_mob()
+            .is_some_and(|mob| !mob.is_persistence_required())
+    }));
 }
