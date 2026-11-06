@@ -2,16 +2,19 @@
 
 use rand::Rng;
 use steel_registry::blocks::block_state_ext::BlockStateExt as _;
+use steel_registry::blocks::shapes::is_shape_full_block;
 use steel_registry::entity_type::EntityTypeRef;
 use steel_registry::fluid::FluidStateExt as _;
 use steel_registry::vanilla_block_tags::BlockTag;
 use steel_registry::{vanilla_blocks, vanilla_entities};
 use steel_utils::{BlockPos, BlockStateId, WorldAabb, types::Difficulty};
 
-use crate::behavior::BLOCK_BEHAVIORS;
+use crate::behavior::{BLOCK_BEHAVIORS, BlockCollisionContext, BlockStateBehaviorExt as _};
+use crate::chunk::heightmap::HeightmapType;
+use crate::entity::ai::path::PathComputationType;
 use crate::entity::ai::walk::WalkPathEvaluator;
 use crate::entity::{ENTITIES, EntitySpawnReason};
-use crate::world::{SignalQueryContext, World, is_redstone_conductor};
+use crate::world::{LevelReader, ServerLevelAccessor, SignalQueryContext, is_redstone_conductor};
 
 /// Vanilla `SpawnPlacementTypes`: where a mob may stand when it spawns.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -30,48 +33,72 @@ impl SpawnPlacementType {
     /// Vanilla `SpawnPlacementType.isSpawnPositionOk`.
     pub(crate) fn is_spawn_position_ok(
         self,
-        world: &World,
+        level: &dyn ServerLevelAccessor,
         pos: BlockPos,
         entity_type: EntityTypeRef,
     ) -> bool {
         match self {
             Self::NoRestrictions => true,
             Self::InWater => {
-                if !world.is_block_within_world_border(pos) {
+                if !level.is_block_within_world_border(pos) {
                     return false;
                 }
                 let above = pos.above();
-                world.get_block_state(pos).get_fluid_state().is_water()
-                    && !is_redstone_conductor(world, world.get_block_state(above), above)
+                level.get_block_state(pos).get_fluid_state().is_water()
+                    && !is_redstone_conductor(level, level.get_block_state(above), above)
             }
             Self::InLava => {
-                world.is_block_within_world_border(pos)
-                    && world.get_block_state(pos).get_fluid_state().is_lava()
+                level.is_block_within_world_border(pos)
+                    && level.get_block_state(pos).get_fluid_state().is_lava()
             }
             Self::OnGround => {
-                if !world.is_block_within_world_border(pos) {
+                if !level.is_block_within_world_border(pos) {
                     return false;
                 }
                 let below = pos.below();
-                let below_state = world.get_block_state(below);
+                let below_state = level.get_block_state(below);
                 BLOCK_BEHAVIORS
                     .get_behavior(below_state.get_block())
-                    .is_valid_spawn(below_state, world, below, entity_type)
-                    && is_valid_empty_spawn_block(world, pos, entity_type)
-                    && is_valid_empty_spawn_block(world, pos.above(), entity_type)
+                    .is_valid_spawn(below_state, level, below, entity_type)
+                    && is_valid_empty_spawn_block(level, pos, entity_type)
+                    && is_valid_empty_spawn_block(level, pos.above(), entity_type)
             }
+        }
+    }
+
+    /// Vanilla `SpawnPlacementType.adjustSpawnPosition`: ground spawns step
+    /// down onto a block that land mobs can path through, such as snow.
+    pub(crate) fn adjust_spawn_position(
+        self,
+        level: &dyn LevelReader,
+        candidate: BlockPos,
+    ) -> BlockPos {
+        if self != Self::OnGround {
+            return candidate;
+        }
+        let below = candidate.below();
+        if level
+            .get_block_state(below)
+            .is_pathfindable(PathComputationType::Land)
+        {
+            below
+        } else {
+            candidate
         }
     }
 }
 
 /// Vanilla `NaturalSpawner.isValidEmptySpawnBlock` for the state at `pos`.
 pub(crate) fn is_valid_empty_spawn_block(
-    world: &World,
+    level: &dyn LevelReader,
     pos: BlockPos,
     entity_type: EntityTypeRef,
 ) -> bool {
-    let state = world.get_block_state(pos);
-    !world.is_collision_shape_full_block_at(pos, state)
+    let state = level.get_block_state(pos);
+    let collision_shape = BLOCK_BEHAVIORS
+        .get_behavior(state.get_block())
+        .get_collision_shape(state, level, pos, BlockCollisionContext::empty());
+    !is_shape_full_block(collision_shape)
         && !BLOCK_BEHAVIORS
             .get_behavior(state.get_block())
             .is_signal_source(state, SignalQueryContext::DEFAULT)
@@ -225,37 +252,47 @@ impl SpawnPlacements {
         }
     }
 
+    /// Vanilla `getHeightmapType`: the heightmap chunk generation spawns on.
+    #[must_use]
+    pub(crate) fn heightmap_type(entity_type: EntityTypeRef) -> HeightmapType {
+        if entity_type == &vanilla_entities::OCELOT || entity_type == &vanilla_entities::PARROT {
+            HeightmapType::MotionBlocking
+        } else {
+            HeightmapType::MotionBlockingNoLeaves
+        }
+    }
+
     /// Vanilla `isSpawnPositionOk`.
     #[must_use]
     pub(crate) fn is_spawn_position_ok(
         entity_type: EntityTypeRef,
-        world: &World,
+        level: &dyn ServerLevelAccessor,
         pos: BlockPos,
     ) -> bool {
-        Self::placement_type(entity_type).is_spawn_position_ok(world, pos, entity_type)
+        Self::placement_type(entity_type).is_spawn_position_ok(level, pos, entity_type)
     }
 
     /// Vanilla `checkSpawnRules`: the peaceful gate, then the type's predicate.
     pub(crate) fn check_spawn_rules(
         entity_type: EntityTypeRef,
-        world: &World,
+        level: &dyn ServerLevelAccessor,
         spawn_reason: EntitySpawnReason,
         pos: BlockPos,
         random: &mut dyn Rng,
     ) -> bool {
-        if !entity_type.allowed_in_peaceful && world.difficulty() == Difficulty::Peaceful {
+        if !entity_type.allowed_in_peaceful && level.difficulty() == Difficulty::Peaceful {
             return false;
         }
 
         ENTITIES
             .spawn_rule(entity_type)
-            .is_none_or(|rule| rule(entity_type, world, spawn_reason, pos, random))
+            .is_none_or(|rule| rule(entity_type, level, spawn_reason, pos, random))
     }
 
     /// Checks the vanilla placement predicate used by normal mob spawners.
     pub(crate) fn check_spawner_spawn_rules(
         entity_type: EntityTypeRef,
-        world: &World,
+        world: &dyn ServerLevelAccessor,
         pos: BlockPos,
         random: &mut dyn Rng,
     ) -> bool {

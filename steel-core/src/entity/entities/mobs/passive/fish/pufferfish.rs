@@ -30,7 +30,7 @@ use crate::entity::{
 };
 use crate::physics::MoveResult;
 use crate::player::Player;
-use crate::world::World;
+use crate::world::{ServerLevelAccessor, World};
 
 /// Vanilla `Pufferfish.STATE_SMALL`.
 pub const PUFF_STATE_SMALL: i32 = 0;
@@ -428,8 +428,8 @@ impl Mob for PufferfishEntity {
         false
     }
 
-    fn check_spawn_obstruction(&self, world: &Arc<World>) -> bool {
-        water_animal_spawn_unobstructed(self, world)
+    fn check_spawn_obstruction(&self, level: &dyn ServerLevelAccessor) -> bool {
+        water_animal_spawn_unobstructed(self, level)
     }
 }
 

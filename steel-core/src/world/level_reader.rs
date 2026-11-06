@@ -139,6 +139,17 @@ pub trait ServerLevelAccessor: LevelReader {
     /// Returns this level's dimension type.
     fn dimension_type(&self) -> DimensionTypeRef;
 
+    /// Vanilla `getWorldBorder().isWithinBounds(pos)`.
+    ///
+    /// Level surfaces without a border, such as test levels, accept every block.
+    #[expect(
+        unused_variables,
+        reason = "default level surfaces have no world border"
+    )]
+    fn is_block_within_world_border(&self, pos: BlockPos) -> bool {
+        true
+    }
+
     /// Vanilla `EntityGetter.isUnobstructed(Entity)`: no other live entity that
     /// blocks building overlaps `entity`'s bounding box.
     ///

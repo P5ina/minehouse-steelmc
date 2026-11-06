@@ -1701,6 +1701,17 @@ pub trait Entity: EntityEventSource + ErasedType + Send + Sync + 'static {
         try_as_dyn::<Self, dyn Enemy>(self)
     }
 
+    /// Returns the `PatrollingMonster` capability, equivalent to vanilla's
+    /// `instanceof PatrollingMonster`.
+    fn as_patrolling_monster(&self) -> Option<&dyn PatrollingMonster> {
+        try_as_dyn::<Self, dyn PatrollingMonster>(self)
+    }
+
+    /// Returns the `Raider` capability, equivalent to vanilla's `instanceof Raider`.
+    fn as_raider(&self) -> Option<&dyn Raider> {
+        try_as_dyn::<Self, dyn Raider>(self)
+    }
+
     /// Returns the `NeutralMob` capability, equivalent to vanilla's `instanceof NeutralMob`.
     fn as_neutral_mob(&self) -> Option<&dyn NeutralMob> {
         try_as_dyn::<Self, dyn NeutralMob>(self)
