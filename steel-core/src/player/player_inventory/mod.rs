@@ -126,13 +126,24 @@ enum DeferredMenuAction {
 
 type MenuFactory = Box<dyn for<'a> FnOnce(MenuOpenContext<'a>) -> Menu + Send + 'static>;
 
+/// How the client is told to open a menu's screen.
+enum MenuScreen {
+    /// Vanilla `ClientboundOpenScreenPacket`, for menus with a menu type.
+    Titled(Box<TextComponent>),
+    /// Vanilla `ClientboundMountScreenOpenPacket`, for a mount's inventory.
+    Mount {
+        inventory_columns: i32,
+        entity_id: i32,
+    },
+}
+
 struct PendingMenuOpen {
-    title: TextComponent,
+    screen: MenuScreen,
     create: MenuFactory,
 }
 
 struct PreparedMenu {
-    title: TextComponent,
+    screen: MenuScreen,
     menu: Menu,
 }
 

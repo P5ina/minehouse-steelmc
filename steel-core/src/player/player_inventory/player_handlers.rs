@@ -18,9 +18,9 @@ use glam::DVec3;
 use steel_math::trig;
 use steel_protocol::packets::game::SSeenAdvancement::Opened;
 use steel_protocol::packets::game::{
-    CContainerClose, COpenScreen, CSetPlayerInventory, ClickType, SContainerButtonClick,
-    SContainerClick, SContainerClose, SContainerSlotStateChanged, SRenameItem, SSeenAdvancement,
-    SSetBeacon, SSetCarriedItem, SSetCreativeModeSlot, SoundSource,
+    CContainerClose, CMountScreenOpen, COpenScreen, CSetPlayerInventory, ClickType,
+    SContainerButtonClick, SContainerClick, SContainerClose, SContainerSlotStateChanged,
+    SRenameItem, SSeenAdvancement, SSetBeacon, SSetCarriedItem, SSetCreativeModeSlot, SoundSource,
 };
 use steel_registry::data_components::vanilla_components::SwingAnimation;
 use steel_registry::item_stack::ItemStack;
@@ -38,9 +38,9 @@ use steel_utils::{
 use text_components::TextComponent;
 
 use super::{
-    DeferredMenuAction, MenuItemDisposition, MenuOpenContext, MenuRemovalStatus, OpenMenuDispatch,
-    OpenMenuUnavailable, PendingMenuOpen, PlayerInventory, Prediction, PreparedMenu,
-    TerminalMenuRemoval,
+    DeferredMenuAction, MenuItemDisposition, MenuOpenContext, MenuRemovalStatus, MenuScreen,
+    OpenMenuDispatch, OpenMenuUnavailable, PendingMenuOpen, PlayerInventory, Prediction,
+    PreparedMenu, TerminalMenuRemoval,
 };
 
 impl Player {
@@ -128,8 +128,8 @@ impl Player {
                     self.execute_menu_open(*prepared);
                 }
                 DeferredMenuAction::Install(prepared) => {
-                    let PreparedMenu { title, menu } = *prepared;
-                    self.open_prepared_menu(title, menu);
+                    let PreparedMenu { screen, menu } = *prepared;
+                    self.open_prepared_menu(screen, menu);
                 }
             }
         }
@@ -553,7 +553,34 @@ impl Player {
             return;
         }
         self.open_menu_inner(PendingMenuOpen {
-            title: title.into(),
+            screen: MenuScreen::Titled(Box::new(title.into())),
+            create: Box::new(create),
+        });
+        self.finish_menu_open_operation();
+    }
+
+    /// Opens a mount's inventory menu.
+    ///
+    /// Based on Java's `ServerPlayer::openHorseInventory`: the client opens
+    /// the screen from a mount-screen packet instead of a menu type.
+    ///
+    /// # Panics
+    /// Panics if the created menu uses a different container id than the one
+    /// allocated for it.
+    pub fn open_mount_menu(
+        &self,
+        inventory_columns: i32,
+        entity_id: i32,
+        create: impl for<'a> FnOnce(MenuOpenContext<'a>) -> Menu + Send + 'static,
+    ) {
+        if !self.begin_menu_open_operation() {
+            return;
+        }
+        self.open_menu_inner(PendingMenuOpen {
+            screen: MenuScreen::Mount {
+                inventory_columns,
+                entity_id,
+            },
             create: Box::new(create),
         });
         self.finish_menu_open_operation();
@@ -591,7 +618,7 @@ impl Player {
             }
         }
 
-        let PendingMenuOpen { title, create } = pending;
+        let PendingMenuOpen { screen, create } = pending;
         let container_id = self.next_container_counter();
         let world = self.get_world();
         let menu = create(MenuOpenContext {
@@ -606,10 +633,10 @@ impl Player {
             menu.container_id(),
             container_id,
         );
-        self.open_prepared_menu(title, menu);
+        self.open_prepared_menu(screen, menu);
     }
 
-    fn open_prepared_menu(&self, title: TextComponent, mut menu: Menu) {
+    fn open_prepared_menu(&self, screen: MenuScreen, mut menu: Menu) {
         loop {
             {
                 let mut open_menu = self.open_menu.lock();
@@ -632,7 +659,7 @@ impl Player {
                 dispatch
                     .actions
                     .push(DeferredMenuAction::Install(Box::new(PreparedMenu {
-                        title,
+                        screen,
                         menu,
                     })));
                 return;
@@ -648,13 +675,23 @@ impl Player {
             break;
         }
 
-        self.send_packet(COpenScreen {
-            container_id: i32::from(menu.container_id()),
-            menu_type: menu
-                .menu_type()
-                .expect("a menu opened via open_menu must declare a menu type"),
-            title,
-        });
+        match screen {
+            MenuScreen::Titled(title) => self.send_packet(COpenScreen {
+                container_id: i32::from(menu.container_id()),
+                menu_type: menu
+                    .menu_type()
+                    .expect("a menu opened via open_menu must declare a menu type"),
+                title: *title,
+            }),
+            MenuScreen::Mount {
+                inventory_columns,
+                entity_id,
+            } => self.send_packet(CMountScreenOpen {
+                container_id: i32::from(menu.container_id()),
+                inventory_columns,
+                entity_id,
+            }),
+        }
 
         // Fire on_open before the full sync so anything the menu populates here
         // is included in the first render sent below.
