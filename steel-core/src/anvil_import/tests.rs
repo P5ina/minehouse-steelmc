@@ -28,17 +28,23 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::{env, fs, process, slice};
 
 use simdnbt::borrow::read_compound;
-use simdnbt::owned::{BaseNbt, NbtCompound};
+use simdnbt::owned::{BaseNbt, NbtCompound, NbtList};
 use steel_utils::text::DisplayResolutor;
 
+use glam::IVec3;
+use steel_registry::template_pool::Projection;
 use steel_registry::vanilla_dimension_types::OVERWORLD;
 use steel_registry::{REGISTRY, vanilla_blocks};
 use steel_utils::{BlockPos, ChunkPos, Identifier};
+use steel_worldgen::structure::StructurePiecePayload;
 
 use super::*;
 use crate::bootstrap::init_globals;
 use crate::chunk::full_chunk::FullChunkRef;
-use crate::chunk_saver::ChunkStorage;
+use crate::chunk_saver::{
+    ChunkStorage, PersistentBoundingBox, PersistentJigsawPieceData, PersistentPoolElement,
+    PersistentProcessorList, PersistentStructurePiecePayload,
+};
 use crate::player::player_data::{PersistentPlayerData, PersistentSlot};
 
 const OVERWORLD_MIN_Y: i32 = -64;
@@ -541,4 +547,212 @@ fn assert_imported_items(data: &PersistentPlayerData) {
         !sword.item.patch().is_empty(),
         "the sword keeps its components"
     );
+}
+
+/// Reads `fixtures/structures/jigsaw.nbt`: the starts of a plains village, an ancient city and
+/// trial chambers, cut unchanged from the `structures.starts` of their origin chunks in a seed 777
+/// world saved by the vanilla 26.3 server.
+fn jigsaw_fixture() -> NbtCompound {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("src/anvil_import/fixtures/structures/jigsaw.nbt");
+    level::read_gzip_root(&path).expect("structure fixture should read")
+}
+
+#[test]
+fn vanilla_jigsaw_starts_are_converted() {
+    init_globals();
+    let mut report = ImportReport::default();
+    let starts = structures::structure_starts(&jigsaw_fixture(), &mut report);
+    assert!(report.structure_starts_dropped.is_empty(), "{report}");
+    let piece_counts: Vec<_> = starts
+        .iter()
+        .map(|start| (start.structure.to_string(), start.pieces.len()))
+        .collect();
+    assert_eq!(
+        piece_counts,
+        [
+            ("minecraft:village_plains".to_owned(), 70),
+            ("minecraft:ancient_city".to_owned(), 90),
+            ("minecraft:trial_chambers".to_owned(), 220),
+        ]
+    );
+
+    let village = &starts[0];
+    assert_eq!((village.chunk_x, village.chunk_z), (636, 110));
+    let center = &village.pieces[0];
+    assert_eq!(
+        center.bounding_box,
+        PersistentBoundingBox {
+            min_x: 10176,
+            min_y: 67,
+            min_z: 1760,
+            max_x: 10186,
+            max_y: 75,
+            max_z: 1770,
+        }
+    );
+    assert_eq!((center.gen_depth, center.orientation), (0, -1));
+    assert_eq!((center.ground_level_delta, center.projection), (1, 0));
+    assert_eq!(center.junctions.len(), 7);
+    let junction = &center.junctions[2];
+    assert_eq!(
+        (
+            junction.source_x,
+            junction.source_ground_y,
+            junction.source_z,
+            junction.delta_y,
+            junction.dest_projection
+        ),
+        (10175, 68, 1765, 0, 1)
+    );
+    let PersistentStructurePiecePayload::Jigsaw(data) = &center.payload else {
+        panic!("village pieces are jigsaw pieces");
+    };
+    assert_eq!(data.position, [10176, 67, 1760]);
+    assert_eq!((data.rotation, data.liquid_settings), (0, 0));
+    assert!(matches!(
+        &data.pool_element,
+        PersistentPoolElement::LegacySingle {
+            location,
+            processors: PersistentProcessorList::Registry(processors),
+            projection: 0,
+        } if *location == Identifier::vanilla_static("village/plains/town_centers/plains_meeting_point_3")
+            && *processors == Identifier::vanilla_static("mossify_70_percent")
+    ));
+    assert!(village.pieces.iter().any(|piece| matches!(
+        &piece.payload,
+        PersistentStructurePiecePayload::Jigsaw(PersistentJigsawPieceData {
+            pool_element: PersistentPoolElement::Feature { feature, .. },
+            ..
+        }) if *feature == Identifier::vanilla_static("flower_plain")
+    )));
+
+    let PersistentStructurePiecePayload::Jigsaw(ice_box) = &starts[1].pieces[30].payload else {
+        panic!("ancient city pieces are jigsaw pieces");
+    };
+    assert_eq!(
+        (ice_box.position, ice_box.rotation),
+        ([13206, -51, 1892], 1)
+    );
+    assert!(matches!(
+        &ice_box.pool_element,
+        PersistentPoolElement::List { elements, projection: 0 } if matches!(
+            elements.as_slice(),
+            [PersistentPoolElement::Single { processors: PersistentProcessorList::Empty, .. }]
+        )
+    ));
+
+    let PersistentStructurePiecePayload::Jigsaw(chamber) = &starts[2].pieces[0].payload else {
+        panic!("trial chamber pieces are jigsaw pieces");
+    };
+    assert_eq!((chamber.rotation, chamber.liquid_settings), (2, 1));
+}
+
+#[test]
+fn starts_with_pieces_steel_cannot_place_are_dropped_whole() {
+    init_globals();
+    let mut fixture = jigsaw_fixture();
+    let starts = fixture.compound_mut("starts").expect("fixture has starts");
+    let village = starts
+        .compound_mut("minecraft:village_plains")
+        .expect("fixture has a village");
+    let element = village
+        .list_mut("Children")
+        .and_then(|children| match children {
+            NbtList::Compound(children) => children.last_mut(),
+            _ => None,
+        })
+        .and_then(|piece| piece.compound_mut("pool_element"))
+        .expect("village pieces have pool elements");
+    let _ = element.remove("location");
+    element.insert("location", "mod:houses/hut");
+    let chambers = starts
+        .compound_mut("minecraft:trial_chambers")
+        .expect("fixture has trial chambers");
+    let _ = chambers.remove("id");
+    chambers.insert("id", "INVALID");
+
+    let mut report = ImportReport::default();
+    let converted = structures::structure_starts(&fixture, &mut report);
+    let kept: Vec<_> = converted
+        .iter()
+        .map(|start| start.structure.to_string())
+        .collect();
+    assert_eq!(kept, ["minecraft:ancient_city"]);
+    assert_eq!(
+        report
+            .structure_starts_dropped
+            .get("minecraft:village_plains"),
+        Some(&1)
+    );
+    assert_eq!(
+        report.structure_starts_dropped.len(),
+        1,
+        "invalid starts are not counted"
+    );
+}
+
+#[tokio::test]
+async fn imported_structure_starts_load_in_steel() {
+    init_globals();
+    let target = test_directory("structures");
+    let pool = Arc::new(
+        rayon::ThreadPoolBuilder::new()
+            .num_threads(2)
+            .build()
+            .expect("test thread pool should build"),
+    );
+    let mut report = ImportReport::default();
+    let pos = ChunkPos::new(0, 0);
+    let ChunkConversion::Imported(mut persistent) = convert_fixture(pos, &mut report) else {
+        panic!("fixture chunk (0, 0) is full");
+    };
+    persistent.structure_starts = structures::structure_starts(&jigsaw_fixture(), &mut report);
+
+    let manager = RegionManager::new(&target);
+    manager
+        .save_chunk_data(
+            PreparedChunkSave {
+                pos,
+                status: ChunkStatus::Full,
+                persistent: *persistent,
+                handled_runtime_entity_ids: Vec::new(),
+            },
+            &pool,
+        )
+        .await
+        .expect("chunk should save");
+    manager.close_all().await.expect("region should close");
+
+    let manager = RegionManager::new(&target);
+    assert!(
+        manager
+            .acquire_chunk(pos)
+            .await
+            .expect("region should open")
+    );
+    let loaded = manager
+        .load_chunk(pos, OVERWORLD_MIN_Y, OVERWORLD_HEIGHT, Weak::new(), &pool)
+        .await
+        .expect("chunk should load")
+        .expect("chunk should exist");
+    {
+        let starts = loaded.chunk.structure_starts();
+        let village = starts
+            .get(&Identifier::vanilla_static("village_plains"))
+            .expect("village start should load");
+        assert_eq!(village.pieces.len(), 70);
+        assert_eq!(village.chunk_pos, ChunkPos::new(636, 110));
+        let StructurePiecePayload::Jigsaw(data) = &village.pieces[0].payload else {
+            panic!("village pieces are jigsaw pieces");
+        };
+        assert_eq!(data.position, IVec3::new(10176, 67, 1760));
+        assert_eq!(village.pieces[0].projection, Some(Projection::Rigid));
+        assert_eq!(starts.len(), 3);
+    }
+    manager
+        .release_chunk(pos)
+        .await
+        .expect("region should release");
+    let _ = fs::remove_dir_all(&target);
 }

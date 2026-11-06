@@ -11,7 +11,7 @@ use steel_utils::{BlockStateId, ChunkPos, Identifier, PackedChunkPos, version::D
 
 use super::nbt::{self, ceil_log2, list_elements, unpack_bit_storage};
 use super::report::ImportReport;
-use super::{entities, poi};
+use super::{entities, poi, structures};
 use crate::chunk::heightmap::HeightmapType;
 use crate::chunk::light::DATA_LAYER_SIZE;
 use crate::chunk_saver::bit_pack::{bits_for_palette_len, pack_indices_from_iter};
@@ -99,7 +99,11 @@ pub fn convert_chunk(
     let fluid_ticks = converter.ticks(&root, "fluid_ticks", report);
     let heightmaps = converter.heightmaps(&root)?;
     let postprocessing = converter.postprocessing(&root);
-    let structure_references = structure_references(&root, report);
+    let structure_references = structure_references(&root);
+    let structure_starts = match root.compound("structures") {
+        Some(structures) => structures::structure_starts(structures, report),
+        None => Vec::new(),
+    };
 
     let entities = match entity_bytes {
         Some(bytes) => entities::convert_entity_chunk(bytes, pos, report)?,
@@ -124,7 +128,7 @@ pub fn convert_chunk(
         heightmaps,
         light,
         postprocessing,
-        structure_starts: Vec::new(),
+        structure_starts,
         structure_references,
         pois: poi_records,
         inhabited_time: root.long("InhabitedTime").unwrap_or(0),
@@ -567,27 +571,10 @@ impl ChunkConverter {
     }
 }
 
-fn structure_references(
-    root: &NbtCompound,
-    report: &mut ImportReport,
-) -> Vec<PersistentStructureReference> {
+fn structure_references(root: &NbtCompound) -> Vec<PersistentStructureReference> {
     let Some(structures) = root.compound("structures") else {
         return Vec::new();
     };
-    if let Some(starts) = structures.compound("starts") {
-        for (structure, start) in starts.iter() {
-            let is_start = start
-                .compound()
-                .and_then(|start| nbt::string(start, "id"))
-                .is_some_and(|id| id != "INVALID");
-            if is_start {
-                ImportReport::count(
-                    &mut report.structure_starts_dropped,
-                    structure.to_str().into_owned(),
-                );
-            }
-        }
-    }
     let Some(references) = structures.compound("References") else {
         return Vec::new();
     };
