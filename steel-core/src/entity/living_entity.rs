@@ -11,6 +11,7 @@ use crate::entity::ai::brain::Memories;
 use crate::entity::consume_effect::apply_consume_effect;
 use crate::entity::damage::RecentDamageSource;
 use crate::entity::pushing::EntityPush;
+use steel_registry::damage_type::DamageType;
 
 const BED_SLEEP_POSITION_OFFSET: f64 = 0.125;
 /// Vanilla `DATA_LIVING_ENTITY_FLAGS` bit 1: using an item.
@@ -533,6 +534,15 @@ pub trait LivingEntity: Entity {
         self.base().damage_history().last_damage_source()
     }
 
+    /// The damage type of vanilla `getLastDamageSource(timeout)`, for callers
+    /// whose timeout is longer than [`Self::last_damage_source`]'s 40 ticks.
+    fn last_damage_type_within(&self, timeout: i64) -> Option<&'static DamageType> {
+        let world = self.level()?;
+        self.base()
+            .damage_history()
+            .last_damage_type_within(world.game_time(), timeout)
+    }
+
     /// Records a successful hit using the victim's own level clock.
     fn record_last_damage_source(&self, source: &DamageSource) {
         let Some(world) = self.level() else {
@@ -646,6 +656,11 @@ pub trait LivingEntity: Entity {
 
     /// Returns whether this entity has an unobstructed line of sight to target's eyes.
     fn has_line_of_sight(&self, target: &dyn Entity) -> bool {
+        self.default_has_line_of_sight(target)
+    }
+
+    /// Vanilla `LivingEntity.hasLineOfSight`, callable from overrides as `super`.
+    fn default_has_line_of_sight(&self, target: &dyn Entity) -> bool {
         self.has_line_of_sight_with(
             target,
             ClipBlockShape::Collider,
@@ -1067,6 +1082,11 @@ pub trait LivingEntity: Entity {
 
     /// Processes vanilla living death side effects.
     fn die(&self, source: &DamageSource) {
+        self.default_die(source);
+    }
+
+    /// Runs the base `LivingEntity.die` body, for overrides that call `super.die`.
+    fn default_die(&self, source: &DamageSource) {
         if self.is_removed() {
             return;
         }
@@ -1161,9 +1181,13 @@ pub trait LivingEntity: Entity {
                 mob.drop_custom_death_loot_mob(source, killed_by_player);
             }
         }
+        self.drop_equipment();
         self.drop_experience(&world, source.causing_entity().map(AsRef::as_ref));
-        // TODO: Drop non-mob equipment overrides once those foundations exist.
     }
+
+    /// Vanilla `LivingEntity.dropEquipment`: drops what this entity carries
+    /// beyond its loot table, such as a mount's saddlebags.
+    fn drop_equipment(&self) {}
 
     /// Awards experience for this entity's death when eligible, spawning an experience orb.
     fn drop_experience(&self, world: &Arc<World>, killer_entity: Option<&dyn Entity>) {

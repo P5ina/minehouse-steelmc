@@ -14,6 +14,8 @@ use parking_lot::{RwLockReadGuard, RwLockWriteGuard};
 use simdnbt::owned::NbtCompound;
 use small_map::FxSmallMap;
 use smallvec::SmallVec;
+use steel_registry::RegistryExt as _;
+use steel_registry::biome::BiomeRef;
 use steel_registry::dimension_type::DimensionTypeRef;
 use steel_registry::{
     REGISTRY, block_entity_type::BlockEntityTypeRef, blocks::BlockRef,
@@ -26,6 +28,7 @@ use steel_utils::{
     BlockPos, BlockStateId, ChunkPos, PackedChunkPos, PackedSectionBlockPos, SectionPos,
     types::UpdateFlags,
 };
+use steel_worldgen::biomes::obfuscate_biome_seed;
 use steel_worldgen::structure::{StructureReferenceMap, StructureStartMap};
 
 use crate::behavior::{BLOCK_BEHAVIORS, FLUID_BEHAVIORS};
@@ -46,6 +49,7 @@ use crate::world::tick_scheduler::TickPriority;
 use crate::world::{LevelAccessor, LevelReader, ScheduledTickAccess, ServerLevelAccessor, World};
 use crate::worldgen::feature::instrumentation::OreFeatureStats;
 use crate::worldgen::generator::context::WorldGenContext;
+use crate::worldgen::generators::vanilla::fuzzed_biome_at_block;
 
 /// Chunk-cache backed worldgen view for the current generation step.
 ///
@@ -1580,6 +1584,21 @@ impl ServerLevelAccessor for WorldGenRegion<'_> {
 
     fn is_block_within_world_border(&self, pos: BlockPos) -> bool {
         self.context.world().is_block_within_world_border(pos)
+    }
+
+    // Vanilla's region attribute system has only the static dimension and
+    // biome layers, and none of those set the surface slime spawn chance, so
+    // the trait default (0) is the region's value.
+
+    fn biome(&self, pos: BlockPos) -> Option<BiomeRef> {
+        let biome_id = fuzzed_biome_at_block(obfuscate_biome_seed(self.seed()), pos, |quart| {
+            self.noise_biome_id(quart.x, quart.y, quart.z)
+        });
+        REGISTRY.biomes.by_id(usize::from(biome_id))
+    }
+
+    fn world_gen_seed(&self) -> Option<i64> {
+        Some(self.seed())
     }
 }
 

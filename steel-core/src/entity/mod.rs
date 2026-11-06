@@ -814,6 +814,7 @@ mod spawn_placements;
 mod spellcaster_illager;
 mod storage;
 mod synced_data;
+mod tamable_animal;
 mod ticking;
 mod tracker;
 
@@ -849,7 +850,7 @@ pub(crate) use fish::{
 };
 pub use fluid_contact::EntityFluidContact;
 pub use identity::EntityGeneration;
-pub(crate) use illager::{AbstractIllager, is_abstract_villager};
+pub(crate) use illager::{AbstractIllager, is_abstract_illager, is_abstract_villager};
 pub use inside_block_effects::{
     InsideBlockEffectCallback, InsideBlockEffectCollector, InsideBlockEffectType,
 };
@@ -870,7 +871,7 @@ pub use manager::{
     EntityMoveUpdate, EntityOwnership, EntityVisibility, WorldEntityManager,
 };
 pub(crate) use mob::{Mob, MobBase, PathfinderMob};
-pub(crate) use monster::{Enemy, Monster};
+pub(crate) use monster::{Enemy, Monster, is_dark_enough_to_spawn, is_spawn_allowed_on_difficulty};
 pub use movement_sync::{
     EntityMovementSyncPacket, EntityMovementSyncPackets, EntityMovementSyncState,
     EntityMovementSyncUpdate, EntityPositionRotSyncPacket, EntityPositionSyncDecision,
@@ -899,7 +900,7 @@ pub use registry::{ENTITIES, EntityLoadRequest, EntityRegistry, init_entities};
 pub(crate) use shearable::Shearable;
 pub(crate) use spawn::{
     AgeableMobGroupData, EntitySpawnPlacement, EntitySpawnReason, EntitySpawnRequest,
-    SpawnGroupData, add_spawned_entity, apply_implicit_item_stack_components,
+    SpawnGroupData, WolfPackData, add_spawned_entity, apply_implicit_item_stack_components,
     create_entity_instance, load_entity_recursive_owned, spawn_entity,
 };
 pub(crate) use spawn_placements::SpawnPlacements;
@@ -908,6 +909,7 @@ pub(crate) use spawn_placements::spawn_aabb;
 pub(crate) use spellcaster_illager::{IllagerSpell, SpellcasterIllager, SpellcasterState};
 pub(crate) use storage::{EntityStorage, EntityStorageAddResult};
 pub use synced_data::{EntitySyncedData, LivingEntitySyncedData};
+pub(crate) use tamable_animal::{TamableAnimal, TamableAnimalBase};
 pub(crate) use ticking::{snapshot_old_pos_and_rot_for_tick, tick_vehicle_passengers_if};
 pub use tracker::{EntityChangeSenders, EntityTracker};
 

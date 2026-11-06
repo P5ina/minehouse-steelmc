@@ -703,7 +703,7 @@ impl ChunkStorage {
         }
     }
 
-    pub(super) fn structure_piece_payload_to_persistent(
+    pub(crate) fn structure_piece_payload_to_persistent(
         payload: &StructurePiecePayload,
     ) -> PersistentStructurePiecePayload {
         match payload {

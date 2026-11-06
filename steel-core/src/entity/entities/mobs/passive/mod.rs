@@ -4,6 +4,8 @@ mod armadillo;
 mod chicken;
 mod cow;
 mod dolphin;
+/// Horses, donkeys, mules and the undead horses.
+pub mod equine;
 mod feline;
 mod fish;
 mod mooshroom;
@@ -15,6 +17,7 @@ pub use armadillo::ArmadilloEntity;
 pub use chicken::ChickenEntity;
 pub use cow::CowEntity;
 pub use dolphin::DolphinEntity;
+pub use equine::{DonkeyEntity, HorseEntity, MuleEntity, SkeletonHorseEntity, ZombieHorseEntity};
 pub use feline::OcelotEntity;
 pub use fish::{
     COMMON_TROPICAL_FISH_VARIANTS, CodEntity, PufferfishEntity, SalmonEntity, SalmonVariant,

@@ -2,6 +2,7 @@ use std::collections::BTreeSet;
 
 use super::*;
 use crate::entity::entities::mobs::hostile::cube_mob::AbstractCubeMob;
+use crate::entity::entities::mobs::passive::equine::{AbstractHorse, PlayerRideableJumping};
 use crate::entity::entities::{Guardian, LightningBoltEntity, Squid};
 use crate::entity::{leash::Leashable, pushing::EntityPush};
 use rand::{RngExt, rng};
@@ -602,8 +603,15 @@ pub trait Entity: EntityEventSource + ErasedType + Send + Sync + 'static {
             .is_some_and(EntitySyncedData::is_shift_key_down)
     }
 
-    /// Returns whether this entity is allied to `other`.
-    fn is_allied_to(&self, _other: &dyn Entity) -> bool {
+    /// Returns whether this entity is allied to `other`: vanilla
+    /// `Entity.isAlliedTo`, where either side may count the other as an ally.
+    fn is_allied_to(&self, other: &dyn Entity) -> bool {
+        self.considers_entity_as_ally(other)
+            || other.considers_entity_as_ally(self.as_entity_event_source())
+    }
+
+    /// Vanilla `considersEntityAsAlly`, such as a tame animal and its owner.
+    fn considers_entity_as_ally(&self, _other: &dyn Entity) -> bool {
         false
     }
 
@@ -613,7 +621,20 @@ pub trait Entity: EntityEventSource + ErasedType + Send + Sync + 'static {
     }
 
     /// Returns whether this entity is a tameable animal owned by `owner`.
-    fn is_tame_owned_by(&self, _owner: &dyn LivingEntity) -> bool {
+    fn is_tame_owned_by(&self, owner: &dyn LivingEntity) -> bool {
+        self.as_tamable_animal().is_some_and(|tamable| {
+            tamable.is_tame() && tamable.is_owned_by(owner.as_entity_event_source())
+        })
+    }
+
+    /// Vanilla `Llama.getStrength` for llamas and trader llamas, `None` for
+    /// everything else.
+    fn llama_strength(&self) -> Option<i32> {
+        None
+    }
+
+    /// Vanilla `target instanceof AbstractHorse horse && horse.isTamed()`.
+    fn is_tamed_horse(&self) -> bool {
         false
     }
 
@@ -1724,6 +1745,12 @@ pub trait Entity: EntityEventSource + ErasedType + Send + Sync + 'static {
         try_as_dyn::<Self, dyn SpellcasterIllager>(self)
     }
 
+    /// Returns the `TamableAnimal` capability, equivalent to vanilla's
+    /// `instanceof TamableAnimal`.
+    fn as_tamable_animal(&self) -> Option<&dyn TamableAnimal> {
+        try_as_dyn::<Self, dyn TamableAnimal>(self)
+    }
+
     /// Returns the `NeutralMob` capability, equivalent to vanilla's `instanceof NeutralMob`.
     fn as_neutral_mob(&self) -> Option<&dyn NeutralMob> {
         try_as_dyn::<Self, dyn NeutralMob>(self)
@@ -1749,6 +1776,23 @@ pub trait Entity: EntityEventSource + ErasedType + Send + Sync + 'static {
     /// `instanceof AbstractCubeMob`.
     fn as_cube_mob(&self) -> Option<&dyn AbstractCubeMob> {
         try_as_dyn::<Self, dyn AbstractCubeMob>(self)
+    }
+
+    /// Returns this entity as a horse-like mount, equivalent to vanilla's
+    /// `instanceof AbstractHorse`.
+    fn as_abstract_horse(&self) -> Option<&dyn AbstractHorse> {
+        try_as_dyn::<Self, dyn AbstractHorse>(self)
+    }
+
+    /// Whether this entity is a horse-like mount.
+    fn is_abstract_horse(&self) -> bool {
+        self.as_abstract_horse().is_some()
+    }
+
+    /// Returns this entity as a mount whose rider can charge jumps,
+    /// equivalent to vanilla's `instanceof PlayerRideableJumping`.
+    fn as_player_rideable_jumping(&self) -> Option<&dyn PlayerRideableJumping> {
+        try_as_dyn::<Self, dyn PlayerRideableJumping>(self)
     }
 
     /// Returns this entity as an ageable mob when it has ageable behavior.
