@@ -8,6 +8,7 @@ use steel_utils::{BlockPos, DowncastTypeKey, UuidExt as _};
 use uuid::Uuid;
 
 use super::memory::{MemoryCodec, MemoryModuleType, MemoryValue};
+use crate::entity::ai::path::Path;
 use crate::entity::damage::RecentDamageSource;
 use crate::entity::{LivingEntity, SharedEntity};
 
@@ -313,3 +314,9 @@ pub fn is_entity_memory(
 pub static NEAREST_VISIBLE_LIVING_ENTITIES: MemoryModuleType<
     super::nearest_visible::NearestVisibleLivingEntities,
 > = MemoryModuleType::new("visible_mobs");
+
+impl MemoryValue for Path {
+    const KEY: DowncastTypeKey = DowncastTypeKey::new("steel:brain_memory/path");
+}
+
+pub static PATH: MemoryModuleType<Path> = MemoryModuleType::new("path");

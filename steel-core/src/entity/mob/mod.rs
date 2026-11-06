@@ -1880,6 +1880,28 @@ pub trait Mob: LivingEntity + Leashable {
         self.clamp_head_rotation_to_body_when_pathing();
     }
 
+    /// Vanilla `Mob.stopInPlace`: stops navigation, sideways/vertical input,
+    /// speed, motion and leash angular momentum.
+    fn stop_in_place(&self) {
+        self.mob_base().navigation().lock().stop();
+        let forward = self.travel_input().forward();
+        self.set_travel_input(LivingTravelInput::new(0.0, 0.0, forward));
+        self.set_speed(0.0);
+        self.set_velocity(DVec3::ZERO);
+        if let Some(leash_data) = self.leash_data().lock().as_mut() {
+            leash_data.angular_momentum = 0.0;
+        }
+    }
+
+    /// Vanilla `Mob.clampHeadRotationToBody`.
+    fn clamp_head_rotation_to_body(&self) {
+        let limit = self.max_head_y_rot();
+        let head_y_rot = self.y_head_rot();
+        let delta = wrap_degrees(self.y_body_rot() - head_y_rot);
+        let target_delta = delta.clamp(-limit, limit);
+        self.set_y_head_rot(head_y_rot + delta - target_delta);
+    }
+
     fn clamp_head_rotation_to_body_when_pathing(&self) {
         if self.mob_base().navigation().lock().is_done() {
             return;
