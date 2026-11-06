@@ -20,7 +20,6 @@ minehouse_mob_frog
 minehouse_mob_goat
 minehouse_mob_happy_ghast
 minehouse_mob_hoglin
-minehouse_mob_illusioner
 minehouse_mob_llama
 minehouse_mob_nautilus
 minehouse_mob_panda

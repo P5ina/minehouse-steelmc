@@ -15,7 +15,7 @@ pub use mobs::hostile::{ElderGuardianEntity, Guardian, GuardianEntity};
 pub use mobs::neutral::{PolarBearEntity, WolfEntity};
 pub use mobs::passive::*;
 pub use mobs::raiders::{
-    EvokerEntity, PillagerEntity, RavagerEntity, VindicatorEntity, WitchEntity,
+    EvokerEntity, IllusionerEntity, PillagerEntity, RavagerEntity, VindicatorEntity, WitchEntity,
 };
 pub use objects::display_ui::{BlockDisplayEntity, ItemFrameEntity, LeashFenceKnotEntity};
 pub use objects::effects::{AreaEffectCloudEntity, LightningBoltEntity};

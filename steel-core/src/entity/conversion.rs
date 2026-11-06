@@ -280,6 +280,7 @@ mod tests {
         AgeableMob, Mob, MobEffectInstance, SharedEntity, init_entities, next_entity_id,
     };
     use crate::inventory::equipment::EquipmentSlot;
+    use crate::test_support::unimplemented_entity_type;
     use crate::test_support::{TestWorld, fresh_test_world, insert_ready_full_chunk};
     use crate::world::World;
 
@@ -527,14 +528,14 @@ mod tests {
             .downcast_ref::<PigEntity>()
             .expect("pig is concrete")
             .convert_to(
-                &vanilla_entities::ILLUSIONER,
+                unimplemented_entity_type(),
                 ConversionParams::single(true, true),
                 None,
             );
 
         assert!(
             converted.is_none(),
-            "no illusioner factory is registered, so conversion cannot happen"
+            "no factory is registered for the target type, so conversion cannot happen"
         );
         assert!(
             !pig.is_removed(),
@@ -559,7 +560,7 @@ mod tests {
             .downcast_ref::<PigEntity>()
             .expect("pig is concrete")
             .convert_to(
-                &vanilla_entities::ILLUSIONER,
+                unimplemented_entity_type(),
                 ConversionParams::single(true, true),
                 None,
             );
@@ -593,7 +594,7 @@ mod tests {
             .downcast_ref::<PigEntity>()
             .expect("pig is concrete")
             .convert_to(
-                &vanilla_entities::ILLUSIONER,
+                unimplemented_entity_type(),
                 ConversionParams::single(true, true),
                 None,
             );
@@ -628,7 +629,7 @@ mod tests {
             .downcast_ref::<PigEntity>()
             .expect("pig is concrete")
             .convert_to(
-                &vanilla_entities::ILLUSIONER,
+                unimplemented_entity_type(),
                 ConversionParams::single(true, true),
                 None,
             );

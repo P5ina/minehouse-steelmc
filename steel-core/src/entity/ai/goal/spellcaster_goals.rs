@@ -122,6 +122,9 @@ pub(crate) trait Spell: Send + Sync {
         mob.target().is_some_and(|target| target.is_alive()) && attack_warmup_delay > 0
     }
 
+    /// Vanilla `start` after `SpellcasterUseSpellGoal.start` has run.
+    fn start(&mut self, _mob: &dyn PathfinderMob) {}
+
     /// Vanilla `stop`.
     fn stop(&mut self, _mob: &dyn PathfinderMob) {}
 
@@ -185,6 +188,7 @@ impl<S: Spell> Goal for SpellcasterUseSpellGoal<S> {
             mob.play_sound(sound, 1.0, 1.0);
         }
         caster.set_is_casting_spell(self.spell.spell());
+        self.spell.start(mob);
     }
 
     fn stop(&mut self, mob: &dyn PathfinderMob) {
