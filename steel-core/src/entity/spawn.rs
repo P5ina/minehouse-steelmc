@@ -589,7 +589,9 @@ mod tests {
         AgeableMob, Entity, EntitySpawnReason, SharedEntity, init_entities,
         load_entity_recursive_owned,
     };
-    use crate::test_support::{fresh_test_world, insert_ready_full_chunk};
+    use crate::test_support::{
+        fresh_test_world, insert_ready_full_chunk, unimplemented_entity_type,
+    };
 
     use super::{AgeableMobGroupData, apply_item_stack_components};
 
@@ -618,7 +620,7 @@ mod tests {
                 .is_none()
         );
 
-        let unimplemented = entity_nbt("minecraft:illusioner");
+        let unimplemented = entity_nbt(&unimplemented_entity_type().key.to_string());
         assert!(
             load_entity_recursive_owned(world, &unimplemented, EntitySpawnReason::Spawner, |_| {},)
                 .is_none()
@@ -637,7 +639,7 @@ mod tests {
             "Passengers",
             NbtList::Compound(vec![
                 entity_nbt("minecraft:not_an_entity"),
-                entity_nbt("minecraft:illusioner"),
+                entity_nbt(&unimplemented_entity_type().key.to_string()),
                 entity_nbt("minecraft:chicken"),
                 entity_nbt("minecraft:pig"),
             ]),
