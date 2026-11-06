@@ -849,7 +849,7 @@ pub(crate) use fish::{
 };
 pub use fluid_contact::EntityFluidContact;
 pub use identity::EntityGeneration;
-pub(crate) use illager::{AbstractIllager, is_abstract_villager};
+pub(crate) use illager::{AbstractIllager, is_abstract_illager, is_abstract_villager};
 pub use inside_block_effects::{
     InsideBlockEffectCallback, InsideBlockEffectCollector, InsideBlockEffectType,
 };
