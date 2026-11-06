@@ -12,8 +12,9 @@ use steel_utils::types::InteractionHand;
 
 use crate::enchantment_helper;
 use crate::entity::entities::{ArrowEntity, SpectralArrowEntity};
-use crate::entity::{AbstractArrow, Projectile as _, SharedEntity, next_entity_id};
+use crate::entity::{AbstractArrow, LivingEntity, Projectile as _, SharedEntity, next_entity_id};
 use crate::inventory::container::Container as _;
+use crate::inventory::equipment::EquipmentSlot;
 use crate::player::Player;
 use crate::world::World;
 
@@ -276,4 +277,59 @@ pub(crate) fn shoot_from_rotation(
             break;
         }
     }
+}
+
+/// Vanilla `Monster.getProjectile` for the bow: an arrow held in either hand
+/// (`ProjectileWeaponItem.getHeldProjectile`), else a fresh arrow.
+/// Non-weapons give no ammo.
+///
+/// TODO: the crossbow also accepts held fireworks; add it with the crossbow.
+#[must_use]
+pub(crate) fn monster_projectile(mob: &dyn LivingEntity, weapon: &ItemStack) -> ItemStack {
+    if !weapon.is(&vanilla_items::BOW) {
+        return ItemStack::empty();
+    }
+    for slot in [EquipmentSlot::OffHand, EquipmentSlot::MainHand] {
+        let mut held = ItemStack::empty();
+        mob.with_equipment_slot(slot, &mut |stack| held = stack.clone());
+        if is_arrow(&held) {
+            return held;
+        }
+    }
+    ItemStack::new(&vanilla_items::ARROW)
+}
+
+/// Vanilla `ProjectileUtil.getMobArrow`: an arrow for `projectile` whose
+/// base damage scales with `power` and the difficulty.
+#[must_use]
+pub(crate) fn get_mob_arrow(
+    world: &Arc<World>,
+    mob: &SharedEntity,
+    projectile: &ItemStack,
+    power: f32,
+    fired_from_weapon: Option<&ItemStack>,
+) -> SharedEntity {
+    // VANILLA: non-arrow ammo falls back to `Items.ARROW.createArrow`, which
+    // still copies `projectile` as the pickup stack.
+    let arrow = create_arrow(world, projectile, mob, fired_from_weapon);
+    if let Some(abstract_arrow) = as_abstract_arrow(&arrow) {
+        abstract_arrow.set_base_damage_from_mob(power);
+    }
+    arrow
+}
+
+/// Vanilla `Projectile.spawnProjectileUsingShoot` for an arrow.
+pub(crate) fn spawn_arrow_using_shoot(
+    world: &Arc<World>,
+    arrow: &SharedEntity,
+    ammo: &ItemStack,
+    owner: &SharedEntity,
+    direction: DVec3,
+    power: f32,
+    uncertainty: f32,
+) {
+    if let Some(abstract_arrow) = as_abstract_arrow(arrow) {
+        abstract_arrow.shoot(direction, power, uncertainty);
+    }
+    spawn_arrow(world, arrow, ammo, Some(owner));
 }
