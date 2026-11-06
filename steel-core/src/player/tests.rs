@@ -17,7 +17,8 @@ use super::{
 use crate::behavior::{InteractionResult, init_behaviors};
 use crate::chunk_saver::PersistentEntity;
 use crate::entity::{
-    DEFAULT_MAX_AIR_SUPPLY, Entity, EntitySyncedData, LivingEntity, SharedEntity,
+    DEFAULT_MAX_AIR_SUPPLY, Entity, EntitySyncedData, LivingEntity, MobEffectInstance,
+    SharedEntity,
     damage::DamageSource,
     entities::{EndermiteEntity, ItemEntity},
     next_entity_id,
@@ -52,7 +53,7 @@ use steel_registry::{
     RegistryHolderSet, entity_data::EntityData, init_vanilla_registry, item_stack::ItemStack,
     vanilla_attributes, vanilla_blocks, vanilla_custom_stats, vanilla_damage_types,
     vanilla_enchantments, vanilla_entities, vanilla_game_rules, vanilla_items, vanilla_menu_types,
-    vanilla_world_clocks,
+    vanilla_mob_effects, vanilla_world_clocks,
 };
 use steel_utils::codec::VarInt;
 use steel_utils::locks::{IntoShared as _, SyncMutex};
@@ -1363,6 +1364,51 @@ fn persistent_player_data_restores_independent_experience_fields_and_score() {
     assert_eq!(experience.total_points(), 32);
     drop(experience);
     assert_eq!(player.score(), 19);
+}
+
+#[test]
+fn persistent_player_data_restores_active_effects() {
+    init_vanilla_registry();
+    let player = test_player(Arc::clone(test_world()));
+    let speed_value = || {
+        player
+            .living_base()
+            .attributes()
+            .lock()
+            .get_value(vanilla_attributes::MOVEMENT_SPEED)
+            .expect("player should have movement speed")
+    };
+    let base_speed = speed_value();
+    player
+        .living_base()
+        .add_mob_effect(MobEffectInstance::with_duration(
+            vanilla_mob_effects::SPEED,
+            600,
+            1,
+        ));
+    let boosted_speed = speed_value();
+    let persistent = PersistentPlayerData::from_player(&player);
+
+    player
+        .living_base()
+        .remove_mob_effect(vanilla_mob_effects::SPEED);
+    player
+        .living_base()
+        .add_mob_effect(MobEffectInstance::with_duration(
+            vanilla_mob_effects::GLOWING,
+            100,
+            0,
+        ));
+    assert_eq!(speed_value().to_bits(), base_speed.to_bits());
+    persistent.apply_to_player_without_location(&player);
+
+    let effects = player.living_base().active_mob_effects();
+    let [speed] = effects.as_slice() else {
+        panic!("only the saved effect is active: {effects:?}");
+    };
+    assert_eq!(speed.effect().key, vanilla_mob_effects::SPEED.key);
+    assert_eq!((speed.duration(), speed.amplifier()), (600, 1));
+    assert_eq!(speed_value().to_bits(), boosted_speed.to_bits());
 }
 
 #[test]

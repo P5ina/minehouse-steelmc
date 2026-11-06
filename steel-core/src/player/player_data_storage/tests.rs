@@ -1,4 +1,4 @@
-use crate::entity::DEFAULT_MAX_AIR_SUPPLY;
+use crate::entity::{ActiveMobEffect, DEFAULT_MAX_AIR_SUPPLY};
 use crate::permission::PermissionSet;
 use crate::player::KnownPlayer;
 use crate::player::advancement::progress::AdvancementProgress;
@@ -20,6 +20,7 @@ use std::{
 use steel_registry::stat::vanilla_stat_types;
 use steel_registry::{
     REGISTRY, init_vanilla_registry, vanilla_blocks, vanilla_custom_stats, vanilla_items,
+    vanilla_mob_effects,
 };
 use tokio::fs;
 
@@ -45,6 +46,7 @@ fn sample_player_file(data_version: i32) -> PlayerDataFile {
         was_in_powder_snow: false,
         has_visual_fire: false,
         health: 20.0,
+        active_effects: Vec::new(),
         game_mode: 2,
         prev_game_mode: Some(0),
         abilities: AbilitiesFile {
@@ -457,6 +459,43 @@ fn player_file_roundtrip_preserves_domain_world_data() {
     assert_eq!(decoded.enchantment_seed, 1234);
     assert_eq!(decoded.score, 9);
     assert!(decoded.seen_credits);
+}
+
+#[test]
+fn player_file_roundtrip_preserves_active_effects() {
+    init_vanilla_registry();
+    let hidden = steel_registry::MobEffectInstanceDetails::new(0, 9600, false, true, true, None);
+    let speed = steel_registry::MobEffectInstance::new(
+        vanilla_mob_effects::SPEED,
+        600,
+        2,
+        true,
+        false,
+        true,
+        Some(hidden),
+    );
+    let night_vision =
+        steel_registry::MobEffectInstance::simple(vanilla_mob_effects::NIGHT_VISION, -1, 0);
+    let effects =
+        [speed, night_vision].map(|effect| ActiveMobEffect::from_registry_instance(&effect));
+
+    let mut persistent = sample_player_file(PLAYER_DATA_VERSION)
+        .into_persistent()
+        .expect("sample player file should convert");
+    persistent.active_effects = effects.to_vec();
+    let file = PlayerDataFile::from_persistent(&persistent).expect("player file should build");
+    let encoded = encode_player_file(&file).expect("player file should encode");
+    let decoded = decode_player_file(&encoded)
+        .expect("player file should decode")
+        .into_persistent()
+        .expect("player file should convert");
+
+    assert_eq!(decoded.active_effects, effects);
+    assert_eq!(
+        decoded.active_effects[0].to_registry_instance(),
+        effects[0].to_registry_instance(),
+        "the hidden effect is kept"
+    );
 }
 
 #[test]

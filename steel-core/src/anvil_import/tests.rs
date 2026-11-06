@@ -466,7 +466,7 @@ async fn vanilla_players_load_from_steel_player_storage() {
     assert!(report.unknown_items.is_empty(), "{report}");
     assert!(report.unknown_stats.is_empty(), "{report}");
     assert!(report.unknown_advancements.is_empty(), "{report}");
-    assert_eq!(report.dropped_effects.get("minecraft:speed"), Some(&1));
+    assert!(report.unknown_effects.is_empty(), "{report}");
 
     let storage = PlayerDataStorage::on_disk(save_path.clone())
         .await
@@ -482,6 +482,13 @@ async fn vanilla_players_load_from_steel_player_storage() {
     assert!((data.health - 19.0).abs() < f32::EPSILON);
     assert_eq!(data.experience_level, 5);
     assert_eq!(data.experience_total, 7);
+    // Speed II with 11 915 ticks left.
+    let [speed] = data.active_effects.as_slice() else {
+        panic!("the player has one effect: {:?}", data.active_effects);
+    };
+    assert_eq!(speed.effect().key, Identifier::vanilla_static("speed"));
+    assert_eq!((speed.duration(), speed.amplifier()), (11_915, 1));
+    assert!(speed.is_visible() && speed.show_icon() && !speed.is_ambient());
 
     assert_imported_items(&data);
 

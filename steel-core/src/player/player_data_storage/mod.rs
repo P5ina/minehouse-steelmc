@@ -25,6 +25,7 @@ use super::player_data::{
 };
 use crate::chunk_saver::PersistentEntity;
 use crate::config::StorageSelection;
+use crate::entity::ActiveMobEffect;
 use crate::level_data::RespawnData;
 use crate::permission::PermissionSubjectIndex;
 #[cfg(test)]
@@ -33,12 +34,13 @@ use crate::player::KnownPlayers;
 use crate::player::Player;
 use crate::player::player_data_storage::file_storage::FilePlayerDataStorage;
 use crate::player::player_data_storage::memory_storage::MemoryPlayerDataStorage;
+use steel_registry::MobEffectInstance as RegistryMobEffectInstance;
 use steel_registry::item_stack::ItemStack;
 use steel_utils::{BlockPos, Identifier};
 
 const PLAYER_MAGIC: [u8; 4] = *b"STLP";
 const GLOBAL_MAGIC: [u8; 4] = *b"STLG";
-const PLAYER_STORAGE_VERSION: u16 = 10;
+const PLAYER_STORAGE_VERSION: u16 = 11;
 const GLOBAL_STORAGE_VERSION: u16 = 1;
 const GLOBAL_PLAYER_DATA_VERSION: i32 = 1;
 
@@ -73,6 +75,8 @@ struct PlayerDataFile {
     was_in_powder_snow: bool,
     has_visual_fire: bool,
     health: f32,
+    /// Each effect encoded with vanilla `MobEffectInstance.CODEC`.
+    active_effects: Vec<Vec<u8>>,
     game_mode: i32,
     prev_game_mode: Option<i32>,
     abilities: AbilitiesFile,
@@ -320,6 +324,11 @@ impl PlayerDataFile {
             was_in_powder_snow: data.was_in_powder_snow,
             has_visual_fire: data.has_visual_fire,
             health: data.health,
+            active_effects: data
+                .active_effects
+                .iter()
+                .map(effect_to_nbt_bytes)
+                .collect::<io::Result<_>>()?,
             game_mode: data.game_mode,
             prev_game_mode: data.prev_game_mode,
             abilities: AbilitiesFile {
@@ -405,6 +414,11 @@ impl PlayerDataFile {
             was_in_powder_snow: self.was_in_powder_snow,
             has_visual_fire: self.has_visual_fire,
             health: self.health,
+            active_effects: self
+                .active_effects
+                .iter()
+                .map(|bytes| effect_from_nbt_bytes(bytes))
+                .collect::<io::Result<_>>()?,
             game_mode: self.game_mode,
             prev_game_mode: self.prev_game_mode,
             abilities: PersistentAbilities {
@@ -514,6 +528,28 @@ fn item_from_nbt_bytes(bytes: &[u8]) -> io::Result<ItemStack> {
     let compound = simdnbt::borrow::NbtCompound::from(&nbt);
     ItemStack::from_borrowed_compound(&compound)
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "invalid item stack data"))
+}
+
+fn effect_to_nbt_bytes(effect: &ActiveMobEffect) -> io::Result<Vec<u8>> {
+    let NbtTag::Compound(compound) = effect.to_registry_instance().to_nbt_tag_ref() else {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "mob effect did not serialize to a compound",
+        ));
+    };
+    let mut bytes = Vec::new();
+    compound.write(&mut bytes);
+    Ok(bytes)
+}
+
+fn effect_from_nbt_bytes(bytes: &[u8]) -> io::Result<ActiveMobEffect> {
+    let invalid = |reason: String| io::Error::new(io::ErrorKind::InvalidData, reason);
+    let nbt = read_borrowed_compound(&mut Cursor::new(bytes))
+        .map_err(|e| invalid(format!("failed to parse mob effect NBT: {e}")))?;
+    let tag = NbtTag::Compound(simdnbt::borrow::NbtCompound::from(&nbt).to_owned());
+    let effect = RegistryMobEffectInstance::from_owned_nbt(&tag)
+        .ok_or_else(|| invalid("invalid mob effect data".to_owned()))?;
+    Ok(ActiveMobEffect::from_registry_instance(&effect))
 }
 
 fn encode_player_file(file: &PlayerDataFile) -> io::Result<Vec<u8>> {
