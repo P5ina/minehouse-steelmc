@@ -257,7 +257,7 @@ fn random_walk_cleaning_copper(world: &Arc<World>, origin: BlockPos, steps: i32)
     }
 }
 
-/// Tries up to ten random neighbours (vanilla `BlockPos.randomInCube(random, 10, pos, 1)`)
+/// Tries up to ten random neighbors (vanilla `BlockPos.randomInCube(random, 10, pos, 1)`)
 /// and scrapes the first weathering copper block found.
 fn random_step_cleaning_copper(world: &Arc<World>, pos: BlockPos) -> Option<BlockPos> {
     for _ in 0..COPPER_STEP_CANDIDATES {
