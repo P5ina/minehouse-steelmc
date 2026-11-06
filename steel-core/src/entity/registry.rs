@@ -19,7 +19,7 @@ use super::{
     EntityBaseLoad, EntityBaseSaveData, EntityFireFreezeState, EntitySpawnReason, SharedEntity,
     next_entity_id,
 };
-use crate::world::{LevelReader, World};
+use crate::world::{ServerLevelAccessor, World};
 
 /// Factory function type for creating entities.
 ///
@@ -35,7 +35,7 @@ pub type EntityLoadFactory = fn(EntityTypeRef, EntityBaseLoad) -> SharedEntity;
 
 /// Spawn placement predicate of an entity type.
 pub(crate) type SpawnRule =
-    fn(EntityTypeRef, &dyn LevelReader, EntitySpawnReason, BlockPos, &mut dyn Rng) -> bool;
+    fn(EntityTypeRef, &dyn ServerLevelAccessor, EntitySpawnReason, BlockPos, &mut dyn Rng) -> bool;
 
 /// Entity load request before the registry assigns a runtime ID.
 pub struct EntityLoadRequest {

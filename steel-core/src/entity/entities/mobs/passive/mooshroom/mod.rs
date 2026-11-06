@@ -54,7 +54,7 @@ use crate::physics::MoveResult;
 use crate::player::Player;
 use crate::player::player_inventory::Prediction;
 use crate::world::game_event::GameEventContext;
-use crate::world::{LevelReader, World};
+use crate::world::{LevelReader, ServerLevelAccessor, World};
 
 const MOOSHROOM_BABY_PASSENGER_Y_OFFSET: f64 = 0.75;
 const MOOSHROOM_BABY_PASSENGER_ATTACHMENTS: [EntityAttachmentPoint; 1] =
@@ -102,7 +102,7 @@ impl MushroomCowEntity {
     /// Unlike `check_animal_spawn_rules`, light is required for every spawn reason.
     pub(crate) fn check_mushroom_spawn_rules(
         _entity_type: EntityTypeRef,
-        level: &dyn LevelReader,
+        level: &dyn ServerLevelAccessor,
         _spawn_reason: EntitySpawnReason,
         pos: BlockPos,
         _random: &mut dyn Rng,
