@@ -173,6 +173,11 @@ impl NearestAttackableTargetGoal {
         self.target = target;
     }
 
+    /// Vanilla `NearestAttackableTargetGoal.target`, for goals that extend it.
+    pub(crate) const fn found_target(&self) -> Option<&SharedEntity> {
+        self.target.as_ref()
+    }
+
     /// Whether the last search found a target.
     pub(super) const fn has_target(&self) -> bool {
         self.target.is_some()

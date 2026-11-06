@@ -683,6 +683,50 @@ pub trait LivingEntity: Entity {
         world.clip(start, end, block_shape, fluid).is_miss()
     }
 
+    /// Vanilla `isLookingAtMe`: whether `target` looks at one of this entity's
+    /// `gaze_heights` within `cone_size` (narrowed by distance when
+    /// `adjust_for_distance`) and can see it there.
+    fn is_looking_at_me(
+        &self,
+        target: &dyn LivingEntity,
+        cone_size: f64,
+        adjust_for_distance: bool,
+        see_through_transparent_blocks: bool,
+        gaze_heights: &[f64],
+    ) -> bool {
+        let look = target
+            .calculate_view_vector(target.rotation().1, target.y_head_rot())
+            .normalize_or_zero();
+        let position = self.position();
+        let target_position = target.position();
+        let block_shape = if see_through_transparent_blocks {
+            ClipBlockShape::Visual
+        } else {
+            ClipBlockShape::Collider
+        };
+        gaze_heights.iter().any(|&gaze_height| {
+            let direction = DVec3::new(
+                position.x - target_position.x,
+                gaze_height - target.get_eye_y(),
+                position.z - target_position.z,
+            );
+            let distance = direction.length();
+            let dot = look.dot(direction.normalize_or_zero());
+            let threshold = if adjust_for_distance {
+                1.0 - cone_size / distance
+            } else {
+                1.0 - cone_size
+            };
+            dot > threshold
+                && target.has_line_of_sight_with(
+                    self.as_entity_event_source(),
+                    block_shape,
+                    ClipFluid::None,
+                    gaze_height,
+                )
+        })
+    }
+
     /// Returns vanilla base living-entity invulnerability.
     fn default_is_invulnerable_to(&self, source: &DamageSource) -> bool {
         self.is_invulnerable_to_base(source)
@@ -3400,21 +3444,65 @@ pub trait LivingEntity: Entity {
         }
     }
 
-    /// Returns `true` and commits the move on success, or
-    /// `false` and leaves the entity untouched on failure.
+    /// Vanilla `LivingEntity.randomTeleport`: returns `true` and commits the
+    /// move on success, or `false` and leaves the entity untouched on failure.
     fn random_teleport(&self, world: &Arc<World>, x: f64, y: f64, z: f64, broadcast: bool) -> bool {
-        let Some(landing_y) = random_teleport_ground_y(world, x, y, z) else {
-            return false;
-        };
+        self.random_teleport_avoiding(world, x, y, z, broadcast, &|_| false)
+    }
 
-        let dimensions = self.base().dimensions();
-        let aabb = WorldAabb::entity_box(
-            x,
-            landing_y,
-            z,
-            f64::from(dimensions.half_width()),
-            f64::from(dimensions.height),
-        );
+    /// Vanilla `randomTeleport(x, y, z, showParticles, isInvalidPosition)`:
+    /// drop down to a block entities can teleport to, then refuse the spot
+    /// when the landing block or any block in the box is invalid.
+    fn random_teleport_avoiding(
+        &self,
+        world: &Arc<World>,
+        x: f64,
+        y: f64,
+        z: f64,
+        broadcast: bool,
+        is_invalid_position: &dyn Fn(BlockStateId) -> bool,
+    ) -> bool {
+        let clamped = world
+            .world_border_snapshot()
+            .clamp_vec3_to_bound(DVec3::new(x, y, z));
+        let mut pos = BlockPos::from(clamped);
+        if !world.is_full_chunk_loaded_at(pos) {
+            return false;
+        }
+        let mut landing_y = y;
+        while pos.y() > world.get_min_y() {
+            pos = pos.below();
+            let state = world.get_block_state(pos);
+            if state
+                .get_block()
+                .has_tag(&BlockTag::ENTITIES_CAN_TELEPORT_TO)
+            {
+                return self.check_position_and_teleport(
+                    world,
+                    DVec3::new(clamped.x, landing_y, clamped.z),
+                    broadcast,
+                    is_invalid_position,
+                    state,
+                );
+            }
+            landing_y -= 1.0;
+        }
+        false
+    }
+
+    /// Vanilla `checkPositionAndTeleport`.
+    fn check_position_and_teleport(
+        &self,
+        world: &Arc<World>,
+        target: DVec3,
+        broadcast: bool,
+        is_invalid_position: &dyn Fn(BlockStateId) -> bool,
+        landing_state: BlockStateId,
+    ) -> bool {
+        if is_invalid_position(landing_state) {
+            return false;
+        }
+        let aabb = self.make_bounding_box_at(target);
         let collision = WorldCollisionProvider::for_entity(world, self.as_entity_event_source());
         if collision.has_entity_collision(&aabb)
             || collision.has_block_collision_with_context(&aabb, BlockCollisionContext::empty())
@@ -3422,8 +3510,14 @@ pub trait LivingEntity: Entity {
         {
             return false;
         }
+        if blocks_in_aabb_match(world, aabb, is_invalid_position) {
+            return false;
+        }
+        if !self.can_randomly_teleport_to(target) {
+            return false;
+        }
 
-        if self.teleport_to(DVec3::new(x, landing_y, z)).is_err() {
+        if self.teleport_to(target).is_err() {
             return false;
         }
 
@@ -3436,23 +3530,27 @@ pub trait LivingEntity: Entity {
         }
         true
     }
+
+    /// Vanilla `canRandomlyTeleportTo`; the enderman refuses water below.
+    fn can_randomly_teleport_to(&self, _target: DVec3) -> bool {
+        true
+    }
 }
 
-/// Walks down from `y` until standing on a block that blocks motion,
-/// mirroring the descent loop in vanilla `Entity.randomTeleport`. Returns
-/// `None` if the world's floor is reached without finding solid ground.
-fn random_teleport_ground_y(world: &Arc<World>, x: f64, y: f64, z: f64) -> Option<f64> {
-    let mut pos = BlockPos::containing(x, y, z);
-    let mut current_y = y;
-    while pos.y() > world.get_min_y() {
-        let below = pos.below();
-        if world.get_block_state(below).blocks_motion() {
-            return Some(current_y);
-        }
-        current_y -= 1.0;
-        pos = below;
-    }
-    None
+/// Vanilla `level.findBlocksIn(aabb).filterState(predicate).anyMatched()`.
+fn blocks_in_aabb_match(
+    world: &World,
+    aabb: WorldAabb,
+    predicate: &dyn Fn(BlockStateId) -> bool,
+) -> bool {
+    let min = BlockPos::containing(aabb.min_x(), aabb.min_y(), aabb.min_z());
+    let max = BlockPos::containing(aabb.max_x(), aabb.max_y(), aabb.max_z());
+    (min.x()..=max.x()).any(|bx| {
+        (min.y()..=max.y()).any(|by| {
+            (min.z()..=max.z())
+                .any(|bz| predicate(world.get_block_state(BlockPos::new(bx, by, bz))))
+        })
+    })
 }
 
 fn death_loot_items_with_rng<R: rand::Rng, E: LivingEntity + ?Sized>(
