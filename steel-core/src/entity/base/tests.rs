@@ -494,6 +494,7 @@ fn fire_freeze_state_applies_inside_block_effects() {
         0,
         DEFAULT_TICKS_REQUIRED_TO_FREEZE,
         None,
+        &|ticks| ticks,
     );
     assert!(base.is_in_powder_snow());
     assert_eq!(base.ticks_frozen(), 1);
@@ -505,6 +506,7 @@ fn fire_freeze_state_applies_inside_block_effects() {
         0,
         DEFAULT_TICKS_REQUIRED_TO_FREEZE,
         None,
+        &|ticks| ticks,
     );
     assert_eq!(base.remaining_fire_ticks(), 300);
     assert_eq!(base.ticks_frozen(), 0);
@@ -516,6 +518,7 @@ fn fire_freeze_state_applies_inside_block_effects() {
         0,
         DEFAULT_TICKS_REQUIRED_TO_FREEZE,
         None,
+        &|ticks| ticks,
     );
     assert_eq!(base.remaining_fire_ticks(), 0);
 
@@ -526,6 +529,7 @@ fn fire_freeze_state_applies_inside_block_effects() {
         0,
         DEFAULT_TICKS_REQUIRED_TO_FREEZE,
         None,
+        &|ticks| ticks,
     );
     assert_eq!(base.ticks_frozen(), 0);
 }
@@ -546,6 +550,7 @@ fn fire_ignite_respects_remaining_fire_tick_cap() {
         0,
         DEFAULT_TICKS_REQUIRED_TO_FREEZE,
         Some(1),
+        &|ticks| ticks,
     );
     assert_eq!(base.remaining_fire_ticks(), 1);
 
@@ -557,6 +562,7 @@ fn fire_ignite_respects_remaining_fire_tick_cap() {
         0,
         DEFAULT_TICKS_REQUIRED_TO_FREEZE,
         Some(1),
+        &|ticks| ticks,
     );
     assert_eq!(base.remaining_fire_ticks(), 1);
 
@@ -568,6 +574,7 @@ fn fire_ignite_respects_remaining_fire_tick_cap() {
         2,
         DEFAULT_TICKS_REQUIRED_TO_FREEZE,
         Some(1),
+        &|ticks| ticks,
     );
     assert_eq!(base.remaining_fire_ticks(), 1);
 }
@@ -589,6 +596,7 @@ fn fire_ignite_respects_vanilla_cooldown_shape() {
         0,
         DEFAULT_TICKS_REQUIRED_TO_FREEZE,
         None,
+        &|ticks| ticks,
     );
     assert_eq!(base.remaining_fire_ticks(), -1);
 
@@ -599,6 +607,7 @@ fn fire_ignite_respects_vanilla_cooldown_shape() {
         0,
         DEFAULT_TICKS_REQUIRED_TO_FREEZE,
         None,
+        &|ticks| ticks,
     );
     assert_eq!(base.remaining_fire_ticks(), 160);
 
@@ -610,6 +619,7 @@ fn fire_ignite_respects_vanilla_cooldown_shape() {
         2,
         DEFAULT_TICKS_REQUIRED_TO_FREEZE,
         None,
+        &|ticks| ticks,
     );
     assert_eq!(base.remaining_fire_ticks(), 160);
 
@@ -621,6 +631,7 @@ fn fire_ignite_respects_vanilla_cooldown_shape() {
         0,
         DEFAULT_TICKS_REQUIRED_TO_FREEZE,
         None,
+        &|ticks| ticks,
     );
     assert_eq!(base.remaining_fire_ticks(), 0);
 }
@@ -641,6 +652,7 @@ fn base_tick_advances_powder_snow_and_fire_state() {
         0,
         DEFAULT_TICKS_REQUIRED_TO_FREEZE,
         None,
+        &|ticks| ticks,
     );
     base.advance_powder_snow_contact_for_base_tick();
     assert!(!base.is_in_powder_snow());

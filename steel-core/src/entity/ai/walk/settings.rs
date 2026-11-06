@@ -119,6 +119,13 @@ impl MobPathSettings {
         }
     }
 
+    /// Overrides one pathfinding malus for this search.
+    #[must_use]
+    pub const fn with_pathfinding_malus(mut self, path_type: PathType, malus: f32) -> Self {
+        self.malus[path_type.index()] = malus;
+        self
+    }
+
     #[must_use]
     pub const fn with_can_pass_doors(mut self, can_pass_doors: bool) -> Self {
         self.can_pass_doors = can_pass_doors;

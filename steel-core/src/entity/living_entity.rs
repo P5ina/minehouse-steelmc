@@ -3011,6 +3011,18 @@ pub trait LivingEntity: Entity {
         is_falling: bool,
         old_y: f64,
     ) -> Option<MoveResult> {
+        self.default_travel_in_water(entity, input, base_gravity, is_falling, old_y)
+    }
+
+    /// The base `LivingEntity.travelInWater`, for overrides to fall back on.
+    fn default_travel_in_water(
+        &self,
+        entity: &SharedEntity,
+        input: DVec3,
+        base_gravity: f64,
+        is_falling: bool,
+        old_y: f64,
+    ) -> Option<MoveResult> {
         let mut slow_down = if self.is_sprinting() {
             0.9
         } else {

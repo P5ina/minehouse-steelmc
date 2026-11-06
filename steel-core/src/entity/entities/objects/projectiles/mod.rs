@@ -11,6 +11,7 @@ mod lingering_potion;
 mod snowball;
 mod splash_potion;
 mod thrown_egg;
+mod thrown_trident;
 
 pub use arrow::{ArrowEntity, SpectralArrowEntity};
 pub use ender_pearl::EnderPearlEntity;
@@ -23,3 +24,4 @@ pub use lingering_potion::LingeringPotionEntity;
 pub use snowball::SnowballEntity;
 pub use splash_potion::SplashPotionEntity;
 pub use thrown_egg::ThrownEggEntity;
+pub use thrown_trident::ThrownTridentEntity;
