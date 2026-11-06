@@ -242,6 +242,11 @@ pub(super) fn convert_player(
 }
 
 /// Converts the `ServerPlayer.addAdditionalSaveData` compound.
+/// Vanilla `ShoulderEntityLeft`/`ShoulderEntityRight` as stored compound bytes.
+fn shoulder_bytes(root: &NbtCompound, key: &str) -> Vec<u8> {
+    root.compound(key).map_or_default(nbt::compound_bytes)
+}
+
 fn convert_player_data(
     root: &NbtCompound,
     report: &mut PlayerReport,
@@ -340,6 +345,8 @@ fn convert_player_data(
         ender_items: items(root.list("EnderItems"), report),
         stats: Vec::new(),
         advancements: Vec::new(),
+        shoulder_entity_left: shoulder_bytes(root, "ShoulderEntityLeft"),
+        shoulder_entity_right: shoulder_bytes(root, "ShoulderEntityRight"),
     })
 }
 

@@ -5,7 +5,7 @@ use glam::DVec3;
 use steel_registry::entity_type::EntityDimensions;
 use steel_utils::WorldAabb;
 
-use crate::behavior::BlockCollisionContext;
+use crate::behavior::{BlockCollisionContext, LiquidStand};
 
 /// Immutable entity movement input used by the collision resolver.
 ///
@@ -40,6 +40,9 @@ pub(crate) struct EntityPhysicsState {
 
     /// Whether vanilla collision context should treat this entity as a falling block.
     is_falling_block: bool,
+
+    /// How this living entity stands on source liquids, if it can.
+    liquid_stand: Option<LiquidStand>,
 }
 
 impl EntityPhysicsState {
@@ -59,6 +62,7 @@ impl EntityPhysicsState {
             descending: false,
             can_walk_on_powder_snow: false,
             is_falling_block: false,
+            liquid_stand: None,
         }
     }
 
@@ -129,6 +133,7 @@ impl EntityPhysicsState {
             .with_fall_distance(self.fall_distance)
             .with_can_walk_on_powder_snow(self.can_walk_on_powder_snow)
             .with_falling_block(self.is_falling_block)
+            .with_liquid_stand(self.liquid_stand)
     }
 
     /// Returns a copy with the pre-movement ground flag set.
@@ -170,6 +175,13 @@ impl EntityPhysicsState {
     #[must_use]
     pub const fn with_falling_block(mut self, is_falling_block: bool) -> Self {
         self.is_falling_block = is_falling_block;
+        self
+    }
+
+    /// Returns a copy with the liquid-standing collision context set.
+    #[must_use]
+    pub const fn with_liquid_stand(mut self, liquid_stand: Option<LiquidStand>) -> Self {
+        self.liquid_stand = liquid_stand;
         self
     }
 }

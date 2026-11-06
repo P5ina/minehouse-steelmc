@@ -31,8 +31,12 @@ pub use weaving::WeavingBehavior;
 pub use wind_charged::WindChargedBehavior;
 pub use wither::WitherBehavior;
 
+use std::sync::Arc;
+
 use crate::entity::LivingEntity;
+use crate::entity::RemovalReason;
 use crate::entity::SharedEntity;
+use crate::entity::damage::DamageSource;
 use crate::world::World;
 
 /// One vanilla `MobEffect` subtype's runtime behavior. Default methods match
@@ -58,6 +62,27 @@ pub trait MobEffectBehavior: Send + Sync {
 
     /// Called when the effect starts.
     fn on_effect_started(&self, _user: &dyn LivingEntity, _amplifier: i32) {}
+
+    /// Called for each active effect when its mob is killed or discarded.
+    fn on_mob_removed(
+        &self,
+        _world: &Arc<World>,
+        _mob: &dyn LivingEntity,
+        _amplifier: i32,
+        _reason: RemovalReason,
+    ) {
+    }
+
+    /// Called for each active effect after its mob takes damage.
+    fn on_mob_hurt(
+        &self,
+        _world: &Arc<World>,
+        _mob: &dyn LivingEntity,
+        _amplifier: i32,
+        _source: &DamageSource,
+        _damage: f32,
+    ) {
+    }
 }
 
 /// The instantaneous-only half of a [`MobEffectBehavior`] that also extends
@@ -81,3 +106,6 @@ pub trait InstantaneousMobEffect: MobEffectBehavior {
         self.apply_effect_tick(world, user, amplifier);
     }
 }
+
+#[cfg(test)]
+mod tests;

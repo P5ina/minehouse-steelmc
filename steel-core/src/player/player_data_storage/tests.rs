@@ -75,6 +75,8 @@ fn sample_player_file(data_version: i32) -> PlayerDataFile {
         respawn_config: None,
         ender_pearls: Vec::new(),
         ender_items: Vec::new(),
+        shoulder_entity_left: vec![10, 0, 0, 0],
+        shoulder_entity_right: Vec::new(),
     }
 }
 
@@ -459,6 +461,8 @@ fn player_file_roundtrip_preserves_domain_world_data() {
     assert_eq!(decoded.enchantment_seed, 1234);
     assert_eq!(decoded.score, 9);
     assert!(decoded.seen_credits);
+    assert_eq!(decoded.shoulder_entity_left, vec![10, 0, 0, 0]);
+    assert_eq!(decoded.shoulder_entity_right, Vec::<u8>::new());
 }
 
 #[test]
@@ -526,6 +530,22 @@ fn player_files_from_before_effects_still_load() {
     let file = PlayerDataFile::from_persistent(&persistent).expect("player file should build");
     let encoded = encode_player_file(&file).expect("player file should encode");
     assert_eq!(stored_version(&encoded), Some(PLAYER_STORAGE_VERSION));
+}
+
+#[test]
+fn player_files_with_shoulders_but_without_effects_still_load() {
+    // Storage version 11 is the current layout without the trailing active effects.
+    let file = sample_player_file(8);
+    let mut payload = wincode::serialize(&file).expect("player file should serialize");
+    let effects = wincode::serialize(&file.active_effects).expect("effects should serialize");
+    payload.truncate(payload.len() - effects.len());
+    let encoded = encode_file(PLAYER_MAGIC, 11, Ok(payload)).expect("v11 file should encode");
+
+    let decoded = decode_player_file(&encoded).expect("a storage version 11 file should decode");
+    assert_eq!(decoded.data_version, PLAYER_DATA_VERSION);
+    assert_eq!(decoded.shoulder_entity_left, vec![10, 0, 0, 0]);
+    assert_eq!(decoded.shoulder_entity_right, Vec::<u8>::new());
+    assert_eq!(decoded.active_effects, Vec::<Vec<u8>>::new());
 }
 
 #[test]

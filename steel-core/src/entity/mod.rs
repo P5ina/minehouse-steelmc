@@ -4,7 +4,10 @@ use std::sync::Weak;
 use std::{
     any::try_as_dyn,
     borrow::Cow,
-    sync::{Arc, LazyLock},
+    sync::{
+        Arc,
+        atomic::{AtomicI32, Ordering},
+    },
 };
 
 use glam::DVec3;
@@ -63,6 +66,7 @@ use text_components::{
 };
 use uuid::Uuid;
 
+use crate::behavior::LiquidStand;
 use crate::behavior::{
     BLOCK_BEHAVIORS, BlockCollisionContext, BlockStateBehaviorExt as _, EntityFallOnContext,
     EntityLandingContext, FLUID_BEHAVIORS, InteractionResult,
@@ -79,6 +83,8 @@ use crate::physics::{
 use crate::world::game_event::GameEventContext;
 use crate::world::{ClipBlockShape, ClipFluid, Explosion, LevelReader, World};
 use crate::{enchantment_helper, entity::damage::DamageSource, player::Player};
+use steel_registry::blocks::shapes::VoxelShape;
+use steel_registry::vanilla_fluids;
 
 use entities::ExperienceOrbEntity;
 
@@ -87,6 +93,8 @@ pub(crate) const ENTITY_LOAD_MAX_VERTICAL_POSITION: f64 = 2.0E7;
 
 /// The default air drag value for entities.
 pub const DEFAULT_AIR_DRAG: f64 = 0.98;
+/// Vanilla air drag of omnidirectional air movers, `0.91F` widened to double.
+pub const OMNIDIRECTIONAL_AIR_DRAG: f64 = 0.91_f32 as f64;
 
 /// Clamps an entity position using vanilla's load-time world-bound limits.
 pub(crate) fn clamp_loaded_entity_position(pos: DVec3) -> DVec3 {
@@ -137,7 +145,7 @@ fn remove_entity_name_actions(mut component: TextComponent) -> TextComponent {
 ///
 /// Each new entity increments this counter to get a unique network ID. Starts
 /// at 1 (0 is reserved).
-static ENTITY_COUNTER: LazyLock<SyncMutex<i32>> = LazyLock::new(|| SyncMutex::new(1));
+static ENTITY_COUNTER: AtomicI32 = AtomicI32::new(1);
 const MOVEMENT_RECORD_EPSILON: f64 = 1.0e-7;
 const NO_PHYSICS_COLLISION_EPSILON: f64 = 1.0e-7;
 const IN_WALL_EYE_BOX_HEIGHT: f64 = 1.0e-6;
@@ -497,19 +505,32 @@ fn physics_state_for_move(entity: &dyn Entity) -> EntityPhysicsState {
         descending: entity.is_descending(),
         can_walk_on_powder_snow: PowderSnowBlock::can_entity_walk_on_powder_snow(entity),
         is_falling_block: entity.entity_type() == &vanilla_entities::FALLING_BLOCK,
+        liquid_stand: liquid_stand_of(entity),
+    })
+}
+
+/// Vanilla `EntityCollisionContext` liquid standing: the mover's
+/// `getLiquidCollisionShape` and `canStandOnFluid` for source liquids.
+pub(crate) fn liquid_stand_of(entity: &dyn Entity) -> Option<LiquidStand> {
+    let living = entity.as_living_entity()?;
+    let shape = living.liquid_collision_shape();
+    if shape.is_empty() {
+        return None;
+    }
+    Some(LiquidStand {
+        shape,
+        on_lava: living.can_stand_on_fluid(FluidState::source(&vanilla_fluids::LAVA)),
+        on_water: living.can_stand_on_fluid(FluidState::source(&vanilla_fluids::WATER)),
     })
 }
 
 /// Allocates a new unique entity ID.
 ///
 /// This is the primary way to get entity IDs for spawning entities.
-/// Thread-safe through the shared counter lock.
+/// Lock-free so parallel tick work can allocate IDs; `fetch_add` wraps on overflow.
 #[must_use]
 pub fn next_entity_id() -> i32 {
-    let mut counter = ENTITY_COUNTER.lock();
-    let id = *counter;
-    *counter = counter.wrapping_add(1);
-    id
+    ENTITY_COUNTER.fetch_add(1, Ordering::Relaxed)
 }
 
 fn apply_block_effect_segment(

@@ -40,11 +40,7 @@ use steel_utils::{BlockPos, Identifier};
 
 const PLAYER_MAGIC: [u8; 4] = *b"STLP";
 const GLOBAL_MAGIC: [u8; 4] = *b"STLG";
-const PLAYER_STORAGE_VERSION: u16 = 11;
-/// Storage version before player files saved active effects.
-const PLAYER_STORAGE_VERSION_WITHOUT_EFFECTS: u16 = 10;
-/// Player data version written by [`PLAYER_STORAGE_VERSION_WITHOUT_EFFECTS`] files.
-const PLAYER_DATA_VERSION_WITHOUT_EFFECTS: i32 = 7;
+const PLAYER_STORAGE_VERSION: u16 = 12;
 const GLOBAL_STORAGE_VERSION: u16 = 1;
 const GLOBAL_PLAYER_DATA_VERSION: i32 = 1;
 
@@ -99,8 +95,9 @@ struct PlayerDataFile {
     respawn_config: Option<RespawnConfigFile>,
     ender_pearls: Vec<EnderPearlFile>,
     ender_items: Vec<SlotFile>,
-    /// Each effect encoded with vanilla `MobEffectInstance.CODEC`. Last, so storage version
-    /// [`PLAYER_STORAGE_VERSION_WITHOUT_EFFECTS`] files read as this layout with no effects.
+    shoulder_entity_left: Vec<u8>,
+    shoulder_entity_right: Vec<u8>,
+    /// Each effect encoded with vanilla `MobEffectInstance.CODEC`.
     active_effects: Vec<Vec<u8>>,
 }
 
@@ -385,6 +382,8 @@ impl PlayerDataFile {
                     item_nbt: item_to_nbt_bytes(&slot.item).unwrap_or_default(),
                 })
                 .collect(),
+            shoulder_entity_left: data.shoulder_entity_left.clone(),
+            shoulder_entity_right: data.shoulder_entity_right.clone(),
         })
     }
 
@@ -477,6 +476,8 @@ impl PlayerDataFile {
             },
             stats: Vec::new(),
             advancements: Vec::new(),
+            shoulder_entity_left: self.shoulder_entity_left,
+            shoulder_entity_right: self.shoulder_entity_right,
         })
     }
 }
@@ -567,21 +568,30 @@ fn encode_player_file(file: &PlayerDataFile) -> io::Result<Vec<u8>> {
 
 fn decode_player_file(bytes: &[u8]) -> io::Result<PlayerDataFile> {
     let invalid = |reason: String| io::Error::new(io::ErrorKind::InvalidData, reason);
-    if stored_version(bytes) == Some(PLAYER_STORAGE_VERSION_WITHOUT_EFFECTS) {
-        // The older layout is the current one without the trailing `active_effects`.
-        let mut payload = decode_file(PLAYER_MAGIC, PLAYER_STORAGE_VERSION_WITHOUT_EFFECTS, bytes)?;
-        payload.extend(
-            wincode::serialize(&Vec::<Vec<u8>>::new()).map_err(|e| invalid(e.to_string()))?,
-        );
-        let mut file: PlayerDataFile =
-            wincode::deserialize(&payload).map_err(|e| invalid(e.to_string()))?;
-        if file.data_version == PLAYER_DATA_VERSION_WITHOUT_EFFECTS {
-            file.data_version = PLAYER_DATA_VERSION;
-        }
-        return Ok(file);
+    // Older layouts are the current one without its newest trailing fields, so the missing
+    // fields are appended empty before decoding: (storage version, data version, missing).
+    let legacy = match stored_version(bytes) {
+        // Before shoulder entities and active effects.
+        Some(10) => Some((10, 7, 3)),
+        // Before active effects.
+        Some(11) => Some((11, 8, 1)),
+        _ => None,
+    };
+    let Some((storage_version, data_version, missing_fields)) = legacy else {
+        let payload = decode_file(PLAYER_MAGIC, PLAYER_STORAGE_VERSION, bytes)?;
+        return wincode::deserialize(&payload).map_err(|e| invalid(e.to_string()));
+    };
+    let mut payload = decode_file(PLAYER_MAGIC, storage_version, bytes)?;
+    let empty = wincode::serialize(&Vec::<u8>::new()).map_err(|e| invalid(e.to_string()))?;
+    for _ in 0..missing_fields {
+        payload.extend_from_slice(&empty);
     }
-    let payload = decode_file(PLAYER_MAGIC, PLAYER_STORAGE_VERSION, bytes)?;
-    wincode::deserialize(&payload).map_err(|e| invalid(e.to_string()))
+    let mut file: PlayerDataFile =
+        wincode::deserialize(&payload).map_err(|e| invalid(e.to_string()))?;
+    if file.data_version == data_version {
+        file.data_version = PLAYER_DATA_VERSION;
+    }
+    Ok(file)
 }
 
 /// Storage version in a player or global file header, if the header is there.

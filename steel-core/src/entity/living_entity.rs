@@ -838,6 +838,18 @@ pub trait LivingEntity: Entity {
         // TODO: Play secondary hurt sounds once equipment effects expose them.
 
         self.record_last_damage_source(source);
+        // TODO: skip when item blocking absorbed all the damage (`!blocked || damage > 0`),
+        // once blocking exists.
+        if let Some(world) = self.level() {
+            let dyn_self = self
+                .as_living_entity()
+                .expect("Self implements LivingEntity");
+            for effect in self.active_mob_effects() {
+                MOB_EFFECT_BEHAVIORS
+                    .get_behavior(effect.effect())
+                    .on_mob_hurt(&world, dyn_self, effect.amplifier(), source, damage);
+            }
+        }
 
         true
     }
@@ -1554,6 +1566,21 @@ pub trait LivingEntity: Entity {
         }
     }
 
+    /// Vanilla `LivingEntity.triggerOnDeathMobEffects`: runs every active
+    /// effect's removal hook, then forgets the effects without the usual
+    /// removal updates.
+    fn trigger_on_death_mob_effects(&self, world: &Arc<World>, reason: RemovalReason) {
+        let dyn_self = self
+            .as_living_entity()
+            .expect("Self implements LivingEntity");
+        for effect in self.active_mob_effects() {
+            MOB_EFFECT_BEHAVIORS
+                .get_behavior(effect.effect())
+                .on_mob_removed(world, dyn_self, effect.amplifier(), reason);
+        }
+        self.living_base().clear_mob_effects_no_update();
+    }
+
     /// Removes active vanilla mob-effect state.
     fn remove_mob_effect(&self, effect: MobEffectRef) -> bool {
         self.living_base().remove_mob_effect(effect)
@@ -1750,6 +1777,12 @@ pub trait LivingEntity: Entity {
     /// Returns whether this entity can stand on the given fluid's surface; false by default.
     fn can_stand_on_fluid(&self, _fluid_state: FluidState) -> bool {
         false
+    }
+
+    /// Vanilla `getLiquidCollisionShape`: the shape a source liquid offers
+    /// this entity to stand on (empty by default; striders use the lower half).
+    fn liquid_collision_shape(&self) -> VoxelShape {
+        VoxelShape::EMPTY
     }
 
     /// Checks if the entity is currently using an item.
@@ -2817,10 +2850,20 @@ pub trait LivingEntity: Entity {
         }
     }
 
+    /// Vanilla `omnidirectionalAirMover`: flying animals such as parrots
+    /// brake vertically as hard as horizontally.
+    fn omnidirectional_air_mover(&self) -> bool {
+        false
+    }
+
     /// Returns the vertical friction used by `travelInAir`.
     fn air_travel_vertical_friction(&self, _horizontal_friction: f32) -> f32 {
-        // TODO: FlyingAnimal uses horizontal friction here once animal types exist.
-        0.98
+        if self.omnidirectional_air_mover() {
+            // Vanilla `airDrag`: the 0.91 air friction with the drag modifier.
+            self.get_air_drag() as f32
+        } else {
+            0.98
+        }
     }
 
     /// Clamps movement while on a climbable block: caps horizontal and

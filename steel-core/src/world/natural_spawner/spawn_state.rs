@@ -7,8 +7,14 @@ use steel_registry::entity_type::{EntityTypeRef, MobCategory};
 use steel_utils::{BlockPos, ChunkPos, SectionPos};
 use uuid::Uuid;
 
-use crate::entity::Entity as _;
+use rayon::iter::{
+    IndexedParallelIterator as _, IntoParallelRefIterator as _, ParallelIterator as _,
+};
+
+use crate::chunk::gameplay_chunk_lookup_cache::GameplayChunkLookupCacheScope;
+use crate::entity::{Entity as _, SharedEntity};
 use crate::world::World;
+use crate::world::tick_pool::{TICK_POOL_MIN_SPLIT, install_on_tick_pool};
 
 /// Vanilla `NaturalSpawner.MAGIC_NUMBER`: the 17×17 chunk area a cap is defined for.
 const MAGIC_NUMBER: i32 = 17 * 17;
@@ -70,8 +76,12 @@ pub(crate) struct LocalMobCapCalculator {
 impl LocalMobCapCalculator {
     /// Vanilla `ChunkMap.getPlayersCloseForSpawning`: non-spectators within
     /// 128 blocks (horizontal) of the chunk center.
-    fn players_near(&mut self, world: &World, pos: ChunkPos) -> &[Uuid] {
-        self.players_near_chunk.entry(pos).or_insert_with(|| {
+    fn players_near<'a>(
+        players_near_chunk: &'a mut FxHashMap<ChunkPos, Vec<Uuid>>,
+        world: &World,
+        pos: ChunkPos,
+    ) -> &'a [Uuid] {
+        players_near_chunk.entry(pos).or_insert_with(|| {
             let center_x = f64::from(pos.0.x * 16 + 8);
             let center_z = f64::from(pos.0.y * 16 + 8);
             let mut players = Vec::new();
@@ -91,11 +101,11 @@ impl LocalMobCapCalculator {
     }
 
     pub(crate) fn add_mob(&mut self, world: &World, pos: ChunkPos, category: MobCategory) {
-        let players = self.players_near(world, pos).to_vec();
+        let players = Self::players_near(&mut self.players_near_chunk, world, pos);
         for player in players {
             *self
                 .player_mob_counts
-                .entry(player)
+                .entry(*player)
                 .or_default()
                 .entry(category)
                 .or_insert(0) += 1;
@@ -109,7 +119,7 @@ impl LocalMobCapCalculator {
         category: MobCategory,
         pos: ChunkPos,
     ) -> bool {
-        let players = self.players_near(world, pos).to_vec();
+        let players = Self::players_near(&mut self.players_near_chunk, world, pos);
         players.iter().any(|player| {
             self.player_mob_counts.get(player).is_none_or(|counts| {
                 counts.get(&category).copied().unwrap_or(0) < category.max_instances_per_chunk()
@@ -118,13 +128,52 @@ impl LocalMobCapCalculator {
     }
 }
 
+/// What one entity adds to `createState`, read without touching the shared state.
+struct MobContribution {
+    pos: BlockPos,
+    chunk_pos: ChunkPos,
+    category: MobCategory,
+    charge: Option<f64>,
+    is_mob: bool,
+}
+
+impl MobContribution {
+    /// `None` when `createState` skips the entity: persistent mobs, `Misc`
+    /// entities, and entities outside a loaded full chunk.
+    fn of(world: &World, entity: &SharedEntity) -> Option<Self> {
+        let mob = entity.as_mob();
+        if mob.is_some_and(|mob| mob.is_persistence_required() || mob.requires_custom_persistence())
+        {
+            return None;
+        }
+        let entity_type = entity.entity_type();
+        let category = entity_type.mob_category;
+        if category == MobCategory::Misc {
+            return None;
+        }
+        let pos = entity.block_position();
+        let chunk_pos = ChunkPos::new(
+            SectionPos::block_to_section_coord(pos.x()),
+            SectionPos::block_to_section_coord(pos.z()),
+        );
+        world.chunk_map.with_full_chunk(chunk_pos, |_| ())?;
+        Some(Self {
+            pos,
+            chunk_pos,
+            category,
+            charge: spawn_charge(world, entity_type, pos),
+            is_mob: mob.is_some(),
+        })
+    }
+}
+
 /// Vanilla `NaturalSpawner.SpawnState`.
 #[derive(Debug)]
 pub(crate) struct SpawnState {
     spawnable_chunk_count: i32,
-    mob_category_counts: FxHashMap<MobCategory, i32>,
-    spawn_potential: PotentialCalculator,
-    local_mob_cap_calculator: LocalMobCapCalculator,
+    pub(super) mob_category_counts: FxHashMap<MobCategory, i32>,
+    pub(super) spawn_potential: PotentialCalculator,
+    pub(super) local_mob_cap_calculator: LocalMobCapCalculator,
     last_checked: Option<(BlockPos, EntityTypeRef, f64)>,
 }
 
@@ -132,36 +181,38 @@ impl SpawnState {
     /// Vanilla `NaturalSpawner.createState`: counts every non-persistent mob in
     /// a loaded full chunk, feeding the global caps, local caps and charges.
     pub(crate) fn create(world: &World, spawnable_chunk_count: usize) -> Self {
+        let entities = world.entity_manager.get_accessible_entities();
+        // The per-entity lookups (owning chunk, biome charge) dominate on busy worlds and only
+        // read the world, so they run on the tick pool. Rayon's `collect` keeps entity order,
+        // so charges are pushed, and later summed, in the same order as a sequential pass.
+        let contributions: Vec<MobContribution> = install_on_tick_pool(|| {
+            entities
+                .par_iter()
+                .with_min_len(TICK_POOL_MIN_SPLIT)
+                .map_init(
+                    || GameplayChunkLookupCacheScope::enter(&world.chunk_map),
+                    |_, entity| MobContribution::of(world, entity),
+                )
+                .flatten_iter()
+                .collect()
+        });
+
         let mut state = Self::empty(i32::try_from(spawnable_chunk_count).unwrap_or(i32::MAX));
-        for entity in world.entity_manager.get_accessible_entities() {
-            let mob = entity.as_mob();
-            if mob.is_some_and(|mob| {
-                mob.is_persistence_required() || mob.requires_custom_persistence()
-            }) {
-                continue;
+        for contribution in contributions {
+            if let Some(charge) = contribution.charge {
+                state.spawn_potential.add_charge(contribution.pos, charge);
             }
-            let entity_type = entity.entity_type();
-            let category = entity_type.mob_category;
-            if category == MobCategory::Misc {
-                continue;
+            if contribution.is_mob {
+                state.local_mob_cap_calculator.add_mob(
+                    world,
+                    contribution.chunk_pos,
+                    contribution.category,
+                );
             }
-            let pos = entity.block_position();
-            let chunk_pos = ChunkPos::new(
-                SectionPos::block_to_section_coord(pos.x()),
-                SectionPos::block_to_section_coord(pos.z()),
-            );
-            if world.chunk_map.with_full_chunk(chunk_pos, |_| ()).is_none() {
-                continue;
-            }
-            if let Some(charge) = spawn_charge(world, entity_type, pos) {
-                state.spawn_potential.add_charge(pos, charge);
-            }
-            if mob.is_some() {
-                state
-                    .local_mob_cap_calculator
-                    .add_mob(world, chunk_pos, category);
-            }
-            *state.mob_category_counts.entry(category).or_insert(0) += 1;
+            *state
+                .mob_category_counts
+                .entry(contribution.category)
+                .or_insert(0) += 1;
         }
         state
     }

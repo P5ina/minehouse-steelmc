@@ -19,12 +19,14 @@ use steel_registry::level_events;
 use steel_registry::vanilla_items;
 
 use crate::behavior::FLUID_BEHAVIORS;
-use crate::behavior::block::{BlockBehavior, PickupResult};
+use crate::behavior::block::{BlockBehavior, BlockCollisionContext, PickupResult};
 use crate::behavior::context::BlockPlaceContext;
 use crate::entity::ai::path::PathComputationType;
 use crate::fluid::{FluidStateExt, is_lava_fluid};
 use crate::player::Player;
+use crate::world::LevelReader;
 use crate::world::{ConditionalBlockSetResult, ScheduledTickAccess, World};
+use steel_registry::blocks::shapes::VoxelShape;
 
 use super::BubbleColumnBlock;
 
@@ -130,6 +132,45 @@ impl BlockBehavior for LiquidBlock {
 
     fn get_state_for_placement(&self, _context: &BlockPlaceContext<'_>) -> Option<BlockStateId> {
         Some(self.block.default_state())
+    }
+
+    /// Vanilla `LiquidBlock.getCollisionShape`: a source liquid offers a
+    /// mob that can stand on it (strider on lava) its liquid collision shape
+    /// while the mob is above it and the same liquid is not on top.
+    fn get_collision_shape(
+        &self,
+        state: BlockStateId,
+        world: &dyn LevelReader,
+        pos: BlockPos,
+        context: BlockCollisionContext,
+    ) -> VoxelShape {
+        if state.try_get_value(LEVEL) != Some(0) {
+            return VoxelShape::EMPTY;
+        }
+        let Some(liquid_stand) = context.liquid_stand() else {
+            return VoxelShape::EMPTY;
+        };
+        let is_lava = self.fluid.has_tag(&FluidTag::LAVA);
+        let can_stand = if is_lava {
+            liquid_stand.on_lava
+        } else {
+            liquid_stand.on_water
+        };
+        let fluid_tag = if is_lava {
+            FluidTag::LAVA
+        } else {
+            FluidTag::WATER
+        };
+        let same_fluid_above = world
+            .get_block_state(pos.above())
+            .get_fluid_state()
+            .fluid_id
+            .has_tag(&fluid_tag);
+        if can_stand && context.is_above(liquid_stand.shape, pos, true) && !same_fluid_above {
+            liquid_stand.shape
+        } else {
+            VoxelShape::EMPTY
+        }
     }
 
     fn is_pathfindable(

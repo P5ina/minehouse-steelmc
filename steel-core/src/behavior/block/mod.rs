@@ -116,6 +116,7 @@ pub(crate) fn try_drop_experience(
 
 mod context;
 
+pub use context::LiquidStand;
 pub use context::{
     BlockCollisionBoxes, BlockCollisionContext, BlockEntityCreation, BlockLootContext,
     EntityFallDamage, EntityFallOnContext, EntityFallOnFacts, EntityLandingContext, Fallable,

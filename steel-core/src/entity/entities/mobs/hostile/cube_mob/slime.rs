@@ -216,7 +216,7 @@ impl Entity for SlimeEntity {
 
     fn set_removed(&self, reason: RemovalReason) {
         self.split_on_death();
-        self.base().set_removed(reason);
+        self.default_set_removed(reason);
     }
 
     fn push_entity(&self, entity: &dyn Entity) {
