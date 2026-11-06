@@ -63,6 +63,7 @@ pub(crate) use leap_at_target::LeapAtTargetGoal;
 pub(crate) use long_distance_patrol::LongDistancePatrolGoal;
 pub(crate) use look_at_player::LookAtPlayerGoal;
 pub(crate) use melee_attack::MeleeAttackGoal;
+pub(crate) use move_towards_restriction::MoveTowardsRestrictionGoal;
 pub(crate) use move_towards_target::MoveTowardsTargetGoal;
 pub(crate) use nearest_attackable_target::NearestAttackableTargetGoal;
 pub(crate) use panic_goal::PanicGoal;
