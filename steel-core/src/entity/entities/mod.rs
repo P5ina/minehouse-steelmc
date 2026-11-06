@@ -26,8 +26,8 @@ pub use objects::items::{ExperienceOrbEntity, FallingBlockEntity, ItemEntity};
 pub use objects::projectiles::{
     ArrowEntity, EnderPearlEntity, EvokerFangsEntity, EyeOfEnderEntity, Fireball,
     FireworkRocketEntity, FishingHookEntity, LargeFireballEntity, LingeringPotionEntity,
-    SmallFireballEntity, SnowballEntity, SpectralArrowEntity, SplashPotionEntity, ThrownEggEntity,
-    ThrownTridentEntity,
+    LlamaSpitEntity, SmallFireballEntity, SnowballEntity, SpectralArrowEntity, SplashPotionEntity,
+    ThrownEggEntity, ThrownTridentEntity,
 };
 pub use objects::technical::{InteractionEntity, MarkerEntity};
 pub use objects::vehicles::ChestMinecartEntity;

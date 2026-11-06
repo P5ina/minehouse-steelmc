@@ -7,7 +7,7 @@ use steel_math::{DEGREE_360, wrap_degrees};
 use steel_registry::data_components::vanilla_components::{CUSTOM_DATA, CUSTOM_NAME, ENTITY_DATA};
 use steel_registry::entity_data::EntityPose;
 use steel_registry::entity_type::EntityTypeRef;
-use steel_registry::entity_variant::HorseVariant;
+use steel_registry::entity_variant::{HorseVariant, LlamaVariant};
 use steel_registry::item_stack::ItemStack;
 use steel_registry::mob_effect::MobEffectRef;
 use steel_registry::wolf_variant::WolfVariantRef;
@@ -472,6 +472,8 @@ pub enum SpawnGroupData {
     Zombie(ZombieGroupData),
     /// Vanilla `Horse.HorseGroupData`: the coat a horse herd shares.
     Horse(AgeableMobGroupData, HorseVariant),
+    /// Vanilla `Llama.LlamaGroupData`: the coat a llama herd shares.
+    Llama(AgeableMobGroupData, LlamaVariant),
     /// Vanilla `AbstractSchoolingFish.SchoolSpawnGroupData`.
     School(SchoolSpawnGroupData),
     /// Vanilla `Wolf.WolfPackData`: the variant every wolf of a pack shares.

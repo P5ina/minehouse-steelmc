@@ -303,3 +303,204 @@ mod skeleton_trap {
         }
     }
 }
+
+mod llama {
+    use std::sync::{Arc, Weak};
+
+    use glam::DVec3;
+    use steel_registry::entity_variant::LlamaVariant;
+    use steel_registry::{init_vanilla_registry, vanilla_blocks, vanilla_entities};
+    use steel_utils::types::UpdateFlags;
+    use steel_utils::{BlockPos, ChunkPos};
+
+    use super::super::chested::AbstractChestedHorse as _;
+    use super::super::{AbstractHorse as _, HorseEntity, Llama, LlamaEntity, TraderLlamaEntity};
+    use super::round_trip;
+    use crate::behavior::init_behaviors;
+    use crate::entity::entities::{LlamaSpitEntity, PigEntity};
+    use crate::entity::{
+        Animal, Entity, Projectile as _, SharedEntity, init_entities, next_entity_id,
+    };
+    use crate::inventory::container::Container as _;
+    use crate::test_support::{fresh_test_world, insert_ready_full_chunk};
+
+    fn llama(id: i32) -> LlamaEntity {
+        LlamaEntity::new(&vanilla_entities::LLAMA, id, DVec3::ZERO, Weak::new())
+    }
+
+    #[test]
+    fn llama_persists_strength_coat_and_chest() {
+        init_vanilla_registry();
+        let llama_entity = llama(1);
+        llama_entity.set_strength(4);
+        llama_entity.set_variant(LlamaVariant::Brown);
+        llama_entity.set_chest(true);
+
+        let loaded = llama(2);
+        round_trip(
+            |nbt| llama_entity.save_additional(nbt),
+            |nbt| loaded.load_additional(nbt),
+        );
+
+        assert_eq!(loaded.strength(), 4);
+        assert_eq!(loaded.variant(), LlamaVariant::Brown);
+        assert!(loaded.has_chest());
+        assert_eq!(loaded.inventory_columns(), 4);
+        assert_eq!(loaded.horse_base().inventory().lock().items().len(), 12);
+    }
+
+    #[test]
+    fn strength_is_clamped_like_vanilla() {
+        init_vanilla_registry();
+        let llama_entity = llama(1);
+        llama_entity.set_strength(9);
+        assert_eq!(llama_entity.strength(), 5);
+        llama_entity.set_strength(0);
+        assert_eq!(llama_entity.strength(), 1);
+        assert_eq!(llama_entity.llama_strength(), Some(1));
+    }
+
+    #[test]
+    fn llamas_mate_with_trader_llamas_but_not_horses() {
+        init_vanilla_registry();
+        let llama_entity = llama(1);
+        let trader =
+            TraderLlamaEntity::new(&vanilla_entities::TRADER_LLAMA, 2, DVec3::ZERO, Weak::new());
+        let horse = HorseEntity::new(&vanilla_entities::HORSE, 3, DVec3::ZERO, Weak::new());
+        for parent in [&llama_entity as &dyn Llama, &trader] {
+            parent.set_tamed(true);
+            parent.set_in_love(None);
+        }
+        horse.set_tamed(true);
+        horse.set_in_love(None);
+
+        assert!(Animal::can_mate(&llama_entity, &trader));
+        assert!(!Animal::can_mate(&llama_entity, &llama_entity));
+        assert!(!Animal::can_mate(&llama_entity, &horse));
+    }
+
+    #[test]
+    fn caravan_links_head_and_tail() {
+        init_vanilla_registry();
+        let head: SharedEntity = Arc::new(llama(1));
+        let tail: SharedEntity = Arc::new(llama(2));
+        let (Some(head_llama), Some(tail_llama)) = (head.as_llama(), tail.as_llama()) else {
+            panic!("both entities are llamas");
+        };
+
+        tail_llama.join_caravan(&tail, &head);
+        assert!(tail_llama.in_caravan());
+        assert!(head_llama.has_caravan_tail());
+        assert!(
+            tail_llama
+                .caravan_head()
+                .is_some_and(|following| following.id() == head.id())
+        );
+
+        tail_llama.leave_caravan();
+        assert!(!tail_llama.in_caravan());
+        assert!(!head_llama.has_caravan_tail());
+    }
+
+    #[test]
+    fn trader_llama_despawns_when_its_delay_runs_out() {
+        init_vanilla_registry();
+        let trader =
+            TraderLlamaEntity::new(&vanilla_entities::TRADER_LLAMA, 1, DVec3::ZERO, Weak::new());
+        trader.set_despawn_delay(2);
+        trader.llama_ai_step_extra();
+        assert!(!trader.is_removed());
+        trader.llama_ai_step_extra();
+        assert!(trader.is_removed());
+
+        let tamed =
+            TraderLlamaEntity::new(&vanilla_entities::TRADER_LLAMA, 2, DVec3::ZERO, Weak::new());
+        tamed.set_tamed(true);
+        tamed.set_despawn_delay(1);
+        tamed.llama_ai_step_extra();
+        assert!(!tamed.is_removed());
+    }
+
+    #[test]
+    fn spit_spawns_in_front_of_the_mouth() {
+        let spawn = LlamaSpitEntity::spawn_position(DVec3::new(0.0, 64.0, 0.0), 0.9, 65.7, 0.0);
+        assert!((spawn.x - 0.0).abs() < 1e-9);
+        assert!((spawn.y - (65.7 - f64::from(0.1_f32))).abs() < 1e-9);
+        assert!((spawn.z - 0.95).abs() < 1e-6);
+    }
+
+    #[test]
+    fn spit_hurts_for_one_point_and_credits_the_llama() {
+        init_vanilla_registry();
+        init_behaviors();
+        init_entities();
+        let fixture = fresh_test_world("llama_spit_hit");
+        let world = &fixture.world;
+        insert_ready_full_chunk(world, ChunkPos::new(0, 0));
+        let owner: SharedEntity = Arc::new(LlamaEntity::new(
+            &vanilla_entities::LLAMA,
+            next_entity_id(),
+            DVec3::new(4.5, 65.0, 4.5),
+            Arc::downgrade(world),
+        ));
+        let pig: SharedEntity = Arc::new(PigEntity::new(
+            &vanilla_entities::PIG,
+            next_entity_id(),
+            DVec3::new(8.5, 65.0, 8.5),
+            Arc::downgrade(world),
+        ));
+        for entity in [&owner, &pig] {
+            world
+                .try_add_entity(Arc::clone(entity))
+                .expect("entity should attach to the loaded chunk");
+        }
+        let spit = Arc::new(LlamaSpitEntity::new(
+            &vanilla_entities::LLAMA_SPIT,
+            next_entity_id(),
+            DVec3::new(8.5, 65.5, 8.5),
+            Arc::downgrade(world),
+        ));
+        spit.set_owner_entity(Some(&owner));
+        let Some(pig_living) = pig.as_living_entity() else {
+            panic!("pigs are living entities");
+        };
+        let health = pig_living.get_health();
+
+        Arc::clone(&spit).on_hit_entity(&pig, pig.position());
+
+        assert!((health - pig_living.get_health() - 1.0).abs() < 1e-6);
+        assert!(
+            pig_living
+                .last_hurt_by_mob()
+                .is_some_and(|attacker| attacker.id() == owner.id())
+        );
+    }
+
+    #[test]
+    fn spit_inside_a_block_is_discarded() {
+        init_vanilla_registry();
+        init_behaviors();
+        init_entities();
+        let fixture = fresh_test_world("llama_spit_block");
+        let world = &fixture.world;
+        insert_ready_full_chunk(world, ChunkPos::new(0, 0));
+        world.set_block(
+            BlockPos::new(8, 70, 8),
+            vanilla_blocks::STONE.default_state(),
+            UpdateFlags::UPDATE_ALL,
+        );
+        let spit: Arc<LlamaSpitEntity> = Arc::new(LlamaSpitEntity::new(
+            &vanilla_entities::LLAMA_SPIT,
+            next_entity_id(),
+            DVec3::new(8.5, 70.4, 8.5),
+            Arc::downgrade(world),
+        ));
+        world
+            .try_add_entity(Arc::<LlamaSpitEntity>::clone(&spit))
+            .expect("spit should attach to the loaded chunk");
+
+        Arc::clone(&spit).tick();
+
+        assert!(spit.is_removed());
+    }
+}

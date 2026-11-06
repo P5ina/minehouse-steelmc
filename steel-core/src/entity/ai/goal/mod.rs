@@ -19,6 +19,7 @@ mod hurt_by_target;
 mod illusioner_spells;
 mod interact;
 mod leap_at_target;
+mod llama_goals;
 mod long_distance_patrol;
 mod look_at_player;
 mod melee_attack;
@@ -71,6 +72,10 @@ pub(crate) use follow_player_ridden_entity::FollowPlayerRiddenEntityGoal;
 pub(crate) use hurt_by_target::HurtByTargetGoal;
 pub(crate) use illusioner_spells::{BlindnessSpell, MirrorSpell};
 pub(crate) use leap_at_target::LeapAtTargetGoal;
+pub(crate) use llama_goals::{
+    LlamaFollowCaravanGoal, TraderLlamaDefendWanderingTraderGoal, is_leashed,
+    wandering_trader_holder,
+};
 pub(crate) use long_distance_patrol::LongDistancePatrolGoal;
 pub(crate) use look_at_player::LookAtPlayerGoal;
 pub(crate) use melee_attack::MeleeAttackGoal;
