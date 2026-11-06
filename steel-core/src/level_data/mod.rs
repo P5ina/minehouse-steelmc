@@ -318,6 +318,11 @@ impl LevelData {
         }
     }
 
+    /// Sets the game time written to `level.toml`; a domain default world reads it on load.
+    pub(crate) const fn set_saved_game_time(&mut self, ticks: i64) {
+        self.game_time = Some(ticks);
+    }
+
     /// Verifies saved generator metadata against the current config.
     ///
     /// Returns whether missing metadata was adopted and should be saved.
