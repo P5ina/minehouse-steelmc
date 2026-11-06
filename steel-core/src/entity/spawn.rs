@@ -7,6 +7,7 @@ use steel_math::{DEGREE_360, wrap_degrees};
 use steel_registry::data_components::vanilla_components::{CUSTOM_DATA, CUSTOM_NAME, ENTITY_DATA};
 use steel_registry::entity_data::EntityPose;
 use steel_registry::entity_type::EntityTypeRef;
+use steel_registry::entity_variant::HorseVariant;
 use steel_registry::item_stack::ItemStack;
 use steel_registry::mob_effect::MobEffectRef;
 use steel_registry::{REGISTRY, RegistryExt};
@@ -468,6 +469,8 @@ pub enum SpawnGroupData {
     /// Vanilla `Zombie.ZombieGroupData`: whether the group spawns as babies and
     /// may ride chickens.
     Zombie(ZombieGroupData),
+    /// Vanilla `Horse.HorseGroupData`: the coat a horse herd shares.
+    Horse(AgeableMobGroupData, HorseVariant),
     /// Vanilla `AbstractSchoolingFish.SchoolSpawnGroupData`.
     School(SchoolSpawnGroupData),
 }
