@@ -5,6 +5,7 @@ pub mod objects;
 
 pub use mobs::ambient::BatEntity;
 pub use mobs::golems::{IronGolemEntity, SnowGolemEntity};
+pub use mobs::hostile::EndermanEntity;
 pub use mobs::hostile::{
     BlazeEntity, BoggedEntity, CaveSpiderEntity, CreeperEntity, EndermiteEntity, GhastEntity,
     GiantEntity, HuskEntity, MagmaCubeEntity, ParchedEntity, PhantomEntity, SilverfishEntity,

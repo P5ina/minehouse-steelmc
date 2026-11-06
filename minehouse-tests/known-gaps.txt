@@ -13,7 +13,6 @@ minehouse_mob_cat
 minehouse_mob_creaking
 minehouse_mob_drowned
 minehouse_mob_ender_dragon
-minehouse_mob_enderman
 minehouse_mob_evoker
 minehouse_mob_fox
 minehouse_mob_frog
