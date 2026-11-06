@@ -1728,6 +1728,12 @@ pub trait Entity: EntityEventSource + ErasedType + Send + Sync + 'static {
         try_as_dyn::<Self, dyn RangedAttackMob>(self)
     }
 
+    /// Returns the `CrossbowAttackMob` capability, equivalent to vanilla's
+    /// `instanceof CrossbowAttackMob`.
+    fn as_crossbow_attack_mob(&self) -> Option<&dyn CrossbowAttackMob> {
+        try_as_dyn::<Self, dyn CrossbowAttackMob>(self)
+    }
+
     /// Returns true for entities that implement vanilla ageable-mob behavior.
     fn is_ageable_mob(&self) -> bool {
         self.as_ageable_mob().is_some()

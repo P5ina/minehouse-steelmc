@@ -8,6 +8,7 @@ use crate::behavior::{BLOCK_BEHAVIORS, InventoryTickContext, MOB_EFFECT_BEHAVIOR
 use crate::entity::ai::brain::Memories;
 use crate::entity::consume_effect::apply_consume_effect;
 use crate::entity::damage::RecentDamageSource;
+use crate::entity::living_item_use;
 use crate::entity::pushing::EntityPush;
 
 const BED_SLEEP_POSITION_OFFSET: f64 = 0.125;
@@ -1672,7 +1673,7 @@ pub trait LivingEntity: Entity {
 
     /// Checks if the entity is currently using an item.
     fn is_using_item(&self) -> bool {
-        false
+        self.living_base().is_using_item()
     }
 
     /// Checks if the entity is blocking with a shield or similar item.
@@ -2040,6 +2041,13 @@ pub trait LivingEntity: Entity {
     /// The default `Entity::tick` dispatches living entities here.
     fn tick_living_entity(&self, entity: &SharedEntity) {
         self.default_tick();
+        // Vanilla `LivingEntity.tick` -> `updatingUsingItem`; players run
+        // their own inventory-backed version.
+        if self.as_player().is_none()
+            && let Some(living) = entity.as_living_entity()
+        {
+            living_item_use::updating_using_item(living, entity);
+        }
         self.living_base().decrement_invulnerable_time();
 
         if self.is_dead_or_dying() {

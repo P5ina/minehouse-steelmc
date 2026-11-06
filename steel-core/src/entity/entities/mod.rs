@@ -10,7 +10,7 @@ pub use mobs::hostile::{
     SlimeEntity, SpiderEntity, VexEntity, ZombieEntity, ZombieGroupData,
 };
 pub use mobs::passive::*;
-pub use mobs::raiders::{EvokerEntity, VindicatorEntity, WitchEntity};
+pub use mobs::raiders::{EvokerEntity, PillagerEntity, VindicatorEntity, WitchEntity};
 pub use objects::display_ui::{BlockDisplayEntity, ItemFrameEntity, LeashFenceKnotEntity};
 pub use objects::effects::{AreaEffectCloudEntity, LightningBoltEntity};
 pub use objects::explosives::{EndCrystalEntity, PrimedTntEntity};

@@ -791,6 +791,12 @@ pub trait Mob: LivingEntity + Leashable {
     /// source stack by however much was equipped, only removing the item entity
     /// once nothing is left.
     fn pick_up_item(&self, world: &Arc<World>, item_entity: &ItemEntity) {
+        self.default_pick_up_item(world, item_entity);
+    }
+
+    /// The base [`Mob::pick_up_item`]; overrides call this for vanilla
+    /// `super.pickUpItem(...)`.
+    fn default_pick_up_item(&self, world: &Arc<World>, item_entity: &ItemEntity) {
         let equipped = self.equip_item_if_possible(item_entity.get_item());
         if equipped.is_empty() {
             return;
