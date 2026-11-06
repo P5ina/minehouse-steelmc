@@ -13,7 +13,7 @@ use crate::behavior::{
 use crate::entity::{Entity, EntityCollisionCandidates};
 use crate::physics::shapes::join_is_not_empty;
 use crate::physics::{COLLISION_EPSILON, block_state_may_expand_collision_cursor};
-use crate::world::{BlockRegionBounds, World};
+use crate::world::{BlockRegionBounds, LevelReader, World};
 
 const BLOCK_COLLISION_EPSILON: f64 = 1.0e-7;
 const ENTITY_COLLISION_EPSILON: f64 = 1.0e-7;
@@ -686,6 +686,38 @@ pub fn has_collision(world: &impl CollisionWorld, aabb: WorldAabb) -> bool {
         &aabb.deflate(COLLISION_EPSILON),
         BlockCollisionContext::empty(),
     )
+}
+
+/// Vanilla `CollisionGetter.noCollision(aabb)` negated, for level surfaces
+/// that hold no entities and no world border, such as `WorldGenRegion`.
+#[must_use]
+pub(crate) fn level_has_block_collision(level: &dyn LevelReader, aabb: WorldAabb) -> bool {
+    let aabb = aabb.deflate(COLLISION_EPSILON);
+    BlockCollisionSearchBounds::from_aabb(&aabb)
+        .try_for_each_candidate(|block_pos, cursor_type| {
+            let block_state = level.get_block_state(block_pos);
+            if block_state.is_air() || !should_resolve_collision_shape(block_state, cursor_type) {
+                return ControlFlow::Continue(());
+            }
+            let boxes = BLOCK_BEHAVIORS
+                .get_behavior(block_state.get_block())
+                .get_collision_boxes(
+                    block_state,
+                    level,
+                    block_pos,
+                    BlockCollisionContext::empty(),
+                );
+            if boxes
+                .iter()
+                .map(|shape| translate_collision_shape(shape, block_pos))
+                .any(|shape| aabb.intersects(shape))
+            {
+                ControlFlow::Break(())
+            } else {
+                ControlFlow::Continue(())
+            }
+        })
+        .is_break()
 }
 
 /// Returns whether `new_aabb` collides with shapes that `old_aabb` did not.

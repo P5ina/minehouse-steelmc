@@ -780,6 +780,10 @@ impl ServerLevelAccessor for World {
         self.dimension_type
     }
 
+    fn is_block_within_world_border(&self, pos: BlockPos) -> bool {
+        Self::is_block_within_world_border(self, pos)
+    }
+
     fn is_unobstructed_by_entities(&self, entity: &dyn Entity) -> bool {
         let aabb = entity.bounding_box();
         !self.has_entity_in_aabb_matching(&aabb, |other| {
@@ -867,6 +871,10 @@ impl ServerLevelAccessor for Arc<World> {
 
     fn dimension_type(&self) -> DimensionTypeRef {
         self.dimension_type
+    }
+
+    fn is_block_within_world_border(&self, pos: BlockPos) -> bool {
+        World::is_block_within_world_border(self, pos)
     }
 
     fn is_unobstructed_by_entities(&self, entity: &dyn Entity) -> bool {
