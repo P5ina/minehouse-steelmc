@@ -87,11 +87,5 @@ minehouse_mob_zombie_nautilus
 minehouse_mob_zombie_villager
 minehouse_mob_zombified_piglin
 
-# mobs: two cows / chickens in love (InLove from summon) make no baby in 300 ticks
-minehouse_mob_cow
-minehouse_mob_chicken
-# mobs: shearing needs the dispenser
-minehouse_mob_sheep
-minehouse_mob_mooshroom
 # mobs: built with a dispenser
 minehouse_mob_copper_golem

@@ -664,8 +664,8 @@
         3.0
       ],
       "PersistenceRequired": "1b",
-      "InLove": "600",
-      "Age": "0",
+      "InLove": 600,
+      "Age": 0,
       "Tame": "1b"
     },
     {
@@ -679,8 +679,8 @@
         3.0
       ],
       "PersistenceRequired": "1b",
-      "InLove": "600",
-      "Age": "0",
+      "InLove": 600,
+      "Age": 0,
       "Tame": "1b"
     },
     {

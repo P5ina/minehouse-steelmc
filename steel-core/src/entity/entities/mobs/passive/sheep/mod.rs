@@ -33,8 +33,8 @@ use crate::entity::living_entity::shearing_loot_items_with_rng;
 use crate::entity::{
     AgeableMob, AgeableMobBase, Animal, AnimalBase, DefaultEntityPush, Entity, EntityBase,
     EntityBaseLoad, EntityPose, EntitySpawnReason, EntitySyncedData, LivingEntity,
-    LivingEntityBase, Mob, MobBase, PathfinderMob, SharedEntity, SpawnGroupData, SpawnRule,
-    sync_dirty_mob_effects,
+    LivingEntityBase, Mob, MobBase, PathfinderMob, SharedEntity, Shearable, SpawnGroupData,
+    SpawnRule, sync_dirty_mob_effects,
 };
 use crate::inventory::recipe_manager;
 use crate::physics::MoveResult;
@@ -196,35 +196,6 @@ impl SheepEntity {
         entity_data.wool.set(next);
     }
 
-    /// Returns whether this sheep can currently be sheared: not already
-    /// sheared and not a baby.
-    #[must_use]
-    pub fn ready_for_shearing(&self) -> bool {
-        !self.is_sheared() && !AgeableMob::is_baby(self)
-    }
-
-    /// Runs vanilla `Sheep.shear`: plays the shear sound, drops the shearing loot
-    /// one item at a time with the vanilla jitter, and marks the sheep as sheared.
-    pub fn shear(&self, world: &World, tool: &ItemStack) {
-        world.play_sound_at(
-            &sound_events::ENTITY_SHEEP_SHEAR,
-            SoundSource::Players,
-            self.position(),
-            1.0,
-            1.0,
-            None,
-        );
-
-        let mut rng = rand::rng();
-        for drop in
-            shearing_loot_items_with_rng(self, &vanilla_loot_tables::SHEARING_SHEEP, tool, &mut rng)
-        {
-            self.spawn_shearing_drop(&drop);
-        }
-
-        self.set_sheared(true);
-    }
-
     /// Drops one stack from shearing, spawning a count-1 item entity per count
     /// unit with the vanilla jitter (vanilla `Sheep.shear`'s spawn lambda).
     fn spawn_shearing_drop(&self, drop: &ItemStack) {
@@ -298,6 +269,34 @@ impl SheepEntity {
         }
 
         None
+    }
+}
+
+impl Shearable for SheepEntity {
+    fn ready_for_shearing(&self) -> bool {
+        !self.is_sheared() && !AgeableMob::is_baby(self)
+    }
+
+    /// Plays the shear sound, drops the shearing loot one item at a time with
+    /// the vanilla jitter, and marks the sheep as sheared.
+    fn shear(&self, world: &Arc<World>, source: SoundSource, tool: &ItemStack) {
+        world.play_sound_at(
+            &sound_events::ENTITY_SHEEP_SHEAR,
+            source,
+            self.position(),
+            1.0,
+            1.0,
+            None,
+        );
+
+        let mut rng = rand::rng();
+        for drop in
+            shearing_loot_items_with_rng(self, &vanilla_loot_tables::SHEARING_SHEEP, tool, &mut rng)
+        {
+            self.spawn_shearing_drop(&drop);
+        }
+
+        self.set_sheared(true);
     }
 }
 
@@ -526,7 +525,7 @@ impl Mob for SheepEntity {
             let Some(world) = self.level() else {
                 return InteractionResult::Consume;
             };
-            self.shear(world.as_ref(), &item_stack);
+            self.shear(&world, SoundSource::Players, &item_stack);
             // Vanilla `Sheep.mobInteract` sources the shear game event to the player.
             self.game_event_with_source_entity(&vanilla_game_events::SHEAR, Some(player));
             player

@@ -124,8 +124,8 @@ def specs():
     for mob, nbt in breeders.items():
         s = pen(mob, f"Two {mob}s in love make a baby.", roof=mob == "bee", extra=2 if mob == "panda" else 0)
         cx, _, cz = s.center
-        s.summon("a", mob, [cx - 0.6, 1.0, cz], InLove="600", Age="0", **nbt)
-        s.summon("b", mob, [cx + 0.6, 1.0, cz], InLove="600", Age="0", **nbt)
+        s.summon("a", mob, [cx - 0.6, 1.0, cz], InLove=600, Age=0, **nbt)
+        s.summon("b", mob, [cx + 0.6, 1.0, cz], InLove=600, Age=0, **nbt)
         if mob == "panda":
             # pandas only breed with bamboo nearby: a row along the back wall
             for x in range(1, s.w + 1):
@@ -166,7 +166,7 @@ def specs():
 
     s = pen("tadpole", "A tadpole about to grow up turns into a frog.")
     s.fill(b("water"), 2)
-    s.summon("mob", "tadpole", s.center, Age="23980")
+    s.summon("mob", "tadpole", s.center, Age=23980)
     s.expect([{"is": "minecraft:frog"}], 80)
     yield s
 
@@ -201,7 +201,7 @@ def specs():
         ("pillager", "villager", {"equipment": '{mainhand: {id: "minecraft:crossbow"}}'}, {"NoAI": "1b"}, False),
         ("ravager", "villager", {}, {"NoAI": "1b"}, False),
         ("guardian", "squid", {}, {}, True),
-        ("frog", "slime", {}, {"Size": "0"}, False),
+        ("frog", "slime", {}, {"Size": 0}, False),
         ("wolf", "sheep", {}, {}, False),
         ("cat", "rabbit", {}, {}, False),
     ]:
