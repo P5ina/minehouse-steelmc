@@ -83,6 +83,12 @@ impl MoveControl {
         }
     }
 
+    /// Vanilla `CubeMobMoveControl.setWantedMovement`: moves on without a target position.
+    pub const fn set_wanted_movement(&mut self, speed_modifier: f64) {
+        self.speed_modifier = speed_modifier;
+        self.operation = MoveControlOperation::MoveTo;
+    }
+
     pub const fn strafe(&mut self, forward: f32, right: f32) {
         self.operation = MoveControlOperation::Strafe;
         self.strafe_forward = forward;

@@ -8,6 +8,9 @@ use crate::world::World;
 const MIN_VISIBILITY_DISTANCE_FOR_INVISIBLE_TARGET: f64 = 2.0;
 
 pub(crate) type TargetingSelector = Arc<dyn Fn(&dyn LivingEntity, &World) -> bool + Send + Sync>;
+/// A selector that also sees the targeting mob, for vanilla lambdas capturing `this`.
+pub(crate) type TargeterSelector =
+    Arc<dyn Fn(&dyn LivingEntity, &dyn LivingEntity, &World) -> bool + Send + Sync>;
 
 #[derive(Clone)]
 pub(crate) struct TargetingConditions {
@@ -16,6 +19,7 @@ pub(crate) struct TargetingConditions {
     check_line_of_sight: bool,
     test_invisible: bool,
     selector: Option<TargetingSelector>,
+    targeter_selector: Option<TargeterSelector>,
 }
 
 impl TargetingConditions {
@@ -36,6 +40,7 @@ impl TargetingConditions {
             check_line_of_sight: true,
             test_invisible: true,
             selector: None,
+            targeter_selector: None,
         }
     }
 
@@ -66,6 +71,17 @@ impl TargetingConditions {
         self
     }
 
+    /// Adds a selector called with `(target, targeter, world)`. Without a
+    /// targeter it rejects every target.
+    #[must_use]
+    pub(crate) fn targeter_selector(
+        mut self,
+        selector: impl Fn(&dyn LivingEntity, &dyn LivingEntity, &World) -> bool + Send + Sync + 'static,
+    ) -> Self {
+        self.targeter_selector = Some(Arc::new(selector));
+        self
+    }
+
     #[must_use]
     pub(crate) fn test(
         &self,
@@ -81,6 +97,11 @@ impl TargetingConditions {
         }
         if let Some(selector) = &self.selector
             && !selector(target, world)
+        {
+            return false;
+        }
+        if let Some(selector) = &self.targeter_selector
+            && !targeter.is_some_and(|targeter| selector(target, targeter, world))
         {
             return false;
         }
