@@ -2,6 +2,7 @@
 //! `Mob.populateDefaultEquipmentEnchantments`: the random armor and
 //! enchantments a mob may spawn with.
 
+use steel_registry::data_components::vanilla_components::{ENCHANTMENTS, ItemEnchantments};
 use steel_registry::item_stack::ItemStack;
 use steel_registry::items::ItemRef;
 use steel_registry::vanilla_enchantment_tags::EnchantmentTag;
@@ -177,6 +178,23 @@ fn enchant_spawned_equipment<M: Mob + ?Sized>(
     if !item_stack.is_empty() && random.next_f32() < chance * difficulty.special_multiplier() {
         enchant_with_mob_spawn_equipment_provider(item_stack, random, difficulty);
     }
+}
+
+/// Vanilla `SkeletonTrapGoal.enchant`: clears the slot's enchantments, then
+/// always rolls the `mob_spawn_equipment` provider on it.
+pub(crate) fn reenchant_with_mob_spawn_equipment<M: Mob + ?Sized>(
+    mob: &M,
+    slot: EquipmentSlot,
+    random: &mut impl Random,
+    difficulty: DifficultyInstance,
+) {
+    let mut equipment = mob.living_base().equipment().lock();
+    let item_stack = equipment.get_mut(slot);
+    if item_stack.is_empty() {
+        return;
+    }
+    item_stack.set(ENCHANTMENTS, ItemEnchantments::empty());
+    enchant_with_mob_spawn_equipment_provider(item_stack, random, difficulty);
 }
 
 /// Vanilla `EnchantmentHelper.enchantItemFromProvider` with the

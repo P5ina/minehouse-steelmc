@@ -147,6 +147,12 @@ impl BlockRandomPositionGenerator {
         Self { value }
     }
 
+    /// Vanilla `Level.getBlockRandomPos(x, y, z, 15)`.
+    pub(crate) const fn next_pos(&mut self, min_x: i32, min_y: i32, min_z: i32) -> BlockPos {
+        let (x, y, z) = self.next_local();
+        BlockPos::new(min_x + x as i32, min_y + y as i32, min_z + z as i32)
+    }
+
     const fn next_local(&mut self) -> (usize, usize, usize) {
         self.value = self.value.wrapping_mul(3).wrapping_add(1_013_904_223);
         let value = self.value >> 2;

@@ -1,6 +1,7 @@
 use super::*;
 use crate::behavior::blocks::PowderSnowBlock;
 use std::sync::Arc;
+use steel_registry::items::Item;
 
 #[test]
 fn can_glide_using_matches_vanilla_component_gate() {
@@ -354,4 +355,55 @@ fn update_fall_flying_stops_when_glider_gate_fails() {
     entity.update_fall_flying();
 
     assert!(!entity.is_fall_flying());
+}
+
+fn enchanted(item: &'static Item, enchantment: &str, level: u32) -> ItemStack {
+    let mut stack = ItemStack::new(item);
+    stack.set_enchantments(
+        &[(Identifier::vanilla(enchantment.to_string()), level)],
+        false,
+    );
+    stack
+}
+
+#[test]
+fn enchantment_attribute_modifiers_follow_the_enchantment_slots() {
+    init_vanilla_registry();
+    let entity = LivingFluidTestEntity::new(0.0, 0.0, true);
+    let mining_efficiency = || {
+        entity
+            .attributes()
+            .lock()
+            .required_value(vanilla_attributes::MINING_EFFICIENCY)
+    };
+    let pickaxe = enchanted(&vanilla_items::DIAMOND_PICKAXE, "efficiency", 3);
+
+    entity.equip(EquipmentSlot::OffHand, pickaxe.clone());
+    LivingEntity::refresh_equipment_attribute_modifiers(&entity, EquipmentSlot::OffHand);
+    assert_f64_close(mining_efficiency(), 0.0);
+
+    entity.equip(EquipmentSlot::MainHand, pickaxe);
+    LivingEntity::refresh_equipment_attribute_modifiers(&entity, EquipmentSlot::MainHand);
+    // Efficiency: `levels_squared` with `added: 1`.
+    assert_f64_close(mining_efficiency(), 10.0);
+
+    entity.equip(EquipmentSlot::MainHand, ItemStack::empty());
+    LivingEntity::refresh_equipment_attribute_modifiers(&entity, EquipmentSlot::MainHand);
+    assert_f64_close(mining_efficiency(), 0.0);
+}
+
+#[test]
+fn fire_protection_shortens_lava_ignite() {
+    init_vanilla_registry();
+    let entity = LivingFluidTestEntity::new(0.0, 0.0, true);
+    entity.equip(
+        EquipmentSlot::Feet,
+        enchanted(&vanilla_items::DIAMOND_BOOTS, "fire_protection", 4),
+    );
+    LivingEntity::refresh_equipment_attribute_modifiers(&entity, EquipmentSlot::Feet);
+
+    entity.apply_inside_block_effect(InsideBlockEffectType::LavaIgnite);
+
+    // burning_time 1.0 - 0.15 * 4 = 0.4, so ceil(300 * 0.4).
+    assert_eq!(entity.remaining_fire_ticks(), 120);
 }

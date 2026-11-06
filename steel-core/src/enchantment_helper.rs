@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use item_in_use::EnchantedItemInUse;
 
+use steel_registry::attribute::AttributeRef;
 use steel_registry::enchantment_effect::{
     CrossbowChargingSounds, DamageSourcePredicate, EnchantmentEffectComponent,
     EnchantmentEffectRequirements, EnchantmentEntityEffect, EnchantmentEntityTarget,
@@ -13,8 +14,10 @@ use steel_registry::enchantment_effect::{
 use steel_registry::entity_type::EntityTypeRef;
 use steel_registry::item_stack::ItemStack;
 use steel_registry::{REGISTRY, RegistryExt, TaggedRegistryExt, vanilla_entities, vanilla_items};
+use steel_utils::Identifier;
 use steel_utils::random::legacy_random::LegacyRandom;
 
+use crate::entity::attribute::AttributeModifier;
 use crate::entity::damage::DamageSource;
 use crate::entity::{Entity, LivingEntity, MobEffectInstance, SharedEntity};
 use crate::inventory::equipment::EquipmentSlot;
@@ -409,6 +412,41 @@ pub(crate) fn do_post_attack_effects_with_item_source(
         EnchantmentTarget::Attacker,
         context,
     );
+}
+
+/// Vanilla `EnchantmentHelper.forEachModifier(ItemStack, EquipmentSlot, ...)`:
+/// visits the `minecraft:attributes` modifiers that `item`'s enchantments grant
+/// while worn in `slot`. Modifier ids get the vanilla `/<slot>` suffix.
+pub(crate) fn for_each_modifier(
+    item: &ItemStack,
+    slot: EquipmentSlot,
+    mut consumer: impl FnMut(AttributeRef, AttributeModifier),
+) {
+    let Some(enchantments) = item.get_enchantments() else {
+        return;
+    };
+    for (key, level) in enchantments.iter() {
+        let Some(enchantment) = REGISTRY.enchantments.by_key(key) else {
+            continue;
+        };
+        if !enchantment.matching_slot(slot) {
+            continue;
+        }
+        let level = *level as i32;
+        for effect in enchantment.effects.attributes {
+            consumer(
+                effect.attribute,
+                AttributeModifier {
+                    id: Identifier::new(
+                        effect.id.namespace.clone(),
+                        format!("{}/{}", effect.id.path, slot.name()),
+                    ),
+                    amount: f64::from(effect.amount.calculate(level)),
+                    operation: effect.operation,
+                },
+            );
+        }
+    }
 }
 
 fn apply_value_effects(

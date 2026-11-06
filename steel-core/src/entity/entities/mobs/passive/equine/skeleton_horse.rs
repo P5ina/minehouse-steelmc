@@ -19,6 +19,7 @@ use steel_utils::locks::SyncMutex;
 use steel_utils::types::InteractionHand;
 use steel_utils::{DowncastType, DowncastTypeKey};
 
+use super::skeleton_trap::SkeletonTrapGoal;
 use super::{
     AbstractHorse, AbstractHorseBase, BABY_SCALE, EquineHooks, create_offspring,
     generate_jump_strength, impl_equine_entity,
@@ -120,8 +121,14 @@ impl SkeletonHorseEntity {
             is_trap: AtomicBool::new(false),
             trap_time: AtomicI32::new(0),
         };
-        // Vanilla `SkeletonHorse.addBehaviourGoals` adds nothing.
-        horse.register_horse_goals(&horse.mob_base, |_| {});
+        // Vanilla `SkeletonHorse.addBehaviourGoals` adds nothing; the trap
+        // goal is gated on `isTrap` instead of being added in `setTrap`.
+        horse.register_horse_goals(&horse.mob_base, |mob_base| {
+            mob_base
+                .goal_selector()
+                .lock()
+                .add_goal(1, SkeletonTrapGoal::new());
+        });
         horse
     }
 
@@ -131,10 +138,7 @@ impl SkeletonHorseEntity {
         self.is_trap.load(Ordering::Relaxed)
     }
 
-    /// Vanilla `setTrap`.
-    ///
-    /// Vanilla also adds or removes `SkeletonTrapGoal` here; that goal
-    /// spawns skeleton riders, which Steel has no entities for yet.
+    /// Vanilla `setTrap`. [`SkeletonTrapGoal`] reads this flag.
     pub fn set_trap(&self, trap: bool) {
         self.is_trap.store(trap, Ordering::Relaxed);
     }
