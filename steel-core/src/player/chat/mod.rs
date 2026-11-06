@@ -463,6 +463,18 @@ impl Player {
                 self.disconnect(translations::MULTIPLAYER_DISCONNECT_EXPIRED_PUBLIC_KEY.msg());
             }
             ChatSessionUpdateOutcome::Accepted(session) => self.set_chat_session(session),
+            // Behind a proxy that gives players a UUID of its own (MineHouse Gate hands out the
+            // site's stable UUID), the client's key is still certified for its Mojang UUID and can
+            // never validate here. Kicking would lock every licensed player out, so the session is
+            // dropped instead and the player's chat goes out unsigned.
+            ChatSessionUpdateOutcome::Invalid(error)
+                if self.server().config.velocity_secret.is_some() =>
+            {
+                log::warn!(
+                    "Ignoring chat session from {} behind the proxy: {error}",
+                    self.gameprofile.name()
+                );
+            }
             ChatSessionUpdateOutcome::Invalid(error) => {
                 log::warn!(
                     "Player {} sent invalid chat session: {error}",
