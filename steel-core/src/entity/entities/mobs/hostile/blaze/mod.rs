@@ -16,7 +16,6 @@ use steel_registry::{level_events, sound_events, vanilla_attributes, vanilla_ent
 use steel_utils::locks::SyncMutex;
 use steel_utils::{Downcast as _, DowncastType, DowncastTypeKey};
 
-use crate::entity::SpawnRule;
 use crate::entity::ai::goal::{
     Goal, GoalControls, HurtByTargetGoal, LookAtPlayerGoal, MoveTowardsRestrictionGoal,
     NearestAttackableTargetGoal, RandomLookAroundGoal, WaterAvoidingRandomStrollGoal,
@@ -28,7 +27,8 @@ use crate::entity::projectile::{normalize_or_zero, triangle_random};
 use crate::entity::{
     AbstractHurtingProjectile, DefaultEntityPush, Entity, EntityBase, EntityBaseLoad,
     EntityMovementEmission, EntityPose, EntitySyncedData, LivingEntity, LivingEntityBase, Mob,
-    MobBase, Monster, PathfinderMob, SharedEntity, next_entity_id, sync_dirty_mob_effects,
+    MobBase, Monster, PathfinderMob, SharedEntity, SpawnRule, next_entity_id,
+    sync_dirty_mob_effects,
 };
 use crate::physics::MoveResult;
 use crate::world::World;

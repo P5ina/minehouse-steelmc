@@ -8,13 +8,16 @@ use std::{
     fmt, io,
     net::{Ipv4Addr, SocketAddrV4},
     sync::{Arc, OnceLock},
+    time::Duration,
 };
 
+use steel_core::player::connection::NetworkConnection;
 use steel_core::{
     GIT_HASH_SHORT, command::CommandRegistry, permission::PermissionGroupManager, server::Server,
 };
 use steel_login::{JavaTcpClient, ServerConnectionSession};
-use tokio::{net::TcpListener, runtime::Runtime, select};
+use steel_utils::translations;
+use tokio::{net::TcpListener, runtime::Runtime, select, time};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 /// Server configuration module.
@@ -37,7 +40,13 @@ pub struct SteelServer {
     pub server: Arc<Server>,
     /// Session id UUID state
     pub connection_session: Arc<ServerConnectionSession>,
+    /// Parent of every client connection's token. Cancelled only after players were told the
+    /// server is closing, so their disconnect packet still goes out on shutdown.
+    connections_token: CancellationToken,
 }
+
+/// How long shutdown waits for the players' disconnect packets to be written.
+const SHUTDOWN_DISCONNECT_TIMEOUT: Duration = Duration::from_secs(1);
 
 /// Startup error for expected operational failures.
 #[derive(Debug)]
@@ -132,6 +141,7 @@ impl SteelServer {
             client_id: 0,
             server: Arc::new(server),
             connection_session: Arc::new(ServerConnectionSession::default()),
+            connections_token: CancellationToken::new(),
         })
     }
 
@@ -161,7 +171,7 @@ impl SteelServer {
                         connection,
                         address,
                         self.client_id,
-                        self.cancel_token.child_token(),
+                        self.connections_token.child_token(),
                         Arc::clone(&self.server),
                         Arc::clone(&self.connection_session),
                         task_tracker.clone(),
@@ -177,6 +187,28 @@ impl SteelServer {
                 }
             }
         }
+        self.disconnect_players_for_shutdown().await;
         let _ = server_handle.await;
+    }
+
+    /// Like vanilla's `PlayerList.removeAll` at the start of shutdown: every player gets
+    /// "Server closed" before the connections go away. A proxy (Velocity, Gate) treats that as a
+    /// normal kick and can move the player elsewhere; a socket that just closes reads as a crash.
+    async fn disconnect_players_for_shutdown(&self) {
+        let players = self.server.get_players();
+        for player in &players {
+            player.disconnect(translations::MULTIPLAYER_DISCONNECT_SERVER_SHUTDOWN.msg());
+        }
+        let flushed = time::timeout(SHUTDOWN_DISCONNECT_TIMEOUT, async {
+            while players.iter().any(|player| !player.connection.closed()) {
+                time::sleep(Duration::from_millis(20)).await;
+            }
+        })
+        .await;
+        if flushed.is_err() {
+            log::warn!("Timed out telling players the server is closing");
+        }
+        // Clients still logging in or configuring, and anyone whose write timed out.
+        self.connections_token.cancel();
     }
 }
