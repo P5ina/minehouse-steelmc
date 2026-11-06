@@ -1,0 +1,577 @@
+{
+  "$schema": "https://raw.githubusercontent.com/FlintTestMC/flint-core/refs/heads/main/flint-content/test_spec_schema.json",
+  "flintVersion": "1.0.0",
+  "name": "minehouse_mob_fox",
+  "description": "Two foxs in love make a baby.",
+  "tags": [
+    "minehouse",
+    "mob"
+  ],
+  "minecraftIds": [
+    "minecraft:fox"
+  ],
+  "dependencies": [],
+  "setup": {
+    "cleanup": {
+      "region": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          4,
+          8,
+          4
+        ]
+      ]
+    }
+  },
+  "timeline": [
+    {
+      "at": 0,
+      "do": "fill",
+      "region": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          4,
+          0,
+          4
+        ]
+      ],
+      "with": {
+        "id": "minecraft:stone"
+      }
+    },
+    {
+      "at": 0,
+      "do": "place_each",
+      "blocks": [
+        {
+          "pos": [
+            0,
+            1,
+            0
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            0,
+            2,
+            0
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            0,
+            3,
+            0
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            0,
+            1,
+            1
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            0,
+            2,
+            1
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            0,
+            3,
+            1
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            0,
+            1,
+            2
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            0,
+            2,
+            2
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            0,
+            3,
+            2
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            0,
+            1,
+            3
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            0,
+            2,
+            3
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            0,
+            3,
+            3
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            0,
+            1,
+            4
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            0,
+            2,
+            4
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            0,
+            3,
+            4
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            1,
+            1,
+            0
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            1,
+            2,
+            0
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            1,
+            3,
+            0
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            1,
+            1,
+            4
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            1,
+            2,
+            4
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            1,
+            3,
+            4
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            2,
+            1,
+            0
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            2,
+            2,
+            0
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            2,
+            3,
+            0
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            2,
+            1,
+            4
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            2,
+            2,
+            4
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            2,
+            3,
+            4
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            3,
+            1,
+            0
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            3,
+            2,
+            0
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            3,
+            3,
+            0
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            3,
+            1,
+            4
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            3,
+            2,
+            4
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            3,
+            3,
+            4
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            4,
+            1,
+            0
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            4,
+            2,
+            0
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            4,
+            3,
+            0
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            4,
+            1,
+            1
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            4,
+            2,
+            1
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            4,
+            3,
+            1
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            4,
+            1,
+            2
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            4,
+            2,
+            2
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            4,
+            3,
+            2
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            4,
+            1,
+            3
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            4,
+            2,
+            3
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            4,
+            3,
+            3
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            4,
+            1,
+            4
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            4,
+            2,
+            4
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            4,
+            3,
+            4
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        }
+      ]
+    },
+    {
+      "at": 1,
+      "do": "summon",
+      "entity_alias": "a",
+      "entity_type": "minecraft:fox",
+      "pos": [
+        1.9,
+        1.0,
+        2.5
+      ],
+      "PersistenceRequired": "1b",
+      "InLove": "600",
+      "Age": "0"
+    },
+    {
+      "at": 1,
+      "do": "summon",
+      "entity_alias": "b",
+      "entity_type": "minecraft:fox",
+      "pos": [
+        3.1,
+        1.0,
+        2.5
+      ],
+      "PersistenceRequired": "1b",
+      "InLove": "600",
+      "Age": "0"
+    },
+    {
+      "at": 2,
+      "do": "assert",
+      "checks": [
+        {
+          "is": "minecraft:fox",
+          "count": 3
+        }
+      ],
+      "within": 300
+    }
+  ],
+  "breakpoints": []
+}
