@@ -9,6 +9,7 @@ pub mod equine;
 mod feline;
 mod fish;
 mod mooshroom;
+mod nautilus;
 mod parrot;
 mod pig;
 mod sheep;
@@ -25,6 +26,7 @@ pub use fish::{
     TropicalFishBase, TropicalFishEntity, TropicalFishPattern, TropicalFishVariant,
 };
 pub use mooshroom::MushroomCowEntity;
+pub use nautilus::{AbstractNautilus, NautilusEntity, ZombieNautilusEntity};
 pub use parrot::ParrotEntity;
 pub use pig::PigEntity;
 pub use sheep::SheepEntity;

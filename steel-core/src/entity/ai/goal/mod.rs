@@ -83,7 +83,7 @@ pub(crate) use raider_goals::{HoldGroundAttackGoal, RaiderOpenDoorGoal};
 pub(crate) use random_look_around::RandomLookAroundGoal;
 pub(crate) use random_pos::{default_random_pos_towards, land_random_pos};
 pub(crate) use random_stroll::RandomStrollGoal;
-pub(crate) use random_swimming::RandomSwimmingGoal;
+pub(crate) use random_swimming::{RandomSwimmingGoal, random_swimmable_pos_within};
 pub(crate) use ranged_attack::RangedAttackGoal;
 pub(crate) use ranged_bow_attack::{RangedBowAttackGoal, weapon_holding_hand};
 pub(crate) use ranged_crossbow_attack::RangedCrossbowAttackGoal;

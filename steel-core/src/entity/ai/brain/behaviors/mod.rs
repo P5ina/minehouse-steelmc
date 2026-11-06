@@ -1,5 +1,6 @@
 //! Shared brain behaviors (vanilla `net.minecraft.world.entity.ai.behavior`).
 
+mod attack;
 mod cooldown;
 mod do_nothing;
 pub mod gate;
@@ -12,6 +13,7 @@ mod temptation;
 pub mod utils;
 mod walk;
 
+pub use attack::{ChargeAttack, start_attacking};
 pub use cooldown::CountDownCooldownTicks;
 pub use do_nothing::DoNothing;
 pub use gate::run_one;
@@ -21,7 +23,7 @@ pub use move_to_target::MoveToTargetSink;
 pub use panic::AnimalPanic;
 pub use swim::Swim;
 pub use temptation::FollowTemptation;
-pub use walk::{baby_follow_adult, random_stroll, set_walk_target_from_look_target};
+pub use walk::{baby_follow_adult, random_stroll, random_swim, set_walk_target_from_look_target};
 
 /// An inclusive tick range sampled uniformly (vanilla `UniformInt`).
 #[derive(Clone, Copy, Debug)]

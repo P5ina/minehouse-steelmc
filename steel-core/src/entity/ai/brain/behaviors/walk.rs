@@ -1,5 +1,9 @@
 use std::sync::Arc;
 
+use glam::DVec3;
+use steel_registry::blocks::block_state_ext::BlockStateExt as _;
+use steel_utils::BlockPos;
+
 use super::UniformInt;
 use crate::entity::ai::brain::behavior::OneShot;
 use crate::entity::ai::brain::memory::{MemoryModuleType, MemoryRequirement};
@@ -7,12 +11,15 @@ use crate::entity::ai::brain::memory_types::{
     LOOK_TARGET, PositionTracker, WALK_TARGET, WalkTarget,
 };
 use crate::entity::ai::brain::{BehaviorControl, MemoryStatus};
-use crate::entity::ai::goal::random_pos::land_random_pos;
+use crate::entity::ai::goal::random_pos::{is_restricted, land_random_pos, mob_restricted};
+use crate::entity::ai::goal::random_swimmable_pos_within;
 use crate::entity::{LivingEntity, PathfinderMob, SharedEntity};
 use crate::world::World;
 
 const MAX_XZ_DIST: i32 = 10;
 const MAX_Y_DIST: i32 = 7;
+/// Vanilla `RandomStroll.SWIM_XY_DISTANCE_TIERS`.
+const SWIM_XY_DISTANCE_TIERS: [(i32, i32); 6] = [(1, 1), (3, 3), (5, 5), (6, 5), (7, 7), (10, 7)];
 
 /// Walks to a random land position within 10 blocks; with
 /// `may_stroll_from_water` false it only starts out of water
@@ -41,6 +48,65 @@ pub fn random_stroll<E: PathfinderMob + ?Sized>(
             true
         },
     )
+}
+
+/// Swims to a random water position, reaching further out tier by tier
+/// while each step stays in water (vanilla `RandomStroll.swim`).
+pub fn random_swim<E: PathfinderMob + ?Sized>(speed_modifier: f32) -> impl BehaviorControl<E> {
+    OneShot::new(
+        vec![MemoryRequirement::new(
+            &WALK_TARGET,
+            MemoryStatus::ValueAbsent,
+        )],
+        move |_world: &Arc<World>, body: &E, _time: i64| {
+            let Some(memories) = body.brain_memories() else {
+                return false;
+            };
+            if memories.lock().has_value(&WALK_TARGET) || !body.is_in_water() {
+                return false;
+            }
+            let target = swim_target_pos(body)
+                .map(|position| WalkTarget::to_point(position, speed_modifier, 0));
+            memories.lock().set(&WALK_TARGET, target);
+            true
+        },
+    )
+}
+
+/// Vanilla `RandomStroll.getTargetSwimPos`.
+fn swim_target_pos<E: PathfinderMob + ?Sized>(body: &E) -> Option<DVec3> {
+    let world = body.level()?;
+    let mut fallback: Option<DVec3> = None;
+    let mut target = None;
+    for (horizontal, vertical) in SWIM_XY_DISTANCE_TIERS {
+        target = match fallback {
+            None => random_swimmable_pos_within(body, horizontal, vertical),
+            Some(fallback) => {
+                let direction = (fallback - body.position()).normalize();
+                Some(
+                    body.position()
+                        + direction
+                            * DVec3::new(
+                                f64::from(horizontal),
+                                f64::from(vertical),
+                                f64::from(horizontal),
+                            ),
+                )
+            }
+        };
+        let restrict = mob_restricted(body, f64::from(horizontal));
+        let Some(position) = target else {
+            return fallback;
+        };
+        let block = BlockPos::containing(position.x, position.y, position.z);
+        if world.get_block_state(block).get_fluid_state().is_empty()
+            || is_restricted(restrict, body, block)
+        {
+            return fallback;
+        }
+        fallback = Some(position);
+    }
+    target
 }
 
 /// Walks to whatever the body looks at (vanilla `SetWalkTargetFromLookTarget`).
