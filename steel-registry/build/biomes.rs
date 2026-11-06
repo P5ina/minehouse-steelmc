@@ -663,6 +663,14 @@ pub(crate) fn build() -> TokenStream {
         } else {
             quote! { None }
         };
+        let can_pillager_patrol_spawn = if let Some(Value::Bool(can_spawn)) = biome
+            .attributes
+            .get("minecraft:gameplay/can_pillager_patrol_spawn")
+        {
+            quote! { Some(#can_spawn) }
+        } else {
+            quote! { None }
+        };
         let spawners =
             generate_hashmap_string(&biome.spawners, |v| generate_vec(v, generate_spawner_data));
         let spawn_costs = generate_hashmap_resource(&biome.spawn_costs, generate_spawn_cost);
@@ -681,6 +689,7 @@ pub(crate) fn build() -> TokenStream {
                 effects: #effects,
                 creature_spawn_probability: #creature_spawn_probability,
                 snow_golem_melts: #snow_golem_melts,
+                can_pillager_patrol_spawn: #can_pillager_patrol_spawn,
                 spawners: #spawners,
                 spawn_costs: #spawn_costs,
                 carvers: #carvers,
