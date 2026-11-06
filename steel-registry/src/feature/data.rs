@@ -201,6 +201,11 @@ pub enum BlockPredicate {
     Replaceable {
         offset: Offset,
     },
+    /// Vanilla `minecraft:unobstructed`. Vanilla tests the block at the origin
+    /// and ignores `offset`, which is kept for the codec round trip.
+    Unobstructed {
+        offset: Offset,
+    },
     HasSturdyFace {
         direction: Direction,
         offset: Offset,

@@ -1,9 +1,12 @@
 use crate::attribute::{AttributeModifierOperation, AttributeRef};
+use crate::blocks::BlockRef;
 use crate::damage_type::DamageTypeRef;
+use crate::feature::{BlockPredicate, BlockStateData};
+use crate::game_events::GameEventRef;
 use crate::items::ItemRef;
 use crate::mob_effect::MobEffectRef;
 use crate::sound_event::SoundEventRef;
-use glam::DVec3;
+use glam::{DVec3, IVec3};
 use steel_utils::Identifier;
 use steel_utils::random::Random;
 use steel_utils::types::GameType;
@@ -231,6 +234,7 @@ pub struct EntityPredicate {
     pub entity_type: EntityTypePredicate,
     pub vehicle: EntityVehiclePredicate,
     pub flags: EntityFlagsPredicate,
+    pub movement_affected_by: MovementAffectedByPredicate,
     pub type_specific: EntityTypeSpecificPredicate,
     pub unsupported: bool,
 }
@@ -244,6 +248,8 @@ pub enum EntityVehiclePredicate {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct EntityFlagsPredicate {
+    pub is_on_ground: Option<bool>,
+    pub is_flying: Option<bool>,
     pub is_fall_flying: Option<bool>,
     pub is_in_water: Option<bool>,
     pub unsupported: bool,
@@ -253,6 +259,8 @@ impl EntityFlagsPredicate {
     #[must_use]
     pub const fn any() -> Self {
         Self {
+            is_on_ground: None,
+            is_flying: None,
             is_fall_flying: None,
             is_in_water: None,
             unsupported: false,
@@ -261,7 +269,37 @@ impl EntityFlagsPredicate {
 
     #[must_use]
     pub const fn has_constraints(&self) -> bool {
-        self.is_fall_flying.is_some() || self.is_in_water.is_some() || self.unsupported
+        self.is_on_ground.is_some()
+            || self.is_flying.is_some()
+            || self.is_fall_flying.is_some()
+            || self.is_in_water.is_some()
+            || self.unsupported
+    }
+}
+
+/// Vanilla `minecraft:movement_affected_by` entity sub-predicate, limited to
+/// the location `block.blocks` field used by the vanilla datapack.
+#[derive(Debug, PartialEq, Eq)]
+pub enum MovementAffectedByPredicate {
+    Any,
+    Blocks(EnchantmentBlockSet),
+    Unsupported,
+}
+
+/// Static block holder set used by generated location predicates.
+#[derive(Debug, PartialEq, Eq)]
+pub enum EnchantmentBlockSet {
+    Tag(Identifier),
+    Direct(&'static [Identifier]),
+}
+
+impl EnchantmentBlockSet {
+    #[must_use]
+    pub fn contains(&self, block: BlockRef) -> bool {
+        match self {
+            Self::Tag(tag) => block.has_tag(tag),
+            Self::Direct(blocks) => blocks.contains(&block.key),
+        }
     }
 }
 
@@ -325,6 +363,11 @@ pub enum EnchantmentEffectRequirements {
     MatchTool {
         items: Option<EnchantmentItemSet>,
     },
+    /// Vanilla `minecraft:enchantment_active_check`, only meaningful in the
+    /// `location_changed` context.
+    EnchantmentActiveCheck {
+        active: bool,
+    },
     Unsupported {
         condition: Identifier,
     },
@@ -362,6 +405,7 @@ impl EnchantmentEffectRequirements {
             Self::MatchTool { items } => {
                 Some(items.as_ref().is_none_or(|items| items.contains(item)))
             }
+            Self::EnchantmentActiveCheck { .. } => Some(false),
             Self::EntityProperties { .. }
             | Self::DamageSourceProperties(_)
             | Self::RandomChance { .. }
@@ -442,9 +486,28 @@ pub enum EnchantmentEntityEffect {
         min_amplifier: &'static LevelBasedValue,
         max_amplifier: &'static LevelBasedValue,
     },
+    /// Vanilla `minecraft:replace_disk` with a simple block state provider.
+    ReplaceDisk {
+        radius: &'static LevelBasedValue,
+        height: &'static LevelBasedValue,
+        offset: IVec3,
+        /// Built lazily because feature block predicates own their lists.
+        predicate: Option<fn() -> &'static BlockPredicate>,
+        block_state: BlockStateData,
+        trigger_game_event: Option<GameEventRef>,
+    },
     Unsupported {
         effect_type: Identifier,
     },
+}
+
+/// Vanilla `EnchantmentLocationBasedEffect`: effects of the
+/// `minecraft:location_changed` component.
+#[derive(Debug)]
+pub enum EnchantmentLocationBasedEffect {
+    AllOf(&'static [&'static EnchantmentLocationBasedEffect]),
+    Attribute(EnchantmentAttributeEffect),
+    Entity(&'static EnchantmentEntityEffect),
 }
 
 #[derive(Debug)]
@@ -484,7 +547,7 @@ pub struct EnchantmentEffects {
     pub hit_block: bool,
     pub item_damage: &'static [ConditionalEnchantmentEffect<EnchantmentValueEffect>],
     pub equipment_drops: &'static [TargetedConditionalEnchantmentEffect<EnchantmentValueEffect>],
-    pub location_changed: bool,
+    pub location_changed: &'static [ConditionalEnchantmentEffect<EnchantmentLocationBasedEffect>],
     pub tick: bool,
     pub ammo_use: &'static [ConditionalEnchantmentEffect<EnchantmentValueEffect>],
     pub projectile_piercing: &'static [ConditionalEnchantmentEffect<EnchantmentValueEffect>],
@@ -520,7 +583,7 @@ impl EnchantmentEffects {
         hit_block: false,
         item_damage: &[],
         equipment_drops: &[],
-        location_changed: false,
+        location_changed: &[],
         tick: false,
         ammo_use: &[],
         projectile_piercing: &[],
@@ -558,7 +621,7 @@ impl EnchantmentEffects {
             EnchantmentEffectComponent::HitBlock => self.hit_block,
             EnchantmentEffectComponent::ItemDamage => !self.item_damage.is_empty(),
             EnchantmentEffectComponent::EquipmentDrops => !self.equipment_drops.is_empty(),
-            EnchantmentEffectComponent::LocationChanged => self.location_changed,
+            EnchantmentEffectComponent::LocationChanged => !self.location_changed.is_empty(),
             EnchantmentEffectComponent::Tick => self.tick,
             EnchantmentEffectComponent::AmmoUse => !self.ammo_use.is_empty(),
             EnchantmentEffectComponent::ProjectilePiercing => !self.projectile_piercing.is_empty(),

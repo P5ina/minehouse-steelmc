@@ -15,16 +15,20 @@ mod parsing;
 
 use effects::{
     generate_attribute_effects, generate_conditional_entity_effects,
-    generate_conditional_value_effects, generate_crossbow_charging_sounds,
-    generate_damage_immunity_effects, generate_optional_value_effect, generate_sound_event_refs,
-    generate_targeted_entity_effects, generate_targeted_value_effects,
+    generate_conditional_location_effects, generate_conditional_value_effects,
+    generate_crossbow_charging_sounds, generate_damage_immunity_effects,
+    generate_optional_value_effect, generate_sound_event_refs, generate_targeted_entity_effects,
+    generate_targeted_value_effects,
 };
 use generation::generate_enchantment_effects;
 use nbt::{NbtValueHint, generate_nbt_compound};
 use parsing::{
     damage_type_ref_token, identifier_token, parse_enchantment_target, parse_entity_effect_json,
-    parse_requirements_json, slot_to_tokens,
+    parse_location_effect_json, parse_requirements_json, slot_to_tokens,
 };
+
+use crate::features::BlockPredicate;
+use crate::shared_structs::BlockStateData;
 
 #[derive(Deserialize, Debug)]
 struct EnchantmentJson {
@@ -72,7 +76,7 @@ struct EnchantmentEffectsJson {
     #[serde(rename = "minecraft:equipment_drops", default)]
     equipment_drops: Vec<TargetedConditionalValueEffectJson>,
     #[serde(rename = "minecraft:location_changed", default)]
-    location_changed: Vec<serde_json::Value>,
+    location_changed: Vec<ConditionalLocationEffectJson>,
     #[serde(rename = "minecraft:tick", default)]
     tick: Vec<serde_json::Value>,
     #[serde(rename = "minecraft:ammo_use", default)]
@@ -125,6 +129,31 @@ struct ConditionalEntityEffectJson {
     effect: EntityEffectJson,
     #[serde(default)]
     requirements: Option<RequirementsJson>,
+}
+
+#[derive(Deserialize, Debug)]
+struct ConditionalLocationEffectJson {
+    effect: LocationEffectJson,
+    #[serde(default)]
+    requirements: Option<RequirementsJson>,
+}
+
+/// Vanilla `EnchantmentLocationBasedEffect`.
+#[derive(Debug)]
+enum LocationEffectJson {
+    AllOf(Vec<LocationEffectJson>),
+    Attribute(AttributeEffectJson),
+    Entity(EntityEffectJson),
+}
+
+impl<'de> Deserialize<'de> for LocationEffectJson {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = serde_json::Value::deserialize(deserializer)?;
+        parse_location_effect_json(&value).map_err(de::Error::custom)
+    }
 }
 
 #[derive(Debug)]
@@ -246,6 +275,14 @@ enum EntityEffectJson {
         min_amplifier: LevelBasedValueJson,
         max_amplifier: LevelBasedValueJson,
     },
+    ReplaceDisk {
+        radius: LevelBasedValueJson,
+        height: LevelBasedValueJson,
+        offset: [i32; 3],
+        predicate: Option<BlockPredicate>,
+        block_state: BlockStateData,
+        trigger_game_event: Option<Identifier>,
+    },
     Unsupported {
         effect_type: Identifier,
     },
@@ -283,6 +320,9 @@ enum RequirementsJson {
     MatchTool {
         items: Option<ItemHolderSetJson>,
     },
+    EnchantmentActiveCheck {
+        active: bool,
+    },
     Unsupported {
         condition: Identifier,
     },
@@ -316,8 +356,16 @@ struct EntityPredicateJson {
     entity_type: EntityTypePredicateJson,
     vehicle: EntityVehiclePredicateJson,
     flags: EntityFlagsPredicateJson,
+    movement_affected_by: MovementAffectedByJson,
     type_specific: EntityTypeSpecificPredicateJson,
     unsupported: bool,
+}
+
+#[derive(Debug)]
+enum MovementAffectedByJson {
+    Any,
+    Blocks(ItemHolderSetJson),
+    Unsupported,
 }
 
 #[derive(Debug)]
@@ -336,6 +384,8 @@ enum EntityVehiclePredicateJson {
 
 #[derive(Debug)]
 struct EntityFlagsPredicateJson {
+    is_on_ground: Option<bool>,
+    is_flying: Option<bool>,
     is_fall_flying: Option<bool>,
     is_in_water: Option<bool>,
     unsupported: bool,
@@ -344,6 +394,8 @@ struct EntityFlagsPredicateJson {
 impl EntityFlagsPredicateJson {
     const fn any() -> Self {
         Self {
+            is_on_ground: None,
+            is_flying: None,
             is_fall_flying: None,
             is_in_water: None,
             unsupported: false,
@@ -489,8 +541,10 @@ pub(crate) fn build() -> TokenStream {
             ConditionalDamageImmunityEffect, ConditionalEnchantmentEffect,
             CrossbowChargingSounds, DamageSourcePredicate, DamageSourceTagPredicate,
             EnchantmentAttributeEffect, EnchantmentEffectRequirements, EnchantmentEffects,
-            EnchantmentEntityEffect, EnchantmentEntityTarget, EnchantmentItemSet, EnchantmentTarget,
+            EnchantmentBlockSet, EnchantmentEntityEffect, EnchantmentEntityTarget,
+            EnchantmentItemSet, EnchantmentLocationBasedEffect, EnchantmentTarget,
             EnchantmentValueEffect, EntityFlagsPredicate, EntityPredicate,
+            MovementAffectedByPredicate,
             EntityTypePredicate, EntityTypeSpecificPredicate, EntityVehiclePredicate,
             LevelBasedValue, MobEffectSelection, PlayerPredicate,
             TargetedConditionalEnchantmentEffect,

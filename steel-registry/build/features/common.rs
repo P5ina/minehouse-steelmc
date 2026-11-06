@@ -128,7 +128,7 @@ pub(super) fn generate_fluid_ref_list(list: &IdentifierList) -> TokenStream {
     quote! { FluidRefList(#values) }
 }
 
-pub(super) fn generate_block_state_data(data: &BlockStateData) -> TokenStream {
+pub(crate) fn generate_block_state_data(data: &BlockStateData) -> TokenStream {
     let block = generate_block_ref(&data.name);
     let properties = if data.properties.is_empty() {
         quote! { &[] }

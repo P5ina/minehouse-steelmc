@@ -2252,6 +2252,7 @@ impl LivingEntity for Player {
     fn on_equipped_item_broken(&self, item: ItemRef, slot: EquipmentSlot) {
         self.broadcast_entity_event(slot.into());
         self.refresh_equipment_attribute_modifiers(slot);
+        enchantment_helper::stop_location_based_effects_in_slot(self, slot);
         self.award_stat(&vanilla_stat_types::ITEM_BROKEN, item);
     }
 }

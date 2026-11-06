@@ -1,9 +1,10 @@
 use super::{
-    DamageSourcePredicateJson, DamageSourceTagPredicateJson, EnchantmentTargetJson,
-    EntityEffectJson, EntityFlagsPredicateJson, EntityPredicateJson, EntityTargetJson,
-    EntityTypePredicateJson, EntityTypeSpecificPredicateJson, EntityVehiclePredicateJson, GameType,
-    Ident, Identifier, ItemHolderSetJson, LevelBasedValueJson, MobEffectSelectionJson,
-    PlayerPredicateJson, RequirementsJson, Span, TokenStream, quote,
+    AttributeEffectJson, BlockPredicate, BlockStateData, DamageSourcePredicateJson,
+    DamageSourceTagPredicateJson, EnchantmentTargetJson, EntityEffectJson,
+    EntityFlagsPredicateJson, EntityPredicateJson, EntityTargetJson, EntityTypePredicateJson,
+    EntityTypeSpecificPredicateJson, EntityVehiclePredicateJson, GameType, Ident, Identifier,
+    ItemHolderSetJson, LevelBasedValueJson, LocationEffectJson, MobEffectSelectionJson,
+    MovementAffectedByJson, PlayerPredicateJson, RequirementsJson, Span, TokenStream, quote,
 };
 
 pub(super) fn slot_to_tokens(slot: &str) -> TokenStream {
@@ -126,6 +127,36 @@ pub(super) fn parse_mob_effect_selection_json(
     )?))
 }
 
+/// Parses vanilla `EnchantmentLocationBasedEffect`: `all_of` and `attribute`
+/// are location-specific, every other type is a shared entity effect.
+pub(super) fn parse_location_effect_json(
+    value: &serde_json::Value,
+) -> Result<LocationEffectJson, String> {
+    let Some(object) = value.as_object() else {
+        return Err("enchantment location effect must be an object".to_owned());
+    };
+    match string_field(object, "type")?.as_str() {
+        "minecraft:all_of" => {
+            let effects = object_field(object, "effects")?
+                .as_array()
+                .ok_or_else(|| "all_of location effect `effects` must be an array".to_owned())?
+                .iter()
+                .map(parse_location_effect_json)
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(LocationEffectJson::AllOf(effects))
+        }
+        "minecraft:attribute" => {
+            let mut attribute = object.clone();
+            attribute.remove("type");
+            let attribute: AttributeEffectJson =
+                serde_json::from_value(serde_json::Value::Object(attribute))
+                    .map_err(|error| format!("invalid attribute location effect: {error}"))?;
+            Ok(LocationEffectJson::Attribute(attribute))
+        }
+        _ => Ok(LocationEffectJson::Entity(parse_entity_effect_json(value)?)),
+    }
+}
+
 pub(super) fn parse_entity_effect_json(
     value: &serde_json::Value,
 ) -> Result<EntityEffectJson, String> {
@@ -246,10 +277,73 @@ pub(super) fn parse_entity_effect_json(
                 )?)?,
             })
         }
+        "minecraft:replace_disk" => parse_replace_disk_json(object, &effect_type),
         _ => Ok(EntityEffectJson::Unsupported {
             effect_type: parse_identifier(&effect_type)?,
         }),
     }
+}
+
+fn parse_replace_disk_json(
+    object: &serde_json::Map<String, serde_json::Value>,
+    effect_type: &str,
+) -> Result<EntityEffectJson, String> {
+    for key in object.keys() {
+        if !matches!(
+            key.as_str(),
+            "type"
+                | "radius"
+                | "height"
+                | "offset"
+                | "predicate"
+                | "block_state"
+                | "trigger_game_event"
+        ) {
+            return Err(format!("unsupported replace_disk effect field `{key}`"));
+        }
+    }
+    let block_state = object_field(object, "block_state")?;
+    // `BlockStateProvider.DIRECT_CODEC` is a plain state or a typed provider;
+    // only plain states have a runtime representation here.
+    if block_state.get("type").is_some() || block_state.is_string() {
+        return Ok(EntityEffectJson::Unsupported {
+            effect_type: parse_identifier(effect_type)?,
+        });
+    }
+    let block_state: BlockStateData = serde_json::from_value(block_state.to_owned())
+        .map_err(|error| format!("invalid replace_disk block_state: {error}"))?;
+    let offset = match object.get("offset") {
+        Some(offset) => {
+            let [x, y, z] = parse_vec3_json(offset)?;
+            [x as i32, y as i32, z as i32]
+        }
+        None => [0, 0, 0],
+    };
+    let predicate = object
+        .get("predicate")
+        .map(|predicate| {
+            serde_json::from_value::<BlockPredicate>(predicate.to_owned())
+                .map_err(|error| format!("invalid replace_disk predicate: {error}"))
+        })
+        .transpose()?;
+    let trigger_game_event = object
+        .get("trigger_game_event")
+        .map(|event| {
+            event
+                .as_str()
+                .ok_or_else(|| "replace_disk `trigger_game_event` must be a string".to_owned())
+                .and_then(parse_identifier)
+        })
+        .transpose()?;
+
+    Ok(EntityEffectJson::ReplaceDisk {
+        radius: parse_level_based_value_json(object_field(object, "radius")?)?,
+        height: parse_level_based_value_json(object_field(object, "height")?)?,
+        offset,
+        predicate,
+        block_state,
+        trigger_game_event,
+    })
 }
 
 pub(super) fn parse_vec3_json(value: &serde_json::Value) -> Result<[f64; 3], String> {
@@ -320,6 +414,7 @@ pub(super) fn parse_entity_predicate_json(
                 | "minecraft:vehicle"
                 | "flags"
                 | "minecraft:flags"
+                | "minecraft:movement_affected_by"
                 | "type_specific"
                 | "minecraft:type_specific/player"
         )
@@ -341,6 +436,11 @@ pub(super) fn parse_entity_predicate_json(
         .map(parse_entity_flags_predicate_json)
         .transpose()?
         .unwrap_or_else(EntityFlagsPredicateJson::any);
+    let movement_affected_by = object
+        .get("minecraft:movement_affected_by")
+        .map(parse_movement_affected_by_json)
+        .transpose()?
+        .unwrap_or(MovementAffectedByJson::Any);
     let type_specific =
         match aliased_object_field(object, &["type_specific", "minecraft:type_specific/player"])? {
             Some(value) if object.contains_key("minecraft:type_specific/player") => {
@@ -354,9 +454,38 @@ pub(super) fn parse_entity_predicate_json(
         entity_type,
         vehicle,
         flags,
+        movement_affected_by,
         type_specific,
         unsupported,
     })
+}
+
+/// Parses a `minecraft:movement_affected_by` location predicate. Only the
+/// `block.blocks` shape has a runtime representation.
+fn parse_movement_affected_by_json(
+    value: &serde_json::Value,
+) -> Result<MovementAffectedByJson, String> {
+    let Some(location) = value.as_object() else {
+        return Err("movement_affected_by predicate must be an object".to_owned());
+    };
+    if location.keys().any(|key| key != "block") {
+        return Ok(MovementAffectedByJson::Unsupported);
+    }
+    let Some(block) = location.get("block") else {
+        return Ok(MovementAffectedByJson::Any);
+    };
+    let Some(block) = block.as_object() else {
+        return Err("movement_affected_by `block` must be an object".to_owned());
+    };
+    if block.keys().any(|key| key != "blocks") {
+        return Ok(MovementAffectedByJson::Unsupported);
+    }
+    let Some(blocks) = block.get("blocks") else {
+        return Ok(MovementAffectedByJson::Any);
+    };
+    Ok(MovementAffectedByJson::Blocks(parse_item_holder_set_json(
+        blocks,
+    )?))
 }
 
 pub(super) fn aliased_object_field<'a>(
@@ -385,13 +514,20 @@ pub(super) fn parse_entity_flags_predicate_json(
     let Some(object) = value.as_object() else {
         return Err("entity flags predicate must be an object".to_owned());
     };
-    let unsupported = object
-        .keys()
-        .any(|key| key != "is_fall_flying" && key != "is_in_water");
+    let unsupported = object.keys().any(|key| {
+        !matches!(
+            key.as_str(),
+            "is_on_ground" | "is_flying" | "is_fall_flying" | "is_in_water"
+        )
+    });
+    let is_on_ground = optional_bool_field(object, "is_on_ground")?;
+    let is_flying = optional_bool_field(object, "is_flying")?;
     let is_fall_flying = optional_bool_field(object, "is_fall_flying")?;
     let is_in_water = optional_bool_field(object, "is_in_water")?;
 
     Ok(EntityFlagsPredicateJson {
+        is_on_ground,
+        is_flying,
         is_fall_flying,
         is_in_water,
         unsupported,
@@ -622,6 +758,19 @@ pub(super) fn parse_requirements_json(
                 .map(parse_item_holder_set_json)
                 .transpose()?;
             Ok(RequirementsJson::MatchTool { items })
+        }
+        "minecraft:enchantment_active_check" => {
+            for key in object.keys() {
+                if key != "type" && key != "active" {
+                    return Err(format!(
+                        "unsupported enchantment_active_check field `{key}`"
+                    ));
+                }
+            }
+            let active = object_field(object, "active")?
+                .as_bool()
+                .ok_or_else(|| "enchantment_active_check `active` must be a bool".to_owned())?;
+            Ok(RequirementsJson::EnchantmentActiveCheck { active })
         }
         _ => Ok(RequirementsJson::Unsupported {
             condition: parse_identifier(&condition)?,
