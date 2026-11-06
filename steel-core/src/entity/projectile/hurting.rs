@@ -12,7 +12,7 @@ use steel_utils::locks::SyncMutex;
 use crate::entity::projectile::{Projectile, ProjectileHit};
 use crate::entity::{Entity, RemovalReason, SharedEntity};
 
-/// Vanilla `AbstractHurtingProjectile.INITAL_ACCELERATION_POWER`.
+/// Vanilla initial `AbstractHurtingProjectile.accelerationPower`.
 pub const INITIAL_ACCELERATION_POWER: f64 = 0.1;
 const ACCELERATION_POWER_TAG: &str = "acceleration_power";
 const ROTATION_SPEED: f32 = 0.2;
