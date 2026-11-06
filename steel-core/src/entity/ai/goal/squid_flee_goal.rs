@@ -1,11 +1,10 @@
 use steel_registry::{blocks::block_state_ext::BlockStateExt, fluid::FluidStateExt};
-use steel_utils::{BlockPos, Downcast, TICKS_PER_SECOND};
+use steel_utils::{BlockPos, TICKS_PER_SECOND};
 
 use crate::{
     entity::{
         PathfinderMob, SharedEntity,
         ai::goal::selector::{Goal, GoalControls},
-        entities::SquidEntity,
     },
     world::LevelReader,
 };
@@ -50,7 +49,7 @@ impl Goal for SquidFleeGoal {
             return;
         };
 
-        let Some(squid) = mob.downcast_ref::<SquidEntity>() else {
+        let Some(squid) = mob.as_squid() else {
             tracing::warn!("SquidFleeGoal assigned to non-squid entity");
             return;
         };

@@ -103,6 +103,9 @@ pub trait LivingEntitySyncedData: EntitySyncedData {
 
     /// Clears synchronized vanilla sleeping position.
     fn clear_sleeping_pos(&self);
+
+    /// Sets synchronized vanilla `DATA_ARROW_COUNT_ID`.
+    fn set_arrow_count(&self, count: i32);
 }
 
 impl<T> LivingEntitySyncedData for SyncMutex<T>
@@ -118,6 +121,10 @@ where
 
     fn clear_sleeping_pos(&self) {
         self.lock().living_entity_mut().sleeping_pos.set(None);
+    }
+
+    fn set_arrow_count(&self, count: i32) {
+        self.lock().living_entity_mut().arrow_count.set(count);
     }
 }
 

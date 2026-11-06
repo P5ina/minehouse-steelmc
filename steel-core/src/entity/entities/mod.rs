@@ -15,9 +15,9 @@ pub use objects::effects::{AreaEffectCloudEntity, LightningBoltEntity};
 pub use objects::explosives::{EndCrystalEntity, PrimedTntEntity};
 pub use objects::items::{ExperienceOrbEntity, FallingBlockEntity, ItemEntity};
 pub use objects::projectiles::{
-    EnderPearlEntity, EyeOfEnderEntity, Fireball, FireworkRocketEntity, FishingHookEntity,
-    LargeFireballEntity, LingeringPotionEntity, SmallFireballEntity, SnowballEntity,
-    SplashPotionEntity, ThrownEggEntity,
+    ArrowEntity, EnderPearlEntity, EyeOfEnderEntity, Fireball, FireworkRocketEntity,
+    FishingHookEntity, LargeFireballEntity, LingeringPotionEntity, SmallFireballEntity,
+    SnowballEntity, SpectralArrowEntity, SplashPotionEntity, ThrownEggEntity,
 };
 pub use objects::technical::{InteractionEntity, MarkerEntity};
 pub use objects::vehicles::ChestMinecartEntity;

@@ -15,7 +15,7 @@ use steel_utils::{BlockPos, Identifier, UuidExt, WorldAabb, axis::Axis, types::D
 use text_components::TextComponent;
 use uuid::Uuid;
 
-use super::{AddEntityError, ENTITIES, SharedEntity, next_entity_id};
+use super::{AddEntityError, ENTITIES, SchoolSpawnGroupData, SharedEntity, next_entity_id};
 use crate::entity::entities::ZombieGroupData;
 use crate::entity::entity::{read_nbt_dvec3, read_nbt_rotation, sanitize_nbt_motion};
 use crate::entity::{EntityBaseSaveData, EntityFireFreezeState, EntityLoadRequest};
@@ -468,6 +468,8 @@ pub enum SpawnGroupData {
     /// Vanilla `Zombie.ZombieGroupData`: whether the group spawns as babies and
     /// may ride chickens.
     Zombie(ZombieGroupData),
+    /// Vanilla `AbstractSchoolingFish.SchoolSpawnGroupData`.
+    School(SchoolSpawnGroupData),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
