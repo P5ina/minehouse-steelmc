@@ -22,7 +22,7 @@ use crate::entity::{
     water_animal_experience_reward, water_animal_spawn_unobstructed,
 };
 use crate::physics::MoveResult;
-use crate::world::World;
+use crate::world::{ServerLevelAccessor, World};
 
 /// Vanilla salmon: a schooling fish in three sizes.
 #[entity_behavior(class = "Salmon")]
@@ -334,8 +334,8 @@ impl Mob for SalmonEntity {
         false
     }
 
-    fn check_spawn_obstruction(&self, world: &Arc<World>) -> bool {
-        water_animal_spawn_unobstructed(self, world)
+    fn check_spawn_obstruction(&self, level: &dyn ServerLevelAccessor) -> bool {
+        water_animal_spawn_unobstructed(self, level)
     }
 
     fn finalize_spawn(

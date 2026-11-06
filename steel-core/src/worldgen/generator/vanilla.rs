@@ -24,6 +24,7 @@ use steel_worldgen::surface::{
 
 use crate::chunk::Chunk;
 use crate::chunk::heightmap::{Heightmap, HeightmapType};
+use crate::world::natural_spawner::{set_decoration_seed, spawn_mobs_for_chunk_generation};
 use crate::worldgen::carver::{
     CarveRun, CarverBlockIds, CarvingContext, CarvingMask, PreliminarySurfaceCorners, SourceChunk,
 };
@@ -1039,6 +1040,21 @@ impl<N: VanillaPostNoiseStateType> ChunkGenerator for VanillaGenerator<N> {
     fn apply_biome_decorations(&self, region: &mut WorldGenRegion<'_>) {
         self.feature_runner
             .decorate(region, &REGISTRY, self.seed, self.biome_zoom_seed);
+    }
+
+    /// Vanilla `NoiseBasedChunkGenerator.spawnOriginalMobs`.
+    fn spawn_original_mobs(&self, region: &WorldGenRegion<'_>) {
+        if N::Settings::DISABLE_MOB_GENERATION {
+            return;
+        }
+        let center = region.center();
+        let (min_x, min_z) = (center.0.x * 16, center.0.y * 16);
+        let source_pos = BlockPos::new(min_x, region.max_y_exclusive() - 1, min_z);
+        // Vanilla seeds with `RandomSupport.generateUniqueSeed()`, which the
+        // decoration seed immediately replaces.
+        let mut random = LegacyRandom::from_seed(rand::random());
+        set_decoration_seed(&mut random, region.seed(), min_x, min_z);
+        spawn_mobs_for_chunk_generation(region, &region.world(), source_pos, center, &mut random);
     }
 }
 

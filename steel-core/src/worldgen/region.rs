@@ -14,12 +14,14 @@ use parking_lot::{RwLockReadGuard, RwLockWriteGuard};
 use simdnbt::owned::NbtCompound;
 use small_map::FxSmallMap;
 use smallvec::SmallVec;
+use steel_registry::dimension_type::DimensionTypeRef;
 use steel_registry::{
     REGISTRY, block_entity_type::BlockEntityTypeRef, blocks::BlockRef,
     blocks::block_state_ext::BlockStateExt as _, blocks::properties::Direction,
     blocks::shapes::SupportType, fluid::FluidRef, vanilla_blocks,
 };
 use steel_utils::random::RandomSource;
+use steel_utils::types::Difficulty;
 use steel_utils::{
     BlockPos, BlockStateId, ChunkPos, PackedChunkPos, PackedSectionBlockPos, SectionPos,
     types::UpdateFlags,
@@ -28,6 +30,7 @@ use steel_worldgen::structure::{StructureReferenceMap, StructureStartMap};
 
 use crate::behavior::{BLOCK_BEHAVIORS, FLUID_BEHAVIORS};
 use crate::block_entity::{BLOCK_ENTITIES, SharedBlockEntity};
+use crate::chunk::light::{LightLayer, MAX_LIGHT_LEVEL};
 use crate::chunk::{
     Chunk,
     chunk_generation_task::StaticCache2D,
@@ -40,7 +43,7 @@ use crate::chunk::{
 };
 use crate::entity::SharedEntity;
 use crate::world::tick_scheduler::TickPriority;
-use crate::world::{LevelAccessor, LevelReader, ScheduledTickAccess, World};
+use crate::world::{LevelAccessor, LevelReader, ScheduledTickAccess, ServerLevelAccessor, World};
 use crate::worldgen::feature::instrumentation::OreFeatureStats;
 use crate::worldgen::generator::context::WorldGenContext;
 
@@ -291,6 +294,12 @@ impl<'a> WorldGenRegion<'a> {
     #[must_use]
     pub fn seed(&self) -> i64 {
         self.context.world().seed()
+    }
+
+    /// Returns the live world this region generates for.
+    #[must_use]
+    pub fn world(&self) -> Arc<World> {
+        self.context.world()
     }
 
     /// Returns the weak world reference used by generated chunks and entities.
@@ -1540,6 +1549,37 @@ impl LevelReader for WorldGenRegion<'_> {
 
     fn sea_level(&self) -> i32 {
         WorldGenRegion::sea_level(self)
+    }
+}
+
+impl ServerLevelAccessor for WorldGenRegion<'_> {
+    fn difficulty(&self) -> Difficulty {
+        self.context.world().difficulty()
+    }
+
+    fn brightness(&self, layer: LightLayer, pos: BlockPos) -> u8 {
+        match layer {
+            LightLayer::Sky => {
+                if self.context.world().dimension_type.has_skylight {
+                    MAX_LIGHT_LEVEL
+                } else {
+                    0
+                }
+            }
+            LightLayer::Block => self.block_light_at(pos),
+        }
+    }
+
+    fn is_thundering(&self) -> bool {
+        self.context.world().is_thundering()
+    }
+
+    fn dimension_type(&self) -> DimensionTypeRef {
+        self.context.world().dimension_type
+    }
+
+    fn is_block_within_world_border(&self, pos: BlockPos) -> bool {
+        self.context.world().is_block_within_world_border(pos)
     }
 }
 

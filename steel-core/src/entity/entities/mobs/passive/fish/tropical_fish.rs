@@ -22,7 +22,7 @@ use crate::entity::{
     sync_dirty_mob_effects, water_animal_experience_reward, water_animal_spawn_unobstructed,
 };
 use crate::physics::MoveResult;
-use crate::world::World;
+use crate::world::{ServerLevelAccessor, World};
 
 /// Vanilla `TropicalFish.Base`: the body model.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -442,8 +442,8 @@ impl Mob for TropicalFishEntity {
         false
     }
 
-    fn check_spawn_obstruction(&self, world: &Arc<World>) -> bool {
-        water_animal_spawn_unobstructed(self, world)
+    fn check_spawn_obstruction(&self, level: &dyn ServerLevelAccessor) -> bool {
+        water_animal_spawn_unobstructed(self, level)
     }
 
     fn finalize_spawn(
