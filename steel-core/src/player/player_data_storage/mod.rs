@@ -41,6 +41,10 @@ use steel_utils::{BlockPos, Identifier};
 const PLAYER_MAGIC: [u8; 4] = *b"STLP";
 const GLOBAL_MAGIC: [u8; 4] = *b"STLG";
 const PLAYER_STORAGE_VERSION: u16 = 11;
+/// Storage version before player files saved active effects.
+const PLAYER_STORAGE_VERSION_WITHOUT_EFFECTS: u16 = 10;
+/// Player data version written by [`PLAYER_STORAGE_VERSION_WITHOUT_EFFECTS`] files.
+const PLAYER_DATA_VERSION_WITHOUT_EFFECTS: i32 = 7;
 const GLOBAL_STORAGE_VERSION: u16 = 1;
 const GLOBAL_PLAYER_DATA_VERSION: i32 = 1;
 
@@ -75,8 +79,6 @@ struct PlayerDataFile {
     was_in_powder_snow: bool,
     has_visual_fire: bool,
     health: f32,
-    /// Each effect encoded with vanilla `MobEffectInstance.CODEC`.
-    active_effects: Vec<Vec<u8>>,
     game_mode: i32,
     prev_game_mode: Option<i32>,
     abilities: AbilitiesFile,
@@ -97,6 +99,9 @@ struct PlayerDataFile {
     respawn_config: Option<RespawnConfigFile>,
     ender_pearls: Vec<EnderPearlFile>,
     ender_items: Vec<SlotFile>,
+    /// Each effect encoded with vanilla `MobEffectInstance.CODEC`. Last, so storage version
+    /// [`PLAYER_STORAGE_VERSION_WITHOUT_EFFECTS`] files read as this layout with no effects.
+    active_effects: Vec<Vec<u8>>,
 }
 
 #[derive(SchemaWrite, SchemaRead)]
@@ -561,9 +566,28 @@ fn encode_player_file(file: &PlayerDataFile) -> io::Result<Vec<u8>> {
 }
 
 fn decode_player_file(bytes: &[u8]) -> io::Result<PlayerDataFile> {
+    let invalid = |reason: String| io::Error::new(io::ErrorKind::InvalidData, reason);
+    if stored_version(bytes) == Some(PLAYER_STORAGE_VERSION_WITHOUT_EFFECTS) {
+        // The older layout is the current one without the trailing `active_effects`.
+        let mut payload = decode_file(PLAYER_MAGIC, PLAYER_STORAGE_VERSION_WITHOUT_EFFECTS, bytes)?;
+        payload.extend(
+            wincode::serialize(&Vec::<Vec<u8>>::new()).map_err(|e| invalid(e.to_string()))?,
+        );
+        let mut file: PlayerDataFile =
+            wincode::deserialize(&payload).map_err(|e| invalid(e.to_string()))?;
+        if file.data_version == PLAYER_DATA_VERSION_WITHOUT_EFFECTS {
+            file.data_version = PLAYER_DATA_VERSION;
+        }
+        return Ok(file);
+    }
     let payload = decode_file(PLAYER_MAGIC, PLAYER_STORAGE_VERSION, bytes)?;
-    wincode::deserialize(&payload)
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))
+    wincode::deserialize(&payload).map_err(|e| invalid(e.to_string()))
+}
+
+/// Storage version in a player or global file header, if the header is there.
+fn stored_version(bytes: &[u8]) -> Option<u16> {
+    let header = bytes.get(..6)?;
+    Some(u16::from_le_bytes([header[4], header[5]]))
 }
 
 fn encode_global_file(file: &GlobalPlayerDataFile) -> io::Result<Vec<u8>> {

@@ -498,6 +498,36 @@ fn player_file_roundtrip_preserves_active_effects() {
     );
 }
 
+/// A player file written by storage version 10, before effects were saved: the sample player
+/// file with five diamonds in slot 3.
+const PLAYER_FILE_WITHOUT_EFFECTS: &[u8] = include_bytes!("fixtures/player_storage_v10.dat");
+
+#[test]
+fn player_files_from_before_effects_still_load() {
+    init_vanilla_registry();
+    let persistent = decode_player_file(PLAYER_FILE_WITHOUT_EFFECTS)
+        .expect("a storage version 10 file should decode")
+        .into_persistent()
+        .expect("a storage version 10 file should convert");
+
+    assert_eq!(persistent.active_effects, []);
+    assert_eq!(persistent.data_version, PLAYER_DATA_VERSION);
+    assert_eq!(persistent.world, "lobby:void");
+    assert_eq!(persistent.experience_total, 32);
+    assert!(persistent.seen_credits);
+    let [slot] = persistent.inventory.as_slice() else {
+        panic!("the old file has one item: {:?}", persistent.inventory);
+    };
+    assert_eq!(slot.slot, 3);
+    assert!(slot.item.is(&vanilla_items::DIAMOND));
+    assert_eq!(slot.item.count(), 5);
+
+    // Saving writes the current version.
+    let file = PlayerDataFile::from_persistent(&persistent).expect("player file should build");
+    let encoded = encode_player_file(&file).expect("player file should encode");
+    assert_eq!(stored_version(&encoded), Some(PLAYER_STORAGE_VERSION));
+}
+
 #[test]
 fn player_file_roundtrip_preserves_absent_previous_game_mode() {
     let mut file = sample_player_file(PLAYER_DATA_VERSION);
