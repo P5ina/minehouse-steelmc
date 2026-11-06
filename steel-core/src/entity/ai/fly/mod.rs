@@ -242,7 +242,7 @@ impl NodeEvaluator for FlyNodeEvaluator {
 
     #[expect(
         clippy::too_many_lines,
-        reason = "vanilla checks all 26 neighbours in order"
+        reason = "vanilla checks all 26 neighbors in order"
     )]
     fn get_neighbors(
         &mut self,
