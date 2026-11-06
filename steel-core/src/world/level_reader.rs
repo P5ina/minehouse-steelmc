@@ -192,6 +192,23 @@ pub trait ServerLevelAccessor: LevelReader {
     fn biome(&self, pos: BlockPos) -> Option<BiomeRef> {
         None
     }
+
+    /// The `minecraft:gameplay/surface_slime_spawn_chance` environment attribute at
+    /// `pos`. Level surfaces without environment attributes report its vanilla
+    /// default, 0.
+    #[expect(
+        unused_variables,
+        reason = "default level surfaces have no environment attributes"
+    )]
+    fn surface_slime_spawn_chance(&self, pos: BlockPos) -> f32 {
+        0.0
+    }
+
+    /// Vanilla `WorldGenLevel.getSeed`, when this level is a `WorldGenLevel`
+    /// (a server level or a worldgen region). Other level surfaces report none.
+    fn world_gen_seed(&self) -> Option<i64> {
+        None
+    }
 }
 
 /// Level access needed by vanilla block `updateShape` logic.

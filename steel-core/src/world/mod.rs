@@ -806,6 +806,14 @@ impl ServerLevelAccessor for World {
                 && !other.is_passenger_of_same_vehicle(entity)
         })
     }
+
+    fn surface_slime_spawn_chance(&self, pos: BlockPos) -> f32 {
+        Self::surface_slime_spawn_chance(self, pos)
+    }
+
+    fn world_gen_seed(&self) -> Option<i64> {
+        Some(self.seed())
+    }
 }
 
 impl LevelReader for Arc<World> {
@@ -895,6 +903,14 @@ impl ServerLevelAccessor for Arc<World> {
 
     fn biome(&self, pos: BlockPos) -> Option<BiomeRef> {
         self.biome_at(pos)
+    }
+
+    fn surface_slime_spawn_chance(&self, pos: BlockPos) -> f32 {
+        World::surface_slime_spawn_chance(self, pos)
+    }
+
+    fn world_gen_seed(&self) -> Option<i64> {
+        Some(self.seed())
     }
 }
 

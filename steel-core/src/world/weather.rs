@@ -374,6 +374,14 @@ impl World {
         )
     }
 
+    /// The `minecraft:gameplay/surface_slime_spawn_chance` environment attribute at
+    /// `pos`: 0 by default, raised by the overworld moon timeline. No vanilla
+    /// dimension type or biome sets it.
+    pub(crate) fn surface_slime_spawn_chance(&self, _pos: BlockPos) -> f32 {
+        let level_data = self.level_data.read();
+        environment::surface_slime_spawn_chance(self.dimension_type, level_data.world_clocks())
+    }
+
     pub(super) fn noise_biome_id(&self, quart_x: i32, quart_y: i32, quart_z: i32) -> Option<u16> {
         let chunk_pos = ChunkPos::new(quart_x >> 2, quart_z >> 2);
         let local_quart_x = (quart_x & 3) as usize;

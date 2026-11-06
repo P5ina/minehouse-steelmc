@@ -18,6 +18,7 @@ use steel_utils::{BlockPos, BlockStateId, DowncastType, DowncastTypeKey};
 
 use crate::behavior::InteractionResult;
 use crate::enchantment_helper::{self, EnchantmentPostAttackContext};
+use crate::entity::SpawnRule;
 use crate::entity::ai::goal::{
     HurtByTargetGoal, LookAtPlayerGoal, MeleeAttackGoal, MoveTowardsTargetGoal,
     NearestAttackableTargetGoal, RandomLookAroundGoal, ResetUniversalAngerTargetGoal,
@@ -80,7 +81,7 @@ struct AnimationTicks {
 /// An iron golem: guards villages and the player who built it.
 // TODO: The village goals (`MoveBackToVillageGoal`, `GolemRandomStrollInVillageGoal`,
 // `OfferFlowerGoal`, `DefendVillageTargetGoal`) and `checkSpawnObstruction` come with villagers.
-#[entity_behavior(class = "IronGolem")]
+#[entity_behavior(class = "IronGolem", spawn_rule)]
 pub struct IronGolemEntity {
     base: EntityBase,
     entity_type: EntityTypeRef,
@@ -97,6 +98,11 @@ unsafe impl DowncastType for IronGolemEntity {
 }
 
 impl IronGolemEntity {
+    /// Vanilla `SpawnPlacements` predicate: `Mob.checkMobSpawnRules`.
+    pub(crate) const SPAWN_RULE: SpawnRule = |entity_type, level, spawn_reason, pos, _random| {
+        <Self as Mob>::check_mob_spawn_rules(entity_type, level, spawn_reason, pos)
+    };
+
     /// Creates a new iron golem.
     #[must_use]
     pub fn new(entity_type: EntityTypeRef, id: i32, position: DVec3, world: Weak<World>) -> Self {

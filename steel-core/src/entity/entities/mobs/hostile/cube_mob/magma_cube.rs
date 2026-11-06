@@ -21,6 +21,9 @@ use super::{
 use crate::entity::ai::goal::NearestAttackableTargetGoal;
 use crate::entity::damage::DamageSource;
 use crate::entity::entity::EntityEventSource as _;
+use steel_utils::types::Difficulty;
+
+use crate::entity::SpawnRule;
 use crate::entity::{
     AgeableMob, AgeableMobBase, Entity, EntityBase, EntityBaseLoad, EntityMovementEmission,
     EntityPose, EntitySpawnReason, EntitySyncedData, LivingEntity, LivingEntityBase, Mob, MobBase,
@@ -34,7 +37,7 @@ use crate::world::World;
 const PLAYER_TARGET_MAX_Y_DIFFERENCE: f64 = 4.0;
 
 /// A magma cube: a fire-proof Nether slime that jumps higher and hits harder.
-#[entity_behavior(class = "MagmaCube")]
+#[entity_behavior(class = "MagmaCube", spawn_rule)]
 pub struct MagmaCubeEntity {
     base: EntityBase,
     entity_type: EntityTypeRef,
@@ -51,6 +54,12 @@ unsafe impl DowncastType for MagmaCubeEntity {
 }
 
 impl MagmaCubeEntity {
+    /// Vanilla `SpawnPlacements` predicate: `MagmaCube.checkMagmaCubeSpawnRules`, which
+    /// only rejects Peaceful.
+    pub(crate) const SPAWN_RULE: SpawnRule = |_entity_type, level, _spawn_reason, _pos, _random| {
+        level.difficulty() != Difficulty::Peaceful
+    };
+
     /// Creates a new magma cube of size 1.
     #[must_use]
     pub fn new(entity_type: EntityTypeRef, id: i32, position: DVec3, world: Weak<World>) -> Self {
