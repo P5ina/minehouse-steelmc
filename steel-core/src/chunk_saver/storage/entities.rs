@@ -43,7 +43,7 @@ impl ChunkStorage {
         bytes
     }
 
-    pub(super) fn custom_name_from_persistent(
+    pub(crate) fn custom_name_from_persistent(
         bytes: &[u8],
         uuid: uuid::Uuid,
     ) -> Option<TextComponent> {
