@@ -149,6 +149,32 @@ impl MobEffectInstance {
         self.duration == INFINITE_EFFECT_DURATION
     }
 
+    /// Copies this active effect into the registry form used by potion contents,
+    /// keeping the hidden fallback chain (vanilla `new MobEffectInstance(effect)`).
+    #[must_use]
+    pub fn to_registry_instance(&self) -> steel_registry::MobEffectInstance {
+        steel_registry::MobEffectInstance::new(
+            self.effect,
+            self.duration,
+            self.amplifier,
+            self.ambient,
+            self.visible,
+            self.show_icon,
+            self.hidden_effect.as_deref().map(Self::to_registry_details),
+        )
+    }
+
+    fn to_registry_details(&self) -> steel_registry::MobEffectInstanceDetails {
+        steel_registry::MobEffectInstanceDetails::new(
+            self.amplifier,
+            self.duration,
+            self.ambient,
+            self.visible,
+            self.show_icon,
+            self.hidden_effect.as_deref().map(Self::to_registry_details),
+        )
+    }
+
     /// Checks whether the duration is at most `ticks` infinite effects never qualify
     #[must_use]
     pub const fn ends_within(&self, ticks: i32) -> bool {
