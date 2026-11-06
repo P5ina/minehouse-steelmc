@@ -136,6 +136,7 @@ mod sleep;
 mod sleep_status;
 mod spawn;
 pub mod tick_scheduler;
+mod village;
 mod weather;
 mod world_entities;
 

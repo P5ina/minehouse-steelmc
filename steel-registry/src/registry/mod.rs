@@ -827,6 +827,7 @@ mod tests {
             },
             creature_spawn_probability: 0.0,
             snow_golem_melts: None,
+            can_pillager_patrol_spawn: None,
             spawners: FxHashMap::default(),
             spawn_costs: FxHashMap::default(),
             carvers,
