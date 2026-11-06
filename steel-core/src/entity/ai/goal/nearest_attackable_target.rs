@@ -113,6 +113,14 @@ impl NearestAttackableTargetGoal {
         }
     }
 
+    /// Vanilla `TargetGoal.setUnseenMemoryTicks`.
+    #[must_use]
+    pub(crate) const fn with_unseen_memory_ticks(mut self, unseen_memory_ticks: i32) -> Self {
+        self.target_goal
+            .set_unseen_memory_ticks(unseen_memory_ticks);
+        self
+    }
+
     /// Adds a filter that can read the searching mob's own state.
     #[must_use]
     pub(crate) const fn with_mob_selector(mut self, mob_selector: MobTargetSelector) -> Self {
