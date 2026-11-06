@@ -686,6 +686,8 @@ struct LivingEntityState {
     active_item_use: Option<ActiveItemUseState>,
     no_jump_delay: i32,
     no_action_time: i32,
+    arrow_count: i32,
+    remove_arrow_time: i32,
 }
 
 impl LivingEntityState {
@@ -723,6 +725,8 @@ impl LivingEntityState {
             active_item_use: None,
             no_jump_delay: 0,
             no_action_time: 0,
+            arrow_count: 0,
+            remove_arrow_time: 0,
         }
     }
 
@@ -1566,6 +1570,35 @@ impl LivingEntityBase {
         let mut state = self.state.lock();
         state.hurt_duration = HURT_DURATION_TICKS;
         state.hurt_time = state.hurt_duration;
+    }
+
+    /// Vanilla `LivingEntity.getArrowCount`: arrows stuck in the body.
+    #[must_use]
+    pub fn arrow_count(&self) -> i32 {
+        self.state.lock().arrow_count
+    }
+
+    /// Vanilla `LivingEntity.setArrowCount`.
+    pub fn set_arrow_count(&self, count: i32) {
+        self.state.lock().arrow_count = count;
+    }
+
+    /// Vanilla `LivingEntity.tick` stuck-arrow removal: one arrow falls out
+    /// every `20 * (30 - count)` ticks. Returns the new count when it changed.
+    pub fn tick_remove_arrow(&self) -> Option<i32> {
+        let mut state = self.state.lock();
+        if state.arrow_count <= 0 {
+            return None;
+        }
+        if state.remove_arrow_time <= 0 {
+            state.remove_arrow_time = 20 * (30 - state.arrow_count);
+        }
+        state.remove_arrow_time -= 1;
+        if state.remove_arrow_time <= 0 {
+            state.arrow_count -= 1;
+            return Some(state.arrow_count);
+        }
+        None
     }
 
     /// Decrements the vanilla hurt animation timer.
