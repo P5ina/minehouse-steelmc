@@ -1,10 +1,11 @@
 use super::{
     AttributeEffectJson, ConditionalDamageImmunityEffectJson, ConditionalEntityEffectJson,
-    ConditionalValueEffectJson, CrossbowChargingSoundsJson, DamageSourcePredicateJson,
-    EnchantmentTargetJson, EntityEffectJson, EntityFlagsPredicateJson, EntityPredicateJson,
-    EntityTargetJson, EntityTypePredicateJson, EntityTypeSpecificPredicateJson,
-    EntityVehiclePredicateJson, GameType, Ident, Identifier, ItemHolderSetJson,
-    LevelBasedValueJson, LevelBasedValueTypedJson, MobEffectSelectionJson, RequirementsJson, Span,
+    ConditionalLocationEffectJson, ConditionalValueEffectJson, CrossbowChargingSoundsJson,
+    DamageSourcePredicateJson, EnchantmentTargetJson, EntityEffectJson, EntityFlagsPredicateJson,
+    EntityPredicateJson, EntityTargetJson, EntityTypePredicateJson,
+    EntityTypeSpecificPredicateJson, EntityVehiclePredicateJson, GameType, Ident, Identifier,
+    ItemHolderSetJson, LevelBasedValueJson, LevelBasedValueTypedJson, LocationEffectJson,
+    MobEffectSelectionJson, MovementAffectedByJson, RequirementsJson, Span,
     TargetedConditionalEntityEffectJson, TargetedConditionalValueEffectJson, ToShoutySnakeCase,
     TokenStream, ValueEffectJson, damage_type_ref_token, generate_sound_event_ref,
     identifier_token, quote,
@@ -179,21 +180,25 @@ pub(super) fn entity_vehicle_predicate_token(
     }
 }
 
+fn optional_bool_token(value: Option<bool>) -> TokenStream {
+    if let Some(value) = value {
+        quote! { Some(#value) }
+    } else {
+        quote! { None }
+    }
+}
+
 pub(super) fn entity_flags_predicate_token(predicate: &EntityFlagsPredicateJson) -> TokenStream {
-    let is_fall_flying = if let Some(value) = predicate.is_fall_flying {
-        quote! { Some(#value) }
-    } else {
-        quote! { None }
-    };
-    let is_in_water = if let Some(value) = predicate.is_in_water {
-        quote! { Some(#value) }
-    } else {
-        quote! { None }
-    };
+    let is_on_ground = optional_bool_token(predicate.is_on_ground);
+    let is_flying = optional_bool_token(predicate.is_flying);
+    let is_fall_flying = optional_bool_token(predicate.is_fall_flying);
+    let is_in_water = optional_bool_token(predicate.is_in_water);
     let unsupported = predicate.unsupported;
 
     quote! {
         EntityFlagsPredicate {
+            is_on_ground: #is_on_ground,
+            is_flying: #is_flying,
             is_fall_flying: #is_fall_flying,
             is_in_water: #is_in_water,
             unsupported: #unsupported,
@@ -228,10 +233,28 @@ pub(super) fn entity_type_specific_predicate_token(
     }
 }
 
+fn movement_affected_by_token(predicate: &MovementAffectedByJson) -> TokenStream {
+    match predicate {
+        MovementAffectedByJson::Any => quote! { MovementAffectedByPredicate::Any },
+        MovementAffectedByJson::Blocks(ItemHolderSetJson::Tag(tag)) => {
+            let tag = identifier_token(tag);
+            quote! { MovementAffectedByPredicate::Blocks(EnchantmentBlockSet::Tag(#tag)) }
+        }
+        MovementAffectedByJson::Blocks(ItemHolderSetJson::Direct(blocks)) => {
+            let blocks = blocks.iter().map(identifier_token);
+            quote! {
+                MovementAffectedByPredicate::Blocks(EnchantmentBlockSet::Direct(&[#(#blocks),*]))
+            }
+        }
+        MovementAffectedByJson::Unsupported => quote! { MovementAffectedByPredicate::Unsupported },
+    }
+}
+
 pub(super) fn entity_predicate_token(predicate: &EntityPredicateJson) -> TokenStream {
     let entity_type = entity_type_predicate_token(&predicate.entity_type);
     let vehicle = entity_vehicle_predicate_token(&predicate.vehicle);
     let flags = entity_flags_predicate_token(&predicate.flags);
+    let movement_affected_by = movement_affected_by_token(&predicate.movement_affected_by);
     let type_specific = entity_type_specific_predicate_token(&predicate.type_specific);
     let unsupported = predicate.unsupported;
     quote! {
@@ -239,6 +262,7 @@ pub(super) fn entity_predicate_token(predicate: &EntityPredicateJson) -> TokenSt
             entity_type: #entity_type,
             vehicle: #vehicle,
             flags: #flags,
+            movement_affected_by: #movement_affected_by,
             type_specific: #type_specific,
             unsupported: #unsupported,
         }
@@ -403,11 +427,159 @@ pub(super) fn generate_entity_effect(
                 }
             }
         }
+        EntityEffectJson::ReplaceDisk {
+            radius,
+            height,
+            offset,
+            predicate,
+            block_state,
+            trigger_game_event,
+        } => {
+            let radius = generate_level_based_value_ref(prefix, radius, statics, counter);
+            let height = generate_level_based_value_ref(prefix, height, statics, counter);
+            let [offset_x, offset_y, offset_z] = *offset;
+            let predicate = if let Some(predicate) = predicate {
+                let ident = Ident::new(
+                    &format!("{}_BLOCK_PREDICATE_{}", prefix, *counter).to_lowercase(),
+                    Span::call_site(),
+                );
+                *counter += 1;
+                let predicate = crate::features::generate_block_predicate(predicate);
+                statics.extend(quote! {
+                    fn #ident() -> &'static crate::feature::BlockPredicate {
+                        #[allow(
+                            unused_imports,
+                            reason = "the feature predicate generator emits bare names"
+                        )]
+                        use crate::feature::{BlockPredicate, BlockRefList, FluidRefList};
+                        #[allow(
+                            unused_imports,
+                            reason = "the feature predicate generator emits bare names"
+                        )]
+                        use crate::{vanilla_blocks, vanilla_fluids};
+                        #[allow(
+                            unused_imports,
+                            reason = "the feature predicate generator emits bare names"
+                        )]
+                        use glam::IVec3;
+                        static PREDICATE: std::sync::LazyLock<BlockPredicate> =
+                            std::sync::LazyLock::new(|| #predicate);
+                        &PREDICATE
+                    }
+                });
+                quote! { Some(#ident) }
+            } else {
+                quote! { None }
+            };
+            let block_state = crate::features::generate_block_state_data(block_state);
+            let trigger_game_event = if let Some(event) = trigger_game_event {
+                assert_eq!(
+                    event.namespace.as_ref(),
+                    "minecraft",
+                    "vanilla enchantment game events must use the minecraft namespace: {event}"
+                );
+                let ident = Ident::new(&event.path.to_shouty_snake_case(), Span::call_site());
+                quote! { Some(&crate::vanilla_game_events::#ident) }
+            } else {
+                quote! { None }
+            };
+            quote! {
+                EnchantmentEntityEffect::ReplaceDisk {
+                    radius: #radius,
+                    height: #height,
+                    offset: glam::IVec3::new(#offset_x, #offset_y, #offset_z),
+                    predicate: #predicate,
+                    block_state: {
+                        use crate::vanilla_blocks;
+                        use crate::feature::BlockStateData;
+                        #block_state
+                    },
+                    trigger_game_event: #trigger_game_event,
+                }
+            }
+        }
         EntityEffectJson::Unsupported { effect_type } => {
             let effect_type = identifier_token(effect_type);
             quote! { EnchantmentEntityEffect::Unsupported { effect_type: #effect_type } }
         }
     }
+}
+
+fn generate_attribute_effect(
+    prefix: &str,
+    effect: &AttributeEffectJson,
+    statics: &mut TokenStream,
+    counter: &mut usize,
+) -> TokenStream {
+    let amount = generate_level_based_value_ref(prefix, &effect.amount, statics, counter);
+    let attribute = attribute_ref_token(&effect.attribute);
+    let id = identifier_token(&effect.id);
+    let operation = attribute_modifier_operation_token(&effect.operation);
+    quote! {
+        EnchantmentAttributeEffect {
+            amount: #amount,
+            attribute: #attribute,
+            id: #id,
+            operation: #operation,
+        }
+    }
+}
+
+fn generate_location_effect(
+    prefix: &str,
+    effect: &LocationEffectJson,
+    statics: &mut TokenStream,
+    counter: &mut usize,
+) -> TokenStream {
+    match effect {
+        LocationEffectJson::AllOf(effects) => {
+            let effects = effects.iter().map(|effect| {
+                let ident = Ident::new(
+                    &format!("{prefix}_LOCATION_EFFECT_{}", *counter),
+                    Span::call_site(),
+                );
+                *counter += 1;
+                let effect = generate_location_effect(prefix, effect, statics, counter);
+                statics.extend(quote! {
+                    static #ident: EnchantmentLocationBasedEffect = #effect;
+                });
+                quote! { &#ident }
+            });
+            let effects = effects.collect::<Vec<_>>();
+            quote! { EnchantmentLocationBasedEffect::AllOf(&[#(#effects),*]) }
+        }
+        LocationEffectJson::Attribute(effect) => {
+            let effect = generate_attribute_effect(prefix, effect, statics, counter);
+            quote! { EnchantmentLocationBasedEffect::Attribute(#effect) }
+        }
+        LocationEffectJson::Entity(effect) => {
+            let effect = generate_entity_effect_ref(prefix, effect, statics, counter);
+            quote! { EnchantmentLocationBasedEffect::Entity(#effect) }
+        }
+    }
+}
+
+pub(super) fn generate_conditional_location_effects(
+    prefix: &str,
+    effects: &[ConditionalLocationEffectJson],
+    statics: &mut TokenStream,
+    counter: &mut usize,
+) -> TokenStream {
+    let entries = effects.iter().enumerate().map(|(index, effect)| {
+        let entry_prefix = format!("{prefix}_{index}");
+        let effect_token =
+            generate_location_effect(&entry_prefix, &effect.effect, statics, counter);
+        let requirements =
+            generate_optional_requirements(&entry_prefix, &effect.requirements, statics, counter);
+        quote! {
+            ConditionalEnchantmentEffect {
+                effect: #effect_token,
+                requirements: #requirements,
+            }
+        }
+    });
+
+    quote! { &[#(#entries),*] }
 }
 
 pub(super) fn generate_requirements_ref(
@@ -488,6 +660,9 @@ pub(super) fn generate_requirements_value(
                 quote! { None }
             };
             quote! { EnchantmentEffectRequirements::MatchTool { items: #items } }
+        }
+        RequirementsJson::EnchantmentActiveCheck { active } => {
+            quote! { EnchantmentEffectRequirements::EnchantmentActiveCheck { active: #active } }
         }
         RequirementsJson::Unsupported { condition } => {
             let condition = identifier_token(condition);
@@ -633,19 +808,7 @@ pub(super) fn generate_attribute_effects(
 ) -> TokenStream {
     let entries = attributes.iter().enumerate().map(|(index, effect)| {
         let entry_prefix = format!("{prefix}_ATTRIBUTE_{index}");
-        let amount =
-            generate_level_based_value_ref(&entry_prefix, &effect.amount, statics, counter);
-        let attribute = attribute_ref_token(&effect.attribute);
-        let id = identifier_token(&effect.id);
-        let operation = attribute_modifier_operation_token(&effect.operation);
-        quote! {
-            EnchantmentAttributeEffect {
-                amount: #amount,
-                attribute: #attribute,
-                id: #id,
-                operation: #operation,
-            }
-        }
+        generate_attribute_effect(&entry_prefix, effect, statics, counter)
     });
 
     quote! { &[#(#entries),*] }

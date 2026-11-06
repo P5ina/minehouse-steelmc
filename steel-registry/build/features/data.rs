@@ -485,6 +485,11 @@ pub enum BlockPredicate {
         #[serde(default = "default_offset")]
         offset: Offset,
     },
+    #[serde(rename = "minecraft:unobstructed")]
+    Unobstructed {
+        #[serde(default = "default_offset")]
+        offset: Offset,
+    },
     #[serde(rename = "minecraft:has_sturdy_face")]
     HasSturdyFace {
         #[serde(deserialize_with = "deserialize_direction")]

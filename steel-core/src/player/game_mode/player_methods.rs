@@ -7,6 +7,7 @@ use super::{
     player_can_change_difficulty, shapes, vanilla_attributes,
 };
 use crate::behavior::blocks::PowderSnowBlock;
+use crate::enchantment_helper;
 use steel_protocol::packets::game::SPunch;
 use steel_utils::types::InteractionHand;
 
@@ -59,12 +60,12 @@ impl Player {
             self.stop_riding();
             // TODO: Remove shoulder entities once player shoulder storage is implemented.
             // TODO: Stop item use once living item-use state is implemented.
-            // TODO: Stop location-based enchantment effects once those effects are implemented.
+            enchantment_helper::stop_location_based_effects(self);
         } else if was_spectator {
             self.send_packet(CSetCamera {
                 camera_id: self.id(),
             });
-            // TODO: Restart location-based enchantment effects once those effects are implemented.
+            enchantment_helper::run_location_changed_effects(&self.get_world(), self);
         }
 
         self.send_abilities();

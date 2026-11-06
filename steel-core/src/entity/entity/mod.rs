@@ -1,6 +1,7 @@
 use std::collections::BTreeSet;
 
 use super::*;
+use crate::enchantment_helper;
 use crate::entity::entities::mobs::hostile::cube_mob::AbstractCubeMob;
 use crate::entity::entities::mobs::passive::equine::{AbstractHorse, PlayerRideableJumping};
 use crate::entity::entities::{Guardian, LightningBoltEntity, Squid};
@@ -2902,11 +2903,31 @@ pub trait Entity: EntityEventSource + ErasedType + Send + Sync + 'static {
     }
 
     /// Returns the vanilla block speed factor applied after movement.
+    ///
+    /// Vanilla `LivingEntity.getBlockSpeedFactor` lerps the block's factor
+    /// toward 1 by the `movement_efficiency` attribute (Soul Speed).
+    fn block_speed_factor(&self) -> f32 {
+        let factor = self.default_block_speed_factor();
+        match self.as_living_entity() {
+            Some(living) => {
+                let efficiency = living
+                    .living_base()
+                    .attributes()
+                    .lock()
+                    .required_value(vanilla_attributes::MOVEMENT_EFFICIENCY)
+                    as f32;
+                factor + efficiency * (1.0 - factor)
+            }
+            None => factor,
+        }
+    }
+
+    /// Vanilla `Entity.getBlockSpeedFactor`.
     #[expect(
         clippy::float_cmp,
         reason = "intentional: vanilla checks static block speed factors against 1.0"
     )]
-    fn block_speed_factor(&self) -> f32 {
+    fn default_block_speed_factor(&self) -> f32 {
         let Some(world) = self.level() else {
             return 1.0;
         };
@@ -3945,6 +3966,15 @@ pub trait Entity: EntityEventSource + ErasedType + Send + Sync + 'static {
         // during movement, so the last interaction result is the vanilla check.
         if self.is_living_entity() && !self.base().was_touching_water() {
             self.update_fluid_interaction();
+        }
+
+        // Vanilla `LivingEntity.checkFallDamage`: landing re-runs the
+        // location-changed enchantment effects.
+        if on_ground
+            && self.fall_distance() > 0.0
+            && let Some(living) = self.as_living_entity()
+        {
+            enchantment_helper::run_location_changed_effects(world, living);
         }
 
         if on_ground && self.fall_distance() > 0.0 {

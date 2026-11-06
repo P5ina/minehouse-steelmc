@@ -522,6 +522,35 @@ mod tests {
         );
     }
 
+    #[test]
+    fn location_changed_enchantments_generate_their_effects() {
+        use crate::enchantment_effect::EnchantmentLocationBasedEffect;
+
+        let frost_walker = vanilla_enchantments::FROST_WALKER.effects.location_changed;
+        assert_eq!(frost_walker.len(), 1);
+        assert!(matches!(
+            frost_walker[0].effect,
+            EnchantmentLocationBasedEffect::Entity(EnchantmentEntityEffect::ReplaceDisk {
+                predicate: Some(_),
+                trigger_game_event: Some(_),
+                ..
+            })
+        ));
+
+        let soul_speed = vanilla_enchantments::SOUL_SPEED.effects.location_changed;
+        assert_eq!(soul_speed.len(), 2);
+        assert!(matches!(
+            soul_speed[0].effect,
+            EnchantmentLocationBasedEffect::AllOf(effects) if effects.len() == 2
+        ));
+        assert!(matches!(
+            soul_speed[1].effect,
+            EnchantmentLocationBasedEffect::Entity(
+                EnchantmentEntityEffect::ChangeItemDamage { .. }
+            )
+        ));
+    }
+
     fn requirements_contain_random_chance(requirements: &EnchantmentEffectRequirements) -> bool {
         match requirements {
             EnchantmentEffectRequirements::AllOf(children)
@@ -535,6 +564,7 @@ mod tests {
             EnchantmentEffectRequirements::EntityProperties { .. }
             | EnchantmentEffectRequirements::DamageSourceProperties(_)
             | EnchantmentEffectRequirements::MatchTool { .. }
+            | EnchantmentEffectRequirements::EnchantmentActiveCheck { .. }
             | EnchantmentEffectRequirements::Unsupported { .. } => false,
         }
     }
@@ -551,6 +581,7 @@ mod tests {
             | EnchantmentEntityEffect::PlaySound { .. }
             | EnchantmentEntityEffect::Ignite { .. }
             | EnchantmentEntityEffect::ApplyMobEffect { .. }
+            | EnchantmentEntityEffect::ReplaceDisk { .. }
             | EnchantmentEntityEffect::Unsupported { .. } => false,
         }
     }
@@ -567,6 +598,7 @@ mod tests {
             | EnchantmentEntityEffect::DamageEntity { .. }
             | EnchantmentEntityEffect::Ignite { .. }
             | EnchantmentEntityEffect::ApplyMobEffect { .. }
+            | EnchantmentEntityEffect::ReplaceDisk { .. }
             | EnchantmentEntityEffect::Unsupported { .. } => false,
         }
     }

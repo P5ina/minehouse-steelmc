@@ -2,11 +2,11 @@ use super::BlockStateProviderEvaluator;
 use crate::{
     behavior::BLOCK_BEHAVIORS, fluid::state::get_fluid_state_from_block, world::LevelReader,
 };
-use glam::IVec3;
+use glam::{DVec3, IVec3};
 use steel_registry::{
     Registry, blocks::block_state_ext::BlockStateExt as _, feature::BlockPredicate,
 };
-use steel_utils::BlockPos;
+use steel_utils::{BlockPos, WorldAabb};
 
 impl BlockStateProviderEvaluator {
     pub(crate) fn test_block_predicate(
@@ -50,6 +50,17 @@ impl BlockStateProviderEvaluator {
             BlockPredicate::Replaceable { offset } => level
                 .get_block_state(Self::offset(origin, offset))
                 .is_replaceable(),
+            // Vanilla `UnobstructedPredicate.test` checks a full block at the
+            // origin and ignores its offset.
+            BlockPredicate::Unobstructed { .. } => {
+                let min = DVec3::new(
+                    f64::from(origin.x()),
+                    f64::from(origin.y()),
+                    f64::from(origin.z()),
+                );
+                level
+                    .is_unobstructed_by_entities_in(&WorldAabb::from_min_max(min, min + DVec3::ONE))
+            }
             BlockPredicate::HasSturdyFace { direction, offset } => {
                 let position = Self::offset(origin, offset);
                 level

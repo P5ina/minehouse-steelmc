@@ -704,6 +704,15 @@ impl World {
 }
 
 impl LevelReader for World {
+    fn is_unobstructed_by_entities_in(&self, aabb: &WorldAabb) -> bool {
+        !self.has_entity_in_aabb_matching(aabb, |other| {
+            !other.is_removed()
+                && !other.is_spectator()
+                && other.blocks_building()
+                && other.bounding_box().intersects(*aabb)
+        })
+    }
+
     fn get_block_state(&self, pos: BlockPos) -> BlockStateId {
         Self::get_block_state(self, pos)
     }
@@ -835,6 +844,10 @@ impl ServerLevelAccessor for World {
 }
 
 impl LevelReader for Arc<World> {
+    fn is_unobstructed_by_entities_in(&self, aabb: &WorldAabb) -> bool {
+        self.as_ref().is_unobstructed_by_entities_in(aabb)
+    }
+
     fn get_block_state(&self, pos: BlockPos) -> BlockStateId {
         self.as_ref().get_block_state(pos)
     }
