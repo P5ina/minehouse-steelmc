@@ -13,7 +13,6 @@ minehouse_mob_breeze
 minehouse_mob_camel
 minehouse_mob_camel_husk
 minehouse_mob_cat
-minehouse_mob_cod
 minehouse_mob_creaking
 minehouse_mob_dolphin
 minehouse_mob_donkey
@@ -25,7 +24,6 @@ minehouse_mob_evoker
 minehouse_mob_fox
 minehouse_mob_frog
 minehouse_mob_ghast
-minehouse_mob_glow_squid
 minehouse_mob_goat
 minehouse_mob_guardian
 minehouse_mob_happy_ghast
@@ -46,10 +44,8 @@ minehouse_mob_piglin
 minehouse_mob_piglin_brute
 minehouse_mob_pillager
 minehouse_mob_polar_bear
-minehouse_mob_pufferfish
 minehouse_mob_rabbit
 minehouse_mob_ravager
-minehouse_mob_salmon
 minehouse_mob_shulker
 minehouse_mob_silverfish
 minehouse_mob_skeleton
@@ -60,7 +56,6 @@ minehouse_mob_strider
 minehouse_mob_sulfur_cube
 minehouse_mob_tadpole
 minehouse_mob_trader_llama
-minehouse_mob_tropical_fish
 minehouse_mob_turtle
 minehouse_mob_vex
 minehouse_mob_villager

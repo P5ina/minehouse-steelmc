@@ -777,6 +777,7 @@ pub mod entities;
 )]
 mod entity;
 pub mod entity_selector;
+mod fish;
 mod fluid_contact;
 #[expect(warnings)]
 #[rustfmt::skip]
@@ -834,6 +835,11 @@ pub(crate) use entity::nbt_dvec3;
 pub(crate) use entity::position_rider_default;
 pub use entity::{
     AcceptedClientMovement, AcceptedClientMovementOutcome, Entity, EntityEventSource,
+};
+pub(crate) use fish::{
+    AbstractFish, AbstractSchoolingFish, SchoolSpawnGroupData, SchoolState,
+    WATER_ANIMAL_AMBIENT_SOUND_INTERVAL, handle_water_animal_air_supply, init_abstract_fish,
+    water_animal_experience_reward, water_animal_spawn_unobstructed,
 };
 pub use fluid_contact::EntityFluidContact;
 pub use identity::EntityGeneration;
