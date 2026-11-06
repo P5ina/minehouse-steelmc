@@ -1712,6 +1712,12 @@ pub trait Entity: EntityEventSource + ErasedType + Send + Sync + 'static {
         try_as_dyn::<Self, dyn Raider>(self)
     }
 
+    /// Returns the `SpellcasterIllager` capability, equivalent to vanilla's
+    /// `instanceof SpellcasterIllager`.
+    fn as_spellcaster_illager(&self) -> Option<&dyn SpellcasterIllager> {
+        try_as_dyn::<Self, dyn SpellcasterIllager>(self)
+    }
+
     /// Returns the `NeutralMob` capability, equivalent to vanilla's `instanceof NeutralMob`.
     fn as_neutral_mob(&self) -> Option<&dyn NeutralMob> {
         try_as_dyn::<Self, dyn NeutralMob>(self)
@@ -3101,6 +3107,11 @@ pub trait Entity: EntityEventSource + ErasedType + Send + Sync + 'static {
 
     /// Sets this entity's optional vanilla custom name.
     fn set_custom_name(&self, custom_name: Option<TextComponent>) {
+        self.default_set_custom_name(custom_name);
+    }
+
+    /// The `Entity.setCustomName` body, for overrides that call `super.setCustomName`.
+    fn default_set_custom_name(&self, custom_name: Option<TextComponent>) {
         self.base().set_custom_name(custom_name.clone());
         if let Some(synced_data) = self.synced_data() {
             synced_data.set_custom_name(custom_name);

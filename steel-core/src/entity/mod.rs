@@ -784,6 +784,7 @@ mod fluid_contact;
 #[path = "generated/entities.rs"]
 mod generated_entities;
 mod identity;
+mod illager;
 mod inside_block_effects;
 mod item_based_steering;
 mod item_frame;
@@ -809,6 +810,7 @@ pub(crate) mod selector;
 mod shearable;
 mod spawn;
 mod spawn_placements;
+mod spellcaster_illager;
 mod storage;
 mod synced_data;
 mod ticking;
@@ -845,6 +847,7 @@ pub(crate) use fish::{
 };
 pub use fluid_contact::EntityFluidContact;
 pub use identity::EntityGeneration;
+pub(crate) use illager::{AbstractIllager, is_abstract_villager};
 pub use inside_block_effects::{
     InsideBlockEffectCallback, InsideBlockEffectCollector, InsideBlockEffectType,
 };
@@ -899,6 +902,7 @@ pub(crate) use spawn::{
 };
 pub(crate) use spawn_placements::SpawnPlacements;
 pub(crate) use spawn_placements::spawn_aabb;
+pub(crate) use spellcaster_illager::{IllagerSpell, SpellcasterIllager, SpellcasterState};
 pub(crate) use storage::{EntityStorage, EntityStorageAddResult};
 pub use synced_data::{EntitySyncedData, LivingEntitySyncedData};
 pub(crate) use ticking::{snapshot_old_pos_and_rot_for_tick, tick_vehicle_passengers_if};

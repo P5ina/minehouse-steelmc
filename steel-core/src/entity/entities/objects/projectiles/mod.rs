@@ -2,6 +2,7 @@
 
 mod arrow;
 mod ender_pearl;
+mod evoker_fangs;
 mod eye_of_ender;
 mod fireball;
 mod firework_rocket;
@@ -13,6 +14,7 @@ mod thrown_egg;
 
 pub use arrow::{ArrowEntity, SpectralArrowEntity};
 pub use ender_pearl::EnderPearlEntity;
+pub use evoker_fangs::EvokerFangsEntity;
 pub use eye_of_ender::EyeOfEnderEntity;
 pub use fireball::{Fireball, LargeFireballEntity, SmallFireballEntity};
 pub use firework_rocket::FireworkRocketEntity;

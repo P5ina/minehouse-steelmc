@@ -24,3 +24,7 @@ pub use blaze::BlazeEntity;
 /// Hostile zombie, husk and giant entity module.
 pub mod zombie;
 pub use zombie::{GiantEntity, HuskEntity, ZombieEntity, ZombieGroupData};
+
+/// Hostile vex entity module.
+pub mod vex;
+pub use vex::VexEntity;
