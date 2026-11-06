@@ -123,7 +123,7 @@ impl MeleeAttackGoal {
             self.ticks_until_next_path_recalculation += PATH_RECALC_MEDIUM_DISTANCE_PENALTY;
         }
 
-        if !mob.move_to_pos(target.position(), self.speed_modifier) {
+        if !mob.move_to_entity(target.as_ref(), self.speed_modifier) {
             self.ticks_until_next_path_recalculation += PATH_RECALC_FAILED_MOVE_PENALTY;
         }
 

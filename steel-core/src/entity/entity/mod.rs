@@ -799,7 +799,12 @@ pub trait Entity: EntityEventSource + ErasedType + Send + Sync + 'static {
     }
 
     /// Returns this passenger's vehicle attachment point.
-    fn vehicle_attachment_point(&self, _vehicle: &dyn Entity) -> DVec3 {
+    fn vehicle_attachment_point(&self, vehicle: &dyn Entity) -> DVec3 {
+        self.default_vehicle_attachment_point(vehicle)
+    }
+
+    /// Vanilla `Entity.getVehicleAttachmentPoint`, callable from overrides.
+    fn default_vehicle_attachment_point(&self, _vehicle: &dyn Entity) -> DVec3 {
         let dimensions = self.base().dimensions();
         dimensions.attachments.get_clamped(
             EntityAttachment::Vehicle,
