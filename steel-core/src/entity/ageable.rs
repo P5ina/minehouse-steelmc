@@ -252,9 +252,7 @@ pub trait AgeableMob: Mob {
                 | SpawnGroupData::Zombie(_)
                 | SpawnGroupData::School(_),
             )
-            | None => {
-                AgeableMobGroupData::with_should_spawn_baby(true)
-            }
+            | None => AgeableMobGroupData::with_should_spawn_baby(true),
         };
         if group_data.finalize_ageable_spawn(rand::random::<f32>) {
             self.set_age(self.get_baby_start_age());
