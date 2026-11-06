@@ -4,13 +4,27 @@ use steel_registry::stat::vanilla_stat_types;
 use steel_registry::{DyeColor, vanilla_custom_stats};
 
 use super::*;
-use crate::behavior::{BLOCK_BEHAVIORS, InventoryTickContext, MOB_EFFECT_BEHAVIORS};
+use crate::behavior::{
+    BLOCK_BEHAVIORS, ITEM_BEHAVIORS, InventoryTickContext, MOB_EFFECT_BEHAVIORS,
+};
 use crate::entity::ai::brain::Memories;
 use crate::entity::consume_effect::apply_consume_effect;
 use crate::entity::damage::RecentDamageSource;
 use crate::entity::pushing::EntityPush;
 
 const BED_SLEEP_POSITION_OFFSET: f64 = 0.125;
+/// Vanilla `DATA_LIVING_ENTITY_FLAGS` bit 1: using an item.
+pub(crate) const LIVING_FLAG_USING_ITEM: i8 = 1;
+/// Vanilla `DATA_LIVING_ENTITY_FLAGS` bit 2: the used item is in the off hand.
+pub(crate) const LIVING_FLAG_OFF_HAND_ACTIVE: i8 = 1 << 1;
+
+/// Vanilla `InteractionHand.asEquipmentSlot`.
+const fn hand_slot(hand: InteractionHand) -> EquipmentSlot {
+    match hand {
+        InteractionHand::MainHand => EquipmentSlot::MainHand,
+        InteractionHand::OffHand => EquipmentSlot::OffHand,
+    }
+}
 
 /// A trait for living entities that can take damage, heal, and die.
 ///
@@ -1672,7 +1686,104 @@ pub trait LivingEntity: Entity {
 
     /// Checks if the entity is currently using an item.
     fn is_using_item(&self) -> bool {
-        false
+        self.living_base().is_using_item()
+    }
+
+    /// Vanilla `LivingEntity.startUsingItem` for non-player living entities
+    /// (players keep their own inventory-backed version).
+    fn start_using_held_item(&self, hand: InteractionHand) {
+        let Some(user) = self.as_living_entity() else {
+            return;
+        };
+        let mut item = ItemStack::empty();
+        self.with_equipment_slot(hand_slot(hand), &mut |stack| item = stack.clone());
+        if item.is_empty() || self.is_using_item() {
+            return;
+        }
+        let duration = ITEM_BEHAVIORS
+            .get_behavior(item.item())
+            .get_use_duration(&item, user);
+        // VANILLA: `useItemRemaining` may start at 0 for items with no use
+        // duration; Steel's active-use state rejects that, as does the
+        // vanilla tick, which then never completes it.
+        if !self.living_base().start_using_item(hand, &item, duration) {
+            return;
+        }
+        // TODO: `updatePlayersWithNewEquipment` resends the hand item; Steel
+        // already syncs equipment changes on the next tick.
+        if let Some(entity_data) = self.living_synced_data() {
+            entity_data.set_living_entity_flag(LIVING_FLAG_USING_ITEM, true);
+            entity_data.set_living_entity_flag(
+                LIVING_FLAG_OFF_HAND_ACTIVE,
+                hand == InteractionHand::OffHand,
+            );
+        }
+        if item
+            .get(USE_EFFECTS)
+            .is_some_and(|effects| effects.interact_vibrations)
+        {
+            self.game_event(&vanilla_game_events::ITEM_INTERACT_START);
+        }
+    }
+
+    /// Vanilla `LivingEntity.stopUsingItem` for non-player living entities.
+    fn stop_using_held_item(&self) {
+        let Some(active) = self.living_base().stop_using_item() else {
+            return;
+        };
+        if let Some(entity_data) = self.living_synced_data() {
+            entity_data.set_living_entity_flag(LIVING_FLAG_USING_ITEM, false);
+        }
+        let mut interact_vibrations = false;
+        self.with_equipment_slot(hand_slot(active.hand()), &mut |stack| {
+            interact_vibrations = stack.is(active.item())
+                && stack
+                    .get(USE_EFFECTS)
+                    .is_some_and(|effects| effects.interact_vibrations);
+        });
+        if interact_vibrations {
+            self.game_event(&vanilla_game_events::ITEM_INTERACT_FINISH);
+        }
+    }
+
+    /// Vanilla `LivingEntity.getTicksUsingItem`.
+    fn ticks_using_item(&self) -> i32 {
+        self.living_base()
+            .active_item_use()
+            .map_or(0, |active| active.duration() - active.remaining_ticks())
+    }
+
+    /// Vanilla `LivingEntity.updatingUsingItem` + `updateUsingItem` for
+    /// non-player living entities.
+    fn update_held_item_use(&self, entity: &SharedEntity) {
+        let Some(active) = self.living_base().active_item_use() else {
+            return;
+        };
+        let slot = hand_slot(active.hand());
+        let mut item = ItemStack::empty();
+        self.with_equipment_slot(slot, &mut |stack| item = stack.clone());
+        if !item.is(active.item()) {
+            self.stop_using_held_item();
+            return;
+        }
+        let (Some(world), Some(user)) = (self.level(), LivingEntityRef::new(entity)) else {
+            return;
+        };
+        let behavior = ITEM_BEHAVIORS.get_behavior(item.item());
+        behavior.on_use_tick(&world, user, &mut item, active.remaining_ticks());
+        let use_on_release = behavior.use_on_release(&item);
+        let remaining = self
+            .living_base()
+            .decrement_active_item_use()
+            .map(|active| active.remaining_ticks());
+        if remaining == Some(0) && !use_on_release && !item.is_empty() {
+            // Vanilla `completeUsingItem`.
+            let result = behavior.finish_using(&mut item, &world, user);
+            self.with_equipment_slot_mut(slot, &mut |stack| *stack = result.clone());
+            self.stop_using_held_item();
+            return;
+        }
+        self.with_equipment_slot_mut(slot, &mut |stack| *stack = item.clone());
     }
 
     /// Checks if the entity is blocking with a shield or similar item.
@@ -1797,8 +1908,13 @@ pub trait LivingEntity: Entity {
             .flatten()
     }
 
-    /// Applies the sound portion of vanilla's equipment-change hook.
+    /// Vanilla `LivingEntity.onEquipItem`, called whenever a slot changes.
     fn on_equip_item(&self, slot: EquipmentSlot, previous: &ItemStack, stack: &ItemStack) {
+        self.default_on_equip_item(slot, previous, stack);
+    }
+
+    /// Applies the sound portion of vanilla's equipment-change hook.
+    fn default_on_equip_item(&self, slot: EquipmentSlot, previous: &ItemStack, stack: &ItemStack) {
         if self.is_spectator()
             || self.is_first_tick()
             || ItemStack::is_same_item_same_components(previous, stack)
@@ -2040,6 +2156,9 @@ pub trait LivingEntity: Entity {
     /// The default `Entity::tick` dispatches living entities here.
     fn tick_living_entity(&self, entity: &SharedEntity) {
         self.default_tick();
+        if self.as_player().is_none() {
+            self.update_held_item_use(entity);
+        }
         self.living_base().decrement_invulnerable_time();
 
         if self.is_dead_or_dying() {
