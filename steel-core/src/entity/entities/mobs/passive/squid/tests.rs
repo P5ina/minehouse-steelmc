@@ -14,7 +14,7 @@ fn rotate_vector_trails_ink_behind_a_pitched_squid() {
     let squid = test_squid();
     squid.state.lock().x_body_rot_old = 30.0;
 
-    let rotated = squid.rotate_vector(DVec3::new(0.0, -1.0, 0.0));
+    let rotated = squid.squid_rotate_vector(DVec3::new(0.0, -1.0, 0.0));
 
     assert!(
         (rotated - DVec3::new(0.0, -0.866_025, 0.5)).length() < 1e-4,

@@ -17,4 +17,4 @@ pub use fish::{
 pub use mooshroom::MushroomCowEntity;
 pub use pig::PigEntity;
 pub use sheep::SheepEntity;
-pub use squid::SquidEntity;
+pub use squid::{GlowSquidEntity, Squid, SquidEntity};

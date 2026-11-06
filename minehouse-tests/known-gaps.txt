@@ -24,7 +24,6 @@ minehouse_mob_evoker
 minehouse_mob_fox
 minehouse_mob_frog
 minehouse_mob_ghast
-minehouse_mob_glow_squid
 minehouse_mob_goat
 minehouse_mob_guardian
 minehouse_mob_happy_ghast
