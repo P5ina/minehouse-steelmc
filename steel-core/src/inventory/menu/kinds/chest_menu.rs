@@ -28,8 +28,48 @@ pub fn chest(
         container_id,
         container.clone(),
         rows,
-        ChestKind { container },
+        ChestKind {
+            containers: vec![container],
+        },
     )
+}
+
+/// Builds a chest menu over several equally sized containers shown one after
+/// another, like the two halves of a double chest (Vanilla `CompoundContainer`).
+///
+/// # Panics
+/// Panics if `containers` is empty, `rows` is not a multiple of its length, or
+/// `rows` is 0 or greater than 6.
+#[must_use]
+pub fn chest_halves(
+    inventory: Shared<PlayerInventory>,
+    container_id: u8,
+    containers: &[ContainerRef],
+    rows: usize,
+) -> Menu {
+    assert!(
+        !containers.is_empty() && rows.is_multiple_of(containers.len()),
+        "Chest rows must split evenly between the containers"
+    );
+    assert!(
+        (1..=6).contains(&rows),
+        "Chest rows must be between 1 and 6"
+    );
+
+    let slots_per_container = rows / containers.len() * 9;
+    let mut builder = MenuBuilder::new(menu_type_for_rows(rows), container_id);
+    let chest: Vec<Section> = containers
+        .iter()
+        .map(|container| builder.section(container, slots_per_container))
+        .collect();
+    let player = builder.player_inventory(&inventory);
+
+    builder.route(chest.clone(), player.all(), FillDirection::Backward);
+    builder.route(player.all(), chest, FillDirection::Forward);
+
+    builder.build(ChestKind {
+        containers: containers.to_vec(),
+    })
 }
 
 /// Builds the same layout as [`chest`] under a caller-supplied menu kind.
@@ -81,10 +121,18 @@ pub fn menu_type_for_rows(rows: usize) -> MenuTypeRef {
     }
 }
 
-/// Per-menu chest state: just the backing container for the validity check.
+/// Per-menu chest state: just the backing containers for the validity check.
 pub struct ChestKind {
-    /// The backing container.
-    container: ContainerRef,
+    /// The backing containers.
+    containers: Vec<ContainerRef>,
+}
+
+impl ChestKind {
+    /// Creates a kind that stays valid while every container does.
+    #[must_use]
+    pub const fn new(containers: Vec<ContainerRef>) -> Self {
+        Self { containers }
+    }
 }
 
 // SAFETY: This Steel-owned key uniquely identifies the concrete menu kind
@@ -95,9 +143,11 @@ unsafe impl steel_utils::DowncastType for ChestKind {
 }
 
 impl MenuKind for ChestKind {
-    /// Returns true if the backing container is still valid for the player.
+    /// Returns true if every backing container is still valid for the player.
     fn still_valid(&self, _behavior: &MenuBehavior, player: &Player) -> bool {
-        self.container.still_valid(player)
+        self.containers
+            .iter()
+            .all(|container| container.still_valid(player))
     }
 }
 

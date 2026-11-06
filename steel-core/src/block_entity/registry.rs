@@ -179,6 +179,10 @@ pub static BLOCK_ENTITIES: BlockEntityRegistryLock = BlockEntityRegistryLock(Onc
 /// Initializes the global block entity registry.
 ///
 /// This should be called after the main registry is frozen. Repeated calls are a no-op.
+#[expect(
+    clippy::too_many_lines,
+    reason = "one factory registration per implemented block entity type"
+)]
 pub fn init_block_entities() {
     BLOCK_ENTITIES.get_or_init(|| {
         let mut registry = BlockEntityRegistry::new();
@@ -197,6 +201,19 @@ pub fn init_block_entities() {
         // Register barrel block entity factory
         registry.register(&vanilla_block_entity_types::BARREL, |level, pos, state| {
             Arc::new(BarrelBlockEntity::new(level, pos, state))
+        });
+
+        registry.register(&vanilla_block_entity_types::CHEST, |level, pos, state| {
+            Arc::new(ChestBlockEntity::new(level, pos, state))
+        });
+
+        registry.register(
+            &vanilla_block_entity_types::TRAPPED_CHEST,
+            |level, pos, state| Arc::new(ChestBlockEntity::new_trapped(level, pos, state)),
+        );
+
+        registry.register(&vanilla_block_entity_types::HOPPER, |level, pos, state| {
+            Arc::new(HopperBlockEntity::new(level, pos, state))
         });
 
         registry.register(&vanilla_block_entity_types::BEACON, |level, pos, state| {
