@@ -114,7 +114,11 @@ impl CatRelaxOnOwnerGoal {
             f64::from(origin.y() + rand::random_range(0..5) - 2),
             f64::from(origin.z() + rand::random_range(0..11) - 5),
             false,
-            &BlockTag::CAT_DOES_NOT_TELEPORT_TO,
+            &|state| {
+                state
+                    .get_block()
+                    .has_tag(&BlockTag::CAT_DOES_NOT_TELEPORT_TO)
+            },
         );
 
         let cat_pos = cat.block_position();

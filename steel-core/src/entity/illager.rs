@@ -32,3 +32,14 @@ pub(crate) fn is_abstract_villager(entity: &dyn LivingEntity) -> bool {
     let entity_type = entity.entity_type();
     entity_type == &vanilla_entities::VILLAGER || entity_type == &vanilla_entities::WANDERING_TRADER
 }
+
+/// Vanilla `instanceof AbstractIllager`: evokers, illusioners, pillagers and
+/// vindicators.
+#[must_use]
+pub(crate) fn is_abstract_illager(entity: &dyn Entity) -> bool {
+    let entity_type = entity.entity_type();
+    entity_type == &vanilla_entities::EVOKER
+        || entity_type == &vanilla_entities::ILLUSIONER
+        || entity_type == &vanilla_entities::PILLAGER
+        || entity_type == &vanilla_entities::VINDICATOR
+}

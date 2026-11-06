@@ -15,3 +15,11 @@ pub use evoker::EvokerEntity;
 /// Pillager entity module.
 pub mod pillager;
 pub use pillager::PillagerEntity;
+
+/// Ravager entity module.
+pub mod ravager;
+pub use ravager::RavagerEntity;
+
+/// Illusioner entity module.
+pub mod illusioner;
+pub use illusioner::IllusionerEntity;

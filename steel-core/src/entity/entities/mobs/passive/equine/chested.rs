@@ -128,7 +128,8 @@ pub trait AbstractChestedHorse: AbstractHorse {
         if !self.has_chest() {
             return;
         }
-        let inventory = self.horse_base().inventory().lock();
+        let inventory = self.horse_base().inventory();
+        let inventory = inventory.lock();
         let items = inventory
             .items()
             .iter()
@@ -155,7 +156,8 @@ pub trait AbstractChestedHorse: AbstractHorse {
         let Some(compounds) = nbt.list("Items").and_then(|items| items.compounds()) else {
             return;
         };
-        let mut inventory = self.horse_base().inventory().lock();
+        let inventory = self.horse_base().inventory();
+        let mut inventory = inventory.lock();
         let size = inventory.get_container_size();
         for compound in compounds {
             let Some(slot) = compound.byte("Slot") else {

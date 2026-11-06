@@ -7,13 +7,13 @@
 mod chested;
 mod goals;
 mod horse;
+pub(crate) mod menu;
 mod skeleton_horse;
 #[cfg(test)]
 mod tests;
 mod zombie_horse;
 
 use std::f32::consts::PI;
-use std::mem;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 
@@ -35,7 +35,7 @@ use steel_registry::{
     vanilla_game_events, vanilla_items,
 };
 use steel_utils::entity_events::EntityStatus;
-use steel_utils::locks::SyncMutex;
+use steel_utils::locks::{IntoShared as _, Shared, SyncMutex};
 use steel_utils::types::InteractionHand;
 use steel_utils::{BlockPos, BlockStateId};
 use uuid::Uuid;
@@ -175,7 +175,9 @@ pub struct AbstractHorseBase {
     /// Vanilla `standAnim` and `standAnimO`; the old value offsets riders.
     stand_anim: SyncMutex<(f32, f32)>,
     owner: SyncMutex<Option<EntityReference>>,
-    inventory: SyncMutex<SimpleContainer>,
+    /// Swapped for a new container on resize, as vanilla's
+    /// `hasInventoryChanged` compares container identity.
+    inventory: SyncMutex<Shared<SimpleContainer>>,
 }
 
 impl AbstractHorseBase {
@@ -194,14 +196,21 @@ impl AbstractHorseBase {
             player_jump_pending_scale: SyncMutex::new(0.0),
             stand_anim: SyncMutex::new((0.0, 0.0)),
             owner: SyncMutex::new(None),
-            inventory: SyncMutex::new(SimpleContainer::new(columns * INVENTORY_ROWS)),
+            inventory: SyncMutex::new(SimpleContainer::new(columns * INVENTORY_ROWS).into_shared()),
         }
     }
 
     /// The horse's container, sized by vanilla `getInventorySize`.
     #[must_use]
-    pub const fn inventory(&self) -> &SyncMutex<SimpleContainer> {
-        &self.inventory
+    pub fn inventory(&self) -> Shared<SimpleContainer> {
+        Arc::clone(&self.inventory.lock())
+    }
+
+    /// Vanilla `hasInventoryChanged`: whether `container` is no longer this
+    /// horse's container.
+    #[must_use]
+    pub fn has_inventory_changed(&self, container: &Shared<SimpleContainer>) -> bool {
+        !Arc::ptr_eq(&self.inventory.lock(), container)
     }
 }
 
@@ -379,14 +388,18 @@ pub trait AbstractHorse: Animal + PathfinderMob {
     /// Vanilla `createInventory`: resizes the container, keeping what fits.
     fn create_inventory(&self) {
         let size = self.inventory_columns() * INVENTORY_ROWS;
-        let mut inventory = self.horse_base().inventory.lock();
-        let old = mem::replace(&mut *inventory, SimpleContainer::new(size));
-        let max = old.items().len().min(size);
-        for (slot, item) in old.items().iter().take(max).enumerate() {
-            if !item.is_empty() {
-                inventory.set_item(slot, item.copy_with_count(item.count()));
+        let mut new_inventory = SimpleContainer::new(size);
+        let old = self.horse_base().inventory();
+        {
+            let old = old.lock();
+            let max = old.items().len().min(size);
+            for (slot, item) in old.items().iter().take(max).enumerate() {
+                if !item.is_empty() {
+                    new_inventory.set_item(slot, item.copy_with_count(item.count()));
+                }
             }
         }
+        *self.horse_base().inventory.lock() = new_inventory.into_shared();
     }
 
     /// Vanilla `eating`.
@@ -719,7 +732,8 @@ pub trait AbstractHorse: Animal + PathfinderMob {
     /// Vanilla `dropEquipment`: drops the inventory on death.
     fn drop_horse_inventory(&self) {
         let items: Vec<ItemStack> = {
-            let mut inventory = self.horse_base().inventory.lock();
+            let inventory = self.horse_base().inventory();
+            let mut inventory = inventory.lock();
             (0..inventory.items().len())
                 .filter_map(|slot| {
                     let item = inventory.get_item(slot);
@@ -887,13 +901,18 @@ pub trait AbstractHorse: Animal + PathfinderMob {
         )
     }
 
+    /// Vanilla `openCustomInventoryScreen`.
+    fn open_custom_inventory_screen(&self, player: &Player) {
+        menu::open_horse_inventory(self, player);
+    }
+
     /// Vanilla `mobInteract` for an adult, unridden horse.
     fn horse_mob_interact(&self, player: &Player, hand: InteractionHand) -> InteractionResult {
         if self.is_vehicle() || AgeableMob::is_baby(self) {
             return self.mob_interact_animal(player, hand);
         }
         if self.is_tamed() && player.is_secondary_use_active() {
-            // TODO: Open the horse inventory screen once mount menus exist.
+            self.open_custom_inventory_screen(player);
             return InteractionResult::Success;
         }
 

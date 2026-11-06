@@ -16,7 +16,7 @@ use steel_utils::nbt::{compare_nbt_compounds, parse_snbt_compound};
 
 use crate::entity::init_entities;
 use crate::player::ResetReason;
-use crate::test_support::{TestPlayerBuilder, fresh_test_world};
+use crate::test_support::{TestPlayerBuilder, fresh_test_world, unimplemented_entity_type};
 
 use super::base_spawner::choose_weighted;
 use super::*;
@@ -143,7 +143,8 @@ fn unsupported_spawn_data_delays_and_reselects_without_inserting() {
     root.insert("MaxSpawnDelay", 10_i32);
     root.insert("SpawnCount", 1_i32);
 
-    root.insert("SpawnData", spawn_data("minecraft:illusioner").to_nbt());
+    let unimplemented = unimplemented_entity_type().key.to_string();
+    root.insert("SpawnData", spawn_data(&unimplemented).to_nbt());
 
     let mut potential = NbtCompound::new();
     potential.insert("data", spawn_data("minecraft:pig").to_nbt());

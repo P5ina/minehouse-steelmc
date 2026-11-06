@@ -675,3 +675,22 @@ pub(crate) fn fresh_test_derived_world(primary: &Arc<World>, name: &'static str)
         GameTimeSource::Derived(Arc::clone(&primary.game_time)),
     )
 }
+
+/// A summonable entity type with no Steel implementation yet, for tests of
+/// the "no factory registered" paths.
+pub(crate) fn unimplemented_entity_type() -> EntityTypeRef {
+    use crate::entity::{ENTITIES, init_entities};
+    use steel_registry::REGISTRY;
+
+    init_entities();
+    REGISTRY
+        .entity_types
+        .iter()
+        .map(|(_, entity_type)| entity_type)
+        .find(|&entity_type| {
+            entity_type.summonable
+                && entity_type.can_serialize
+                && !ENTITIES.has_factory(entity_type)
+        })
+        .expect("every entity type has a factory; these tests are no longer needed")
+}
