@@ -35,6 +35,9 @@ pub trait NoiseSettings: Send + Sync {
     const MATERIAL_ORE_VEINS_ENABLED: bool;
     /// Whether this dimension uses Java's LCG random (true) or Xoroshiro (false).
     const LEGACY_RANDOM_SOURCE: bool;
+    /// Vanilla `NoiseGeneratorSettings.disableMobGeneration`: whether chunk
+    /// generation skips the initial creature spawns.
+    const DISABLE_MOB_GENERATION: bool = false;
 
     /// Get the default block state ID for this dimension.
     fn default_block_id() -> BlockStateId;

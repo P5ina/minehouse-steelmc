@@ -109,6 +109,12 @@ pub trait ChunkGenerator: Send + Sync {
 
     /// Applies structure piece placement and biome feature decorations.
     fn apply_biome_decorations(&self, region: &mut WorldGenRegion<'_>);
+
+    /// Vanilla `ChunkGenerator.spawnOriginalMobs`: the creatures placed once
+    /// while the chunk generates. Flat and debug generators spawn none.
+    fn spawn_original_mobs(&self, region: &WorldGenRegion<'_>) {
+        let _ = region;
+    }
 }
 
 pub(crate) fn worldgen_region_random_from_splitter(

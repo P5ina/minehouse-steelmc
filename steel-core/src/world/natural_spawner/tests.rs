@@ -13,15 +13,31 @@ use steel_registry::{
 use steel_utils::types::UpdateFlags;
 use steel_utils::{BlockPos, ChunkPos, Identifier};
 
+use rustc_hash::FxHashMap;
+use steel_utils::random::Random as _;
+use steel_utils::random::legacy_random::LegacyRandom;
+
 use super::spawn_list::{SpawnList, SpawnerEntry, fortress_enemies};
 use super::spawn_state::{PotentialCalculator, SpawnState};
 use super::{SPAWNING_CATEGORIES, filtered_spawning_categories};
+use super::{set_decoration_seed, spawn_mobs_for_chunk_generation};
 use crate::behavior::init_behaviors;
+use crate::chunk::Chunk;
+use crate::chunk::chunk_generation_task::StaticCache2D;
+use crate::chunk::chunk_holder::ChunkHolder;
+use crate::chunk::chunk_pyramid::GENERATION_PYRAMID;
+use crate::chunk::chunk_ticket_manager::ChunkTicketLevel;
+use crate::chunk::section::{ChunkSection, Sections};
+use crate::chunk::status::ChunkStatus;
 use crate::entity::{Entity as _, init_entities};
 use crate::player::ResetReason;
 use crate::test_support::{
-    TestPlayerBuilder, fresh_test_world_with_dimension_type, insert_ready_full_chunk,
+    TestPlayerBuilder, fresh_test_world_in_domain, fresh_test_world_with_dimension_type,
+    insert_ready_full_chunk,
 };
+use crate::world::World;
+use crate::worldgen::generator::ChunkGenerator as _;
+use crate::worldgen::region::WorldGenRegion;
 
 /// Returns the same raw value for every draw.
 struct FixedRng(u64);
@@ -224,4 +240,121 @@ fn natural_spawn_places_monsters_away_from_players() {
         assert_eq!(entity.block_position().y(), 65);
         assert!(entity.position().distance_squared(player.position()) > 24.0 * 24.0);
     }
+}
+
+/// Builds a 3×3 area of generation chunks at `Light`, floored with grass at
+/// y = 63, and returns their holders keyed by position.
+fn grass_generation_area(world: &Arc<World>) -> FxHashMap<(i32, i32), Arc<ChunkHolder>> {
+    let min_y = world.get_min_y();
+    let height = world.get_height();
+    let grass_y = usize::try_from(63 - min_y).unwrap_or(0);
+    let mut holders = FxHashMap::default();
+    for chunk_x in -1..=1 {
+        for chunk_z in -1..=1 {
+            let pos = ChunkPos::new(chunk_x, chunk_z);
+            let sections = (0..height / 16)
+                .map(|_| ChunkSection::new_empty())
+                .collect::<Vec<_>>()
+                .into_boxed_slice();
+            let chunk = Chunk::new(
+                Sections::from_owned(sections),
+                pos,
+                min_y,
+                height,
+                Arc::downgrade(world),
+            );
+            for x in 0..16 {
+                for z in 0..16 {
+                    chunk.set_relative_block_for_generation(
+                        ChunkStatus::Light,
+                        x,
+                        grass_y,
+                        z,
+                        vanilla_blocks::GRASS_BLOCK.default_state(),
+                    );
+                }
+            }
+            chunk.prime_final_heightmaps();
+            let holder = Arc::new(ChunkHolder::new(
+                pos,
+                ChunkTicketLevel::FULL_CHUNK,
+                Some(ChunkTicketLevel::FULL_CHUNK),
+                min_y,
+                height,
+            ));
+            holder.insert_chunk(chunk, ChunkStatus::Light);
+            holders.insert((chunk_x, chunk_z), holder);
+        }
+    }
+    holders
+}
+
+#[test]
+fn chunk_generation_places_creatures_on_grass() {
+    init_vanilla_registry();
+    init_behaviors();
+    init_entities();
+    let world_fixture = fresh_test_world_in_domain("natural_spawner", "chunk_generation");
+    let world = &world_fixture.world;
+    let holders = Arc::new(grass_generation_area(world));
+    let cache_holders = Arc::clone(&holders);
+    let cache = StaticCache2D::create(0, 0, 1, move |x, z| {
+        let Some(holder) = cache_holders.get(&(x, z)) else {
+            panic!("missing test chunk ({x}, {z})");
+        };
+        Arc::clone(holder)
+    });
+    let context = Arc::clone(&world.chunk_map.world_gen_context);
+    let step = GENERATION_PYRAMID.get_step_to(ChunkStatus::Spawn);
+    let center = ChunkPos::new(0, 0);
+    let region_random = context
+        .generator
+        .create_worldgen_region_random(world.seed(), center);
+    let region = WorldGenRegion::new(context.as_ref(), step, &cache, center, region_random);
+
+    let mut spawned = Vec::new();
+    for seed in 0_i64..64 {
+        let mut random = LegacyRandom::from_seed(0);
+        // Java random draws barely differ for neighbouring small seeds.
+        set_decoration_seed(&mut random, seed.wrapping_mul(0x5851_F42D_4C95_7F2D), 0, 0);
+        spawn_mobs_for_chunk_generation(
+            &region,
+            world,
+            BlockPos::new(0, 319, 0),
+            center,
+            &mut random,
+        );
+        if let Some(chunk) = holders[&(0, 0)].try_chunk(ChunkStatus::Light) {
+            spawned = chunk.get_entities();
+        }
+        if !spawned.is_empty() {
+            break;
+        }
+    }
+
+    assert!(!spawned.is_empty(), "no creature spawned on grass");
+    for entity in &spawned {
+        assert_eq!(entity.entity_type().mob_category, MobCategory::Creature);
+        let pos = entity.block_position();
+        assert_eq!(
+            pos.y(),
+            64,
+            "{} spawned at {pos:?}",
+            entity.entity_type().key
+        );
+        assert!((0..16).contains(&pos.x()) && (0..16).contains(&pos.z()));
+    }
+}
+
+#[test]
+fn decoration_seed_is_deterministic_per_chunk() {
+    let mut first = LegacyRandom::from_seed(1);
+    let mut second = LegacyRandom::from_seed(2);
+    set_decoration_seed(&mut first, 42, 16, -32);
+    set_decoration_seed(&mut second, 42, 16, -32);
+    assert_eq!(first.next_i64(), second.next_i64());
+
+    let mut other_chunk = LegacyRandom::from_seed(1);
+    set_decoration_seed(&mut other_chunk, 42, 32, -32);
+    assert_ne!(first.next_i64(), other_chunk.next_i64());
 }
