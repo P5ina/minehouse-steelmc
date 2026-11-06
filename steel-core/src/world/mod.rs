@@ -809,6 +809,10 @@ impl ServerLevelAccessor for World {
         .is_some()
     }
 
+    fn biome(&self, pos: BlockPos) -> Option<BiomeRef> {
+        self.biome_at(pos)
+    }
+
     fn is_unobstructed_by_entities(&self, entity: &dyn Entity) -> bool {
         let aabb = entity.bounding_box();
         !self.has_entity_in_aabb_matching(&aabb, |other| {
@@ -914,6 +918,10 @@ impl ServerLevelAccessor for Arc<World> {
 
     fn is_unobstructed_by_entities(&self, entity: &dyn Entity) -> bool {
         self.as_ref().is_unobstructed_by_entities(entity)
+    }
+
+    fn biome(&self, pos: BlockPos) -> Option<BiomeRef> {
+        self.biome_at(pos)
     }
 }
 

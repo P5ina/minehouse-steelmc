@@ -46,3 +46,7 @@ pub use ghast::GhastEntity;
 /// Hostile guardian and elder guardian entity module.
 pub mod guardian;
 pub use guardian::{ElderGuardianEntity, Guardian, GuardianEntity};
+
+/// Phantom, the undead flyer that hunts players who skip sleep.
+pub mod phantom;
+pub use phantom::PhantomEntity;
