@@ -1790,6 +1790,39 @@ pub trait LivingEntity: Entity {
         self.with_equipment_slot_mut(slot, &mut |stack| *stack = item.clone());
     }
 
+    /// Vanilla `LivingEntity.getUseItem` for non-player living entities: the
+    /// stack in the active hand, or empty when no item is in use.
+    fn use_held_item(&self) -> ItemStack {
+        let mut item = ItemStack::empty();
+        if let Some(active) = self.living_base().active_item_use() {
+            self.with_equipment_slot(hand_slot(active.hand()), &mut |stack| {
+                item = stack.clone();
+            });
+        }
+        item
+    }
+
+    /// Vanilla `LivingEntity.releaseUsingItem` for non-player living entities.
+    fn release_using_held_item(&self, entity: &SharedEntity) {
+        if let Some(active) = self.living_base().active_item_use()
+            && let (Some(world), Some(user)) = (self.level(), self.as_living_entity())
+        {
+            let slot = hand_slot(active.hand());
+            let mut item = ItemStack::empty();
+            self.with_equipment_slot(slot, &mut |stack| item = stack.clone());
+            if !item.is_empty() && item.is(active.item()) {
+                let behavior = ITEM_BEHAVIORS.get_behavior(item.item());
+                let _ = behavior.release_using(&mut item, &world, user, active.remaining_ticks());
+                let use_on_release = behavior.use_on_release(&item);
+                self.with_equipment_slot_mut(slot, &mut |stack| *stack = item.clone());
+                if use_on_release {
+                    self.update_held_item_use(entity);
+                }
+            }
+        }
+        self.stop_using_held_item();
+    }
+
     /// Checks if the entity is blocking with a shield or similar item.
     fn is_blocking(&self) -> bool {
         false
@@ -2785,6 +2818,29 @@ pub trait LivingEntity: Entity {
         }
 
         Some((movement, result))
+    }
+
+    /// Vanilla `travelFlying(input, waterSpeed, lavaSpeed, airSpeed)`: gravity-free
+    /// flight with water (0.8), lava (0.5) and air (0.91) drag.
+    fn travel_flying(
+        &self,
+        entity: &SharedEntity,
+        input: DVec3,
+        water_speed: f32,
+        lava_speed: f32,
+        air_speed: f32,
+    ) -> Option<MoveResult> {
+        let (speed, drag) = if self.is_in_water() {
+            (water_speed, f64::from(0.8_f32))
+        } else if self.is_in_lava() {
+            (lava_speed, 0.5)
+        } else {
+            (air_speed, f64::from(0.91_f32))
+        };
+        self.move_relative(speed, input);
+        let result = Arc::clone(entity).move_entity(MoverType::SelfMovement, self.velocity());
+        self.set_velocity(self.velocity() * drag);
+        result
     }
 
     /// Handles movement, gravity, and air friction while the entity is airborne.

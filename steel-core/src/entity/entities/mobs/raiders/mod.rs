@@ -11,3 +11,7 @@ pub use vindicator::VindicatorEntity;
 /// Evoker entity module.
 pub mod evoker;
 pub use evoker::EvokerEntity;
+
+/// Pillager entity module.
+pub mod pillager;
+pub use pillager::PillagerEntity;

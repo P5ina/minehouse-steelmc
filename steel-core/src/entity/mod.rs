@@ -763,11 +763,12 @@ mod animal;
 pub mod attribute;
 mod base;
 mod block_attached_entity;
-mod block_effects;
+pub(crate) mod block_effects;
 mod callback;
 mod combat_rules;
 pub mod consume_effect;
 mod conversion;
+mod crossbow_attack_mob;
 pub mod damage;
 pub(crate) mod dismount_helper;
 pub mod entities;
@@ -834,6 +835,7 @@ pub use callback::{
     PlayerEntityCallback, RemovalReason,
 };
 pub use conversion::{AfterConversion, ConversionParams, ConversionType};
+pub(crate) use crossbow_attack_mob::CrossbowAttackMob;
 pub(crate) use entity::apply_entity_look_at;
 pub(crate) use entity::nbt_dvec3;
 pub(crate) use entity::position_rider_default;
