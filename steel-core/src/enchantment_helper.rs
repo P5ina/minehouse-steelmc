@@ -5,9 +5,10 @@ use std::sync::Arc;
 use item_in_use::EnchantedItemInUse;
 
 use steel_registry::enchantment_effect::{
-    DamageSourcePredicate, EnchantmentEffectComponent, EnchantmentEffectRequirements,
-    EnchantmentEntityEffect, EnchantmentEntityTarget, EnchantmentTarget, EntityPredicate,
-    EntityTypePredicate, EntityTypeSpecificPredicate, EntityVehiclePredicate, MobEffectSelection,
+    CrossbowChargingSounds, DamageSourcePredicate, EnchantmentEffectComponent,
+    EnchantmentEffectRequirements, EnchantmentEntityEffect, EnchantmentEntityTarget,
+    EnchantmentTarget, EntityPredicate, EntityTypePredicate, EntityTypeSpecificPredicate,
+    EntityVehiclePredicate, MobEffectSelection,
 };
 use steel_registry::entity_type::EntityTypeRef;
 use steel_registry::item_stack::ItemStack;
@@ -183,6 +184,54 @@ pub(crate) fn process_projectile_spread(
         angle,
     )
     .max(0.0)
+}
+
+/// Vanilla `EnchantmentHelper.modifyCrossbowChargingTime` (Quick Charge):
+/// the crossbow charge time in seconds, never below zero.
+pub(crate) fn modify_crossbow_charging_time(crossbow: &ItemStack, time: f32) -> f32 {
+    let Some(enchantments) = crossbow.get_enchantments() else {
+        return time.max(0.0);
+    };
+    let mut random = LegacyRandom::from_seed(rand::random());
+    let mut value = time;
+    for (key, level) in enchantments.iter() {
+        let Some(enchantment) = REGISTRY.enchantments.by_key(key) else {
+            continue;
+        };
+        if let Some(effect) = &enchantment.effects.crossbow_charge_time {
+            value = effect.process_with_random(*level as i32, &mut random, value);
+        }
+    }
+    value.max(0.0)
+}
+
+/// Vanilla `EnchantmentHelper.pickHighestLevel(crossbow, CROSSBOW_CHARGING_SOUNDS)`:
+/// the charging sounds of the highest-level enchantment that has any, picked
+/// by that level from its list.
+pub(crate) fn pick_crossbow_charging_sounds(
+    crossbow: &ItemStack,
+) -> Option<&'static CrossbowChargingSounds> {
+    let enchantments = crossbow.get_enchantments()?;
+    let mut found: Option<(&'static [CrossbowChargingSounds], i32)> = None;
+    for (key, level) in enchantments.iter() {
+        let level = *level as i32;
+        if found.is_some_and(|(_, found_level)| found_level >= level) {
+            continue;
+        }
+        let Some(enchantment) = REGISTRY.enchantments.by_key(key) else {
+            continue;
+        };
+        let sounds = enchantment.effects.crossbow_charging_sounds;
+        if !sounds.is_empty() {
+            found = Some((sounds, level));
+        }
+    }
+    let (sounds, level) = found?;
+    let index = usize::try_from(level)
+        .ok()?
+        .min(sounds.len())
+        .checked_sub(1)?;
+    sounds.get(index)
 }
 
 /// Vanilla `Enchantment.modifyItemFilteredCount`, run over every enchantment

@@ -39,14 +39,31 @@ pub(crate) enum AmmoSlot {
     Creative,
 }
 
+/// Vanilla `ProjectileWeaponItem.ARROW_OR_FIREWORK`.
+#[must_use]
+pub(crate) fn is_arrow_or_firework(stack: &ItemStack) -> bool {
+    is_arrow(stack) || stack.is(&vanilla_items::FIREWORK_ROCKET)
+}
+
 /// Vanilla `Player.getProjectile` for an arrow-only weapon (the bow): the
 /// off hand, then the main hand, then the inventory, then a creative arrow.
 #[must_use]
 pub(crate) fn find_player_arrow(player: &Player) -> Option<(AmmoSlot, ItemStack)> {
+    find_player_projectile(player, is_arrow)
+}
+
+/// Vanilla `Player.getProjectile`: a held stack matching
+/// `supported_held_projectiles` (off hand first), then an arrow from the
+/// inventory, then a creative arrow.
+#[must_use]
+pub(crate) fn find_player_projectile(
+    player: &Player,
+    supported_held_projectiles: fn(&ItemStack) -> bool,
+) -> Option<(AmmoSlot, ItemStack)> {
     let inventory = player.inventory.lock();
     for hand in [InteractionHand::OffHand, InteractionHand::MainHand] {
         let held = inventory.get_item_in_hand(hand);
-        if is_arrow(held) {
+        if supported_held_projectiles(held) {
             return Some((AmmoSlot::Hand(hand), held.clone()));
         }
     }

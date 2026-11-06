@@ -10,11 +10,15 @@ use super::{
     vanilla_damage_types, vanilla_entities,
 };
 
+use crate::entity::{EntityReference, ProjectileDeflection};
 use crate::player::food_data::food_constants;
 use std::ops::Add;
 use steel_math::trig;
 use steel_registry::particle_type::ParticleData;
-use steel_registry::{vanilla_custom_stats, vanilla_particle_types};
+use steel_registry::vanilla_entity_type_tags::EntityTypeTag;
+use steel_registry::{
+    REGISTRY, TaggedRegistryExt as _, sound_events, vanilla_custom_stats, vanilla_particle_types,
+};
 
 const fn sound_holder_ref(holder: &SoundEventHolder) -> Option<SoundEventRef> {
     match holder {
@@ -390,6 +394,39 @@ impl Player {
             || entity.skip_attack_interaction(&(Arc::clone(self) as Arc<dyn Entity>))
     }
 
+    /// Vanilla `Player.deflectProjectile`: hitting a redirectable projectile
+    /// (fireballs, wind charges) sends it back where the player looks.
+    fn deflect_projectile(self: &Arc<Self>, target: &SharedEntity) -> bool {
+        if !REGISTRY.entity_types.is_in_tag(
+            target.entity_type(),
+            &EntityTypeTag::REDIRECTABLE_PROJECTILE,
+        ) {
+            return false;
+        }
+        let Some(projectile) = target.as_projectile() else {
+            return false;
+        };
+        let player: SharedEntity = Arc::<Player>::clone(self);
+        if !projectile.deflect(
+            ProjectileDeflection::AimDeflect,
+            Some(player.as_ref()),
+            Some(EntityReference::from_entity(&player)),
+            true,
+        ) {
+            return false;
+        }
+        let world = self.get_world();
+        world.play_sound_at(
+            &sound_events::ENTITY_PLAYER_ATTACK_NODAMAGE,
+            self.sound_source(),
+            self.position(),
+            1.0,
+            1.0,
+            None,
+        );
+        true
+    }
+
     /// Attacks an entity with the player's main-hand base damage.
     ///
     /// Returns `true` if the target accepted damage.
@@ -435,6 +472,9 @@ impl Player {
         let knockback_attack = self.is_sprinting() && full_strength_attack;
         self.reset_attack_strength_ticker();
 
+        if self.deflect_projectile(target) {
+            return false;
+        }
         if total_damage <= 0.0 {
             return false;
         }
