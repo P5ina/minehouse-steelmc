@@ -28,7 +28,7 @@ use steel_utils::{
 };
 
 use crate::{
-    behavior::blocks::ShulkerBoxBlock,
+    behavior::{ITEM_BEHAVIORS, blocks::ShulkerBoxBlock},
     block_entity::{BlockEntity, BlockEntityBase, ImplicitComponentGetter},
     inventory::{
         container::Container,
@@ -437,6 +437,20 @@ impl Container for ShulkerBoxContainer {
 
     fn get_max_stack_size(&self) -> i32 {
         64
+    }
+
+    /// Vanilla `ShulkerBoxBlockEntity.canPlaceItemThroughFace`: hoppers and
+    /// droppers cannot insert another shulker box.
+    fn can_place_item_through_face(
+        &self,
+        slot: usize,
+        stack: &ItemStack,
+        _direction: Direction,
+    ) -> bool {
+        self.can_place_item(slot, stack)
+            && ITEM_BEHAVIORS
+                .get_behavior(stack.item())
+                .can_fit_inside_container_items()
     }
 
     fn set_changed(&mut self) {}
