@@ -394,6 +394,15 @@ impl ChunkSchedulingCoordinator {
         ingress.record_changes(changes);
     }
 
+    /// Vanilla `DistanceManager.getNaturalSpawnChunkCount`.
+    #[must_use]
+    pub(crate) fn natural_spawn_chunk_count(&self) -> usize {
+        self.ticket_ingress
+            .lock()
+            .player_tickets
+            .natural_spawn_chunk_count()
+    }
+
     #[must_use]
     pub(crate) fn persistent_chunk_tickets(&self) -> PersistentChunkTickets {
         self.ticket_ingress.lock().storage.to_persistent()

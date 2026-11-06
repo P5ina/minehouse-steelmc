@@ -7,6 +7,7 @@ use steel_registry::{vanilla_attributes, vanilla_blocks};
 use steel_utils::{BlockPos, ChunkPos};
 
 use super::{Mob, TARGET_REACH_DISTANCE_SQR};
+use crate::entity::ai::brain::memory_types;
 use crate::entity::ai::goal::{Goal, GoalControl};
 use crate::entity::ai::navigation::{
     NavigationPathRequest, NavigationRecomputeRequest, NavigationTickContext,
@@ -328,6 +329,12 @@ pub trait PathfinderMob: Mob {
     }
 
     fn is_panicking(&self) -> bool {
+        if self
+            .brain_memories()
+            .is_some_and(|memories| memories.lock().has_value(&memory_types::IS_PANICKING))
+        {
+            return true;
+        }
         self.mob_base()
             .goal_selector()
             .lock()
@@ -350,8 +357,6 @@ pub trait PathfinderMob: Mob {
 
     /// Re-enables MOVE and follows a nearby holder unless panicking.
     ///
-    /// Brain-based panic detection awaits Brain support; Steel uses vanilla's
-    /// running-`PanicGoal` fallback.
     fn close_range_leash_behaviour_pathfinder(&self, holder: &dyn Entity) {
         if !self.should_stay_close_to_leash_holder() || self.is_panicking() {
             return;

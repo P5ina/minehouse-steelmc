@@ -55,6 +55,7 @@ impl WeakDamageSource {
     }
 }
 
+#[derive(Clone)]
 struct ResolvedSourceEntity {
     entity: Option<SharedEntity>,
     generation: EntityGeneration,
@@ -66,6 +67,7 @@ struct ResolvedSourceEntity {
 /// entities alive. Generation accessors distinguish a released entity from an
 /// originally absent one. Each entity resolves independently, so a released
 /// projectile does not hide its still-live shooter.
+#[derive(Clone)]
 pub struct RecentDamageSource {
     /// The original damage type, even when its entities have been released.
     pub damage_type: &'static DamageType,

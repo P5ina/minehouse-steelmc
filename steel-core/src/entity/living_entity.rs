@@ -5,6 +5,7 @@ use steel_registry::{DyeColor, vanilla_custom_stats};
 
 use super::*;
 use crate::behavior::{BLOCK_BEHAVIORS, InventoryTickContext, MOB_EFFECT_BEHAVIORS};
+use crate::entity::ai::brain::Memories;
 use crate::entity::consume_effect::apply_consume_effect;
 use crate::entity::damage::RecentDamageSource;
 use crate::entity::pushing::EntityPush;
@@ -23,6 +24,12 @@ pub trait LivingEntity: Entity {
     /// living runtime state such as attributes, cached movement speed,
     /// damage cooldown, and death animation counters.
     fn living_base(&self) -> &LivingEntityBase;
+
+    /// Memories of this entity's brain, for entities with one
+    /// (vanilla `LivingEntity.getBrain`; brainless entities use an empty brain).
+    fn brain_memories(&self) -> Option<&SyncMutex<Memories>> {
+        None
+    }
 
     /// Returns vanilla living body/head rotation state.
     fn living_rotation_state(&self) -> LivingRotationState {

@@ -40,6 +40,15 @@ impl DomainEntityDirectory {
         });
     }
 
+    /// The loaded world that owns this domain's game time and shared level data.
+    pub(crate) fn game_time_owner(&self) -> Option<Arc<World>> {
+        self.worlds
+            .read()
+            .iter()
+            .filter_map(Weak::upgrade)
+            .find(|world| world.level_data.read().owns_game_time())
+    }
+
     pub(crate) fn get_entity_by_uuid(&self, uuid: &Uuid) -> Option<SharedEntity> {
         self.worlds
             .read()
