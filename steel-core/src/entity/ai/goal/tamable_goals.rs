@@ -197,7 +197,7 @@ impl Goal for FollowOwnerGoal {
     }
 }
 
-/// What an owner-defence goal reads from the owner.
+/// What an owner-defense goal reads from the owner.
 #[derive(Clone, Copy)]
 enum OwnerFight {
     /// Vanilla `OwnerHurtByTargetGoal`: whoever last hurt the owner.
