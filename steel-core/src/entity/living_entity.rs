@@ -2326,7 +2326,12 @@ pub trait LivingEntity: Entity {
     }
 
     /// Applies upward velocity to jump out of the given liquid.
-    fn jump_in_liquid(&self, _fluid_tag: &Identifier) {
+    fn jump_in_liquid(&self, fluid_tag: &Identifier) {
+        self.default_jump_in_liquid(fluid_tag);
+    }
+
+    /// The default implementation of `LivingEntity.jumpInLiquid` when not overridden.
+    fn default_jump_in_liquid(&self, _fluid_tag: &Identifier) {
         self.set_velocity(self.velocity() + DVec3::new(0.0, f64::from(0.04_f32), 0.0));
     }
 

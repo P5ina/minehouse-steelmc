@@ -40,7 +40,6 @@ minehouse_mob_husk
 minehouse_mob_illusioner
 minehouse_mob_iron_golem
 minehouse_mob_llama
-minehouse_mob_magma_cube
 minehouse_mob_mule
 minehouse_mob_nautilus
 minehouse_mob_ocelot
@@ -61,7 +60,6 @@ minehouse_mob_shulker
 minehouse_mob_silverfish
 minehouse_mob_skeleton
 minehouse_mob_skeleton_horse
-minehouse_mob_slime
 minehouse_mob_sniffer
 minehouse_mob_snow_golem
 minehouse_mob_stray
