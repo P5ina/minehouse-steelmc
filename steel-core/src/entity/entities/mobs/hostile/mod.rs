@@ -17,3 +17,7 @@ pub use cube_mob::{MagmaCubeEntity, SlimeEntity};
 /// Hostile spider and cave spider entity module.
 pub mod spider;
 pub use spider::{CaveSpiderEntity, SpiderEntity};
+
+/// Hostile zombie, husk and giant entity module.
+pub mod zombie;
+pub use zombie::{GiantEntity, HuskEntity, ZombieEntity, ZombieGroupData};

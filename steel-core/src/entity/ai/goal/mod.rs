@@ -1,6 +1,7 @@
 //! Vanilla-shaped goal selector and movement goals.
 
 mod avoid_entity;
+mod break_door;
 mod breath_air;
 mod breed_goal;
 mod climb_on_top_of_powder_snow;
@@ -34,8 +35,10 @@ mod target_goal;
 mod tempt_goal;
 mod try_find_water;
 mod water_avoiding_random_stroll;
+mod zombie_attack;
 
 pub(crate) use avoid_entity::AvoidEntityGoal;
+pub(crate) use break_door::BreakDoorGoal;
 pub(crate) use breed_goal::BreedGoal;
 pub(crate) use climb_on_top_of_powder_snow::ClimbOnTopOfPowderSnowGoal;
 pub(crate) use eat_block_goal::EatBlockGoal;
@@ -54,6 +57,7 @@ pub(crate) use squid_random_movement_goal::SquidRandomMovementGoal;
 pub(crate) use swell_goal::SwellGoal;
 pub(crate) use tempt_goal::TemptGoal;
 pub(crate) use water_avoiding_random_stroll::WaterAvoidingRandomStrollGoal;
+pub(crate) use zombie_attack::ZombieAttackGoal;
 
 pub(crate) const fn reduced_tick_delay(ticks: i32) -> i32 {
     (ticks + 1) / 2
