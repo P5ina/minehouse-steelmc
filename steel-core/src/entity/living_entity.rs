@@ -2448,7 +2448,22 @@ pub trait LivingEntity: Entity {
         self.apply_effects_from_blocks();
         self.tick_freezing();
         self.push_entities();
+        if self.is_sensitive_to_water()
+            && self.is_in_water_or_rain()
+            && let Some(world) = self.level()
+        {
+            self.hurt_server(
+                &world,
+                &DamageSource::environment(&vanilla_damage_types::DROWN),
+                1.0,
+            );
+        }
         result
+    }
+
+    /// Whether water and rain hurt this entity (snow golems, endermen, blazes, striders).
+    fn is_sensitive_to_water(&self) -> bool {
+        self.entity_type().flags.is_sensitive_to_water
     }
 
     /// Runs one AI-driven movement and effect tick for the entity.

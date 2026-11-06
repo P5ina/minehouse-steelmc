@@ -1657,6 +1657,16 @@ pub trait Entity: EntityEventSource + ErasedType + Send + Sync + 'static {
         try_as_dyn::<Self, dyn Enemy>(self)
     }
 
+    /// Returns the `NeutralMob` capability, equivalent to vanilla's `instanceof NeutralMob`.
+    fn as_neutral_mob(&self) -> Option<&dyn NeutralMob> {
+        try_as_dyn::<Self, dyn NeutralMob>(self)
+    }
+
+    /// Returns the `RangedAttackMob` capability, equivalent to vanilla's `instanceof RangedAttackMob`.
+    fn as_ranged_attack_mob(&self) -> Option<&dyn RangedAttackMob> {
+        try_as_dyn::<Self, dyn RangedAttackMob>(self)
+    }
+
     /// Returns true for entities that implement vanilla ageable-mob behavior.
     fn is_ageable_mob(&self) -> bool {
         self.as_ageable_mob().is_some()

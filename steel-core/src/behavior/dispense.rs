@@ -1,5 +1,6 @@
 //! What a dispenser does with the item it fires (Vanilla `DispenseItemBehavior`).
 
+use std::mem;
 use std::sync::Arc;
 
 use glam::DVec3;
@@ -13,13 +14,14 @@ use steel_registry::{
     level_events, vanilla_blocks, vanilla_fluids, vanilla_game_events, vanilla_items,
 };
 use steel_utils::types::UpdateFlags;
-use steel_utils::{BlockPos, BlockStateId};
+use steel_utils::{BlockPos, BlockStateId, WorldAabb};
 
-use crate::behavior::blocks::{FireBlock, TntBlock};
+use crate::behavior::blocks::{CarvedPumpkinBlock, FireBlock, TntBlock};
 use crate::behavior::context::BlockPlaceContext;
 use crate::behavior::items::{BlockItem, BoneMealItem, can_light, empty_contents};
 use crate::behavior::{BLOCK_BEHAVIORS, ITEM_BEHAVIORS, pickup_waterlogged_block};
 use crate::block_entity::entities::DispenserBlockEntity;
+use crate::inventory::prelude::EquipmentSlot;
 use crate::world::World;
 use crate::world::game_event::GameEventContext;
 
@@ -70,11 +72,13 @@ pub(crate) enum DispenseBehavior {
     BoneMeal,
     /// Places a shulker box in front.
     ShulkerBox,
+    /// Completes a golem in front, or puts the pumpkin on an entity's head.
+    CarvedPumpkin,
 }
 
 impl DispenseBehavior {
     /// The behavior Vanilla registers for `item` in `DispenserBlock.DISPENSER_REGISTRY`.
-    // TODO: Projectiles, armor, boats, minecarts, spawn eggs, shears, carved pumpkins, fish and powder snow buckets and the other
+    // TODO: Projectiles, armor, boats, minecarts, spawn eggs, shears, fish and powder snow buckets and the other
     // `DispenseItemBehavior.bootStrap` entries still use the default drop.
     pub(crate) fn for_item(item: &ItemStack) -> Self {
         if item.is(&vanilla_items::WATER_BUCKET) {
@@ -87,6 +91,8 @@ impl DispenseBehavior {
             Self::FlintAndSteel
         } else if item.is(&vanilla_items::BONE_MEAL) {
             Self::BoneMeal
+        } else if item.is(&vanilla_items::CARVED_PUMPKIN) {
+            Self::CarvedPumpkin
         } else if shulker_box_block(item).is_some() {
             Self::ShulkerBox
         } else {
@@ -108,10 +114,11 @@ impl DispenseBehavior {
                 play_default_sound_and_animation(source);
                 result
             }
-            Self::FlintAndSteel | Self::BoneMeal | Self::ShulkerBox => {
+            Self::FlintAndSteel | Self::BoneMeal | Self::ShulkerBox | Self::CarvedPumpkin => {
                 let (result, success) = match self {
                     Self::FlintAndSteel => flint_and_steel(source, stack),
                     Self::BoneMeal => bone_meal(source, stack),
+                    Self::CarvedPumpkin => carved_pumpkin(source, stack),
                     _ => shulker_box(source, stack),
                 };
                 source.world.level_event(
@@ -350,4 +357,77 @@ fn shulker_box(source: &BlockSource<'_>, mut stack: ItemStack) -> (ItemStack, bo
     let context = BlockPlaceContext::directional(source.world, pos, direction, &mut stack, against);
     let success = BlockItem::new(block).place(context).consumes_action();
     (stack, success)
+}
+
+/// Vanilla `DispenseItemBehavior.bootStrap` carved pumpkin behavior.
+fn carved_pumpkin(source: &BlockSource<'_>, mut stack: ItemStack) -> (ItemStack, bool) {
+    let world = source.world;
+    let target = source.target();
+    if world.get_block_state(target).is_air() && CarvedPumpkinBlock::can_spawn_golem(world, target)
+    {
+        world.set_block(
+            target,
+            vanilla_blocks::CARVED_PUMPKIN.default_state(),
+            UpdateFlags::UPDATE_ALL,
+        );
+        world.game_event(
+            &vanilla_game_events::BLOCK_PLACE,
+            target,
+            &GameEventContext::new(None, None),
+        );
+        stack.shrink(1);
+        return (stack, true);
+    }
+    let success = dispense_equipment(source, &mut stack);
+    (stack, success)
+}
+
+/// Vanilla `EquipmentDispenseItemBehavior.dispenseEquipment`: equips one item on
+/// the first living entity in the block in front that accepts it.
+pub(crate) fn dispense_equipment(source: &BlockSource<'_>, stack: &mut ItemStack) -> bool {
+    let target = source.target();
+    let search_box = WorldAabb::new(
+        f64::from(target.x()),
+        f64::from(target.y()),
+        f64::from(target.z()),
+        f64::from(target.x() + 1),
+        f64::from(target.y() + 1),
+        f64::from(target.z() + 1),
+    );
+    let candidates = source
+        .world
+        .get_entities_in_aabb_matching(&search_box, |entity| {
+            entity
+                .as_living_entity()
+                .is_some_and(|living| living.can_equip_with_dispenser(stack))
+        });
+    let Some(living) = candidates
+        .first()
+        .and_then(|entity| entity.as_living_entity())
+    else {
+        return false;
+    };
+
+    let slot = match living.as_mob() {
+        Some(mob) => mob.get_equipment_slot_for_item(stack),
+        None => match stack.get_equippable() {
+            Some(equippable) if living.can_use_slot(equippable.slot) => equippable.slot,
+            _ => EquipmentSlot::MainHand,
+        },
+    };
+    let equip = stack.split(1);
+    let equipped = equip.copy_with_count(equip.count());
+    let mut previous = ItemStack::empty();
+    let mut equip = Some(equip);
+    living.with_equipment_slot_mut(slot, &mut |item_stack| {
+        if let Some(equip) = equip.take() {
+            previous = mem::replace(item_stack, equip);
+        }
+    });
+    living.on_equip_item(slot, &previous, &equipped);
+    if let Some(mob) = living.as_mob() {
+        mob.set_guaranteed_drop(slot);
+        mob.set_persistence_required();
+    }
+    true
 }

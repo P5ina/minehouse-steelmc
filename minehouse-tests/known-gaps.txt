@@ -2,10 +2,6 @@
 # CI fails when a spec not listed here fails. A listed spec that passes is
 # reported; remove it from the list in the same change that fixes it.
 
-# golems: dispensing a carved pumpkin and the golem entities are not implemented yet
-minehouse_iron_golem_from_blocks
-minehouse_snow_golem_from_blocks
-
 # mobs: the entity (or the mob it converts into) does not exist in SteelMC yet
 minehouse_mob_allay
 minehouse_mob_armadillo
