@@ -354,6 +354,26 @@ impl World {
             .unwrap_or(self.dimension_type.snow_golem_melts)
     }
 
+    /// The `minecraft:gameplay/can_pillager_patrol_spawn` environment attribute at
+    /// the center of `pos`. It defaults to true, and no vanilla dimension type
+    /// sets it. The noise biome may override it, and the dimension timelines
+    /// apply over that (the overworld `early_game` timeline keeps it off for the
+    /// first five days).
+    #[must_use]
+    pub fn can_pillager_patrol_spawn(&self, pos: BlockPos) -> bool {
+        let biome_value = self
+            .noise_biome_id(pos.x() >> 2, pos.y() >> 2, pos.z() >> 2)
+            .and_then(|id| REGISTRY.biomes.by_id(usize::from(id)))
+            .and_then(|biome| biome.can_pillager_patrol_spawn)
+            .unwrap_or(true);
+        let level_data = self.level_data.read();
+        environment::can_pillager_patrol_spawn(
+            biome_value,
+            self.dimension_type,
+            level_data.world_clocks(),
+        )
+    }
+
     pub(super) fn noise_biome_id(&self, quart_x: i32, quart_y: i32, quart_z: i32) -> Option<u16> {
         let chunk_pos = ChunkPos::new(quart_x >> 2, quart_z >> 2);
         let local_quart_x = (quart_x & 3) as usize;

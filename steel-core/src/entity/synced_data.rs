@@ -107,7 +107,8 @@ pub trait LivingEntitySyncedData: EntitySyncedData {
     /// Sets synchronized vanilla `DATA_ARROW_COUNT_ID`.
     fn set_arrow_count(&self, count: i32);
 
-    /// Vanilla `LivingEntity.setLivingEntityFlag`.
+    /// Sets or clears bits of vanilla `DATA_LIVING_ENTITY_FLAGS`
+    /// (`LivingEntity.setLivingEntityFlag`).
     fn set_living_entity_flag(&self, flag: i8, value: bool);
 }
 
@@ -131,14 +132,13 @@ where
     }
 
     fn set_living_entity_flag(&self, flag: i8, value: bool) {
-        let mut data = self.lock();
-        let current = *data.living_entity().living_entity_flags.get();
-        let updated = if value {
-            current | flag
-        } else {
-            current & !flag
-        };
-        data.living_entity_mut().living_entity_flags.set(updated);
+        let mut entity_data = self.lock();
+        let flags = *entity_data.living_entity().living_entity_flags.get();
+        let flags = if value { flags | flag } else { flags & !flag };
+        entity_data
+            .living_entity_mut()
+            .living_entity_flags
+            .set(flags);
     }
 }
 

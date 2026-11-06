@@ -46,7 +46,7 @@ use crate::entity::spawn::create_entity_instance;
 use crate::entity::{
     DefaultEntityPush, Entity, EntityBase, EntityBaseLoad, EntityMovementEmission, EntityPose,
     EntitySpawnReason, EntitySyncedData, LivingEntity, LivingEntityBase, Mob, MobBase,
-    MobEffectInstance, Monster, PathfinderMob, SharedEntity, SpawnGroupData,
+    MobEffectInstance, Monster, PathfinderMob, SharedEntity, SpawnGroupData, SpawnRule,
     sync_dirty_mob_effects,
 };
 use crate::inventory::equipment::EquipmentSlot;
@@ -201,7 +201,7 @@ fn door_breaking_difficulty(difficulty: Difficulty) -> bool {
 }
 
 /// Vanilla `SpecialDates.isHalloween`: October 31st in the server's time zone.
-fn is_halloween() -> bool {
+pub(super) fn is_halloween() -> bool {
     use chrono::Datelike as _;
     let today = chrono::Local::now();
     today.month() == 10 && today.day() == 31
@@ -938,7 +938,7 @@ macro_rules! impl_zombie_traits {
 }
 
 /// A hostile zombie.
-#[entity_behavior(class = "Zombie")]
+#[entity_behavior(class = "Zombie", spawn_rule)]
 pub struct ZombieEntity {
     base: EntityBase,
     entity_type: EntityTypeRef,
@@ -954,6 +954,11 @@ unsafe impl DowncastType for ZombieEntity {
 }
 
 impl ZombieEntity {
+    /// Vanilla `SpawnPlacements`: `Monster.checkMonsterSpawnRules`.
+    pub(crate) const SPAWN_RULE: SpawnRule = |entity_type, level, spawn_reason, pos, random| {
+        <Self as Monster>::check_monster_spawn_rules(entity_type, level, spawn_reason, pos, random)
+    };
+
     /// Creates a new zombie.
     #[must_use]
     pub fn new(entity_type: EntityTypeRef, id: i32, position: DVec3, world: Weak<World>) -> Self {
@@ -1003,7 +1008,7 @@ impl ZombieEntity {
 }
 
 /// A hostile husk: a desert zombie that does not burn and starves its targets.
-#[entity_behavior(class = "Husk")]
+#[entity_behavior(class = "Husk", spawn_rule)]
 pub struct HuskEntity {
     base: EntityBase,
     entity_type: EntityTypeRef,
@@ -1016,6 +1021,19 @@ pub struct HuskEntity {
 // SAFETY: The owner-scoped type key uniquely identifies HuskEntity.
 unsafe impl DowncastType for HuskEntity {
     const TYPE_KEY: DowncastTypeKey = DowncastTypeKey::new("steel:entity/husk");
+}
+
+impl HuskEntity {
+    /// Vanilla `SpawnPlacements`: `Monster.checkSurfaceMonstersSpawnRules`.
+    pub(crate) const SPAWN_RULE: SpawnRule = |entity_type, level, spawn_reason, pos, random| {
+        <Self as Monster>::check_surface_monsters_spawn_rules(
+            entity_type,
+            level,
+            spawn_reason,
+            pos,
+            random,
+        )
+    };
 }
 
 impl HuskEntity {

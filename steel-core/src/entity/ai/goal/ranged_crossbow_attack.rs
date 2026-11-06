@@ -4,11 +4,9 @@ use glam::DVec3;
 use steel_registry::vanilla_items;
 
 use super::selector::{Goal, GoalControls};
+use super::weapon_holding_hand;
 use crate::behavior::items::crossbow::get_charge_duration;
-use crate::entity::living_item_use::{
-    release_using_item, start_using_item, stop_using_item, ticks_using_item, use_item,
-};
-use crate::entity::{LivingEntity, PathfinderMob, SharedEntity, weapon_holding_hand};
+use crate::entity::{LivingEntity, PathfinderMob, SharedEntity};
 
 /// Line-of-sight ticks before the mob stops to charge.
 const SEE_TIME_TO_STOP: i32 = 5;
@@ -92,7 +90,7 @@ impl Goal for RangedCrossbowAttackGoal {
             // VANILLA: `getUseItem().set(CHARGED_PROJECTILES, EMPTY)` runs after
             // `stopUsingItem`, when the use item is already `ItemStack.EMPTY`, so
             // the crossbow keeps whatever it had loaded.
-            stop_using_item(crossbow_mob);
+            crossbow_mob.stop_using_held_item();
             crossbow_mob.set_charging_crossbow(false);
         }
     }
@@ -153,7 +151,10 @@ impl Goal for RangedCrossbowAttackGoal {
         match self.crossbow_state {
             CrossbowState::Uncharged => {
                 if !needs_to_move {
-                    start_using_item(crossbow_mob, weapon_holding_hand(crossbow_mob));
+                    crossbow_mob.start_using_held_item(weapon_holding_hand(
+                        crossbow_mob,
+                        &vanilla_items::CROSSBOW,
+                    ));
                     self.crossbow_state = CrossbowState::Charging;
                     crossbow_mob.set_charging_crossbow(true);
                 }
@@ -162,10 +163,10 @@ impl Goal for RangedCrossbowAttackGoal {
                 if !crossbow_mob.living_base().is_using_item() {
                     self.crossbow_state = CrossbowState::Uncharged;
                 }
-                let pull_time = ticks_using_item(crossbow_mob);
-                let use_item = use_item(crossbow_mob);
+                let pull_time = crossbow_mob.ticks_using_item();
+                let use_item = crossbow_mob.use_held_item();
                 if pull_time >= get_charge_duration(&use_item) {
-                    release_using_item(crossbow_mob, entity);
+                    crossbow_mob.release_using_held_item(entity);
                     self.crossbow_state = CrossbowState::Charged;
                     self.attack_delay = 20 + rand::random_range(0..20);
                     crossbow_mob.set_charging_crossbow(false);
