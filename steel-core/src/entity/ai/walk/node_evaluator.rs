@@ -4,6 +4,9 @@ use super::*;
 pub struct WalkNodeEvaluator {
     settings: MobPathSettings,
     nodes: NodeStore,
+    /// Vanilla `AmphibiousNodeEvaluator`: set when this evaluator walks and
+    /// swims, holding `prefersShallowSwimming`.
+    amphibious: Option<bool>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -28,7 +31,54 @@ impl WalkNodeEvaluator {
         Self {
             settings,
             nodes: NodeStore::new(),
+            amphibious: None,
         }
+    }
+
+    /// Vanilla `AmphibiousNodeEvaluator`, with the maluses its `prepare` sets
+    /// for the duration of one search.
+    #[must_use]
+    pub fn amphibious(settings: MobPathSettings, prefers_shallow_swimming: bool) -> Self {
+        let settings = settings
+            .with_pathfinding_malus(PathType::Water, 0.0)
+            .with_pathfinding_malus(PathType::Walkable, 6.0)
+            .with_pathfinding_malus(PathType::WaterBorder, 4.0);
+        Self {
+            settings,
+            nodes: NodeStore::new(),
+            amphibious: Some(prefers_shallow_swimming),
+        }
+    }
+
+    /// Vanilla `WalkNodeEvaluator.isAmphibious`.
+    #[must_use]
+    pub const fn is_amphibious(&self) -> bool {
+        self.amphibious.is_some()
+    }
+
+    /// Vanilla `getPathType(context, x, y, z)`, including the amphibious
+    /// override that marks water touching a solid block as a water border.
+    pub fn path_type(
+        &self,
+        context: &mut PathfindingContext<'_>,
+        x: i32,
+        y: i32,
+        z: i32,
+    ) -> PathType {
+        if self.is_amphibious() {
+            let block_path_type = context.get_path_type_from_state(x, y, z);
+            if block_path_type == PathType::Water {
+                for direction in Direction::ALL {
+                    let (dx, dy, dz) = direction.offset();
+                    if context.get_path_type_from_state(x + dx, y + dy, z + dz) == PathType::Blocked
+                    {
+                        return PathType::WaterBorder;
+                    }
+                }
+                return PathType::Water;
+            }
+        }
+        WalkPathEvaluator::path_type(context, x, y, z)
     }
 
     #[must_use]
@@ -59,6 +109,16 @@ impl NodeEvaluator for WalkNodeEvaluator {
     }
 
     fn get_start(&mut self, context: &mut PathfindingContext<'_>) -> i32 {
+        if self.is_amphibious() && self.settings.in_water() {
+            // Vanilla `AmphibiousNodeEvaluator.getStart` in water.
+            let bounding_box = self.settings.bounding_box();
+            let pos = BlockPos::new(
+                fast_floor(bounding_box.min_x()),
+                fast_floor(bounding_box.min_y() + 0.5),
+                fast_floor(bounding_box.min_z()),
+            );
+            return self.get_start_node(context, pos);
+        }
         let position = self.settings.mob_position_vec();
         let mut start_y = self.settings.mob_position().y();
         let mut reusable_pos = BlockPos::containing(position.x, f64::from(start_y), position.z);
@@ -196,6 +256,17 @@ impl NodeEvaluator for WalkNodeEvaluator {
             }
         }
 
+        if let Some(prefers_shallow_swimming) = self.amphibious {
+            self.push_amphibious_neighbors(
+                context,
+                collision,
+                &mut neighbors,
+                pos_block,
+                pos_cost_malus,
+                prefers_shallow_swimming,
+            );
+        }
+
         neighbors
     }
 }
@@ -203,7 +274,9 @@ impl NodeEvaluator for WalkNodeEvaluator {
 impl WalkNodeEvaluator {
     #[must_use]
     pub fn get_floor_level(&self, context: &PathfindingContext<'_>, pos: BlockPos) -> f64 {
-        if self.settings.can_float() && context.get_block_state(pos).get_fluid_state().is_water() {
+        if (self.settings.can_float() || self.is_amphibious())
+            && context.get_block_state(pos).get_fluid_state().is_water()
+        {
             return f64::from(pos.y()) + 0.5;
         }
 
@@ -259,7 +332,7 @@ impl WalkNodeEvaluator {
             }
         }
 
-        let current_node_path_type = WalkPathEvaluator::path_type(context, x, y, z);
+        let current_node_path_type = self.path_type(context, x, y, z);
         if self.settings.entity_width() > 1 {
             let current_is_cheaper =
                 self.settings.pathfinding_malus(current_node_path_type) < highest_malus;
@@ -316,7 +389,8 @@ impl WalkNodeEvaluator {
             }
         }
 
-        if path_type == PathType::Walkable {
+        if path_type == PathType::Walkable || (self.is_amphibious() && path_type == PathType::Water)
+        {
             return best;
         }
 
@@ -334,7 +408,7 @@ impl WalkNodeEvaluator {
             return self.try_jump_on(context, collision, request);
         }
 
-        if path_type == PathType::Water && !self.settings.can_float() {
+        if !self.is_amphibious() && path_type == PathType::Water && !self.settings.can_float() {
             return self.try_find_first_non_water_below(context, x, y, z, best);
         }
 
@@ -363,8 +437,7 @@ impl WalkNodeEvaluator {
         for dx in 0..self.settings.entity_width() {
             for dy in 0..self.settings.entity_height() {
                 for dz in 0..self.settings.entity_depth() {
-                    let mut block_type =
-                        WalkPathEvaluator::path_type(context, x + dx, y + dy, z + dz);
+                    let mut block_type = self.path_type(context, x + dx, y + dy, z + dz);
                     block_type =
                         self.adjust_path_type_for_mob(context, block_type, &mut mob_on_rail);
                     block_types.insert(block_type);
@@ -399,13 +472,13 @@ impl WalkNodeEvaluator {
         if mob_on_rail.is_none() {
             let mob_position = self.settings.mob_position();
             *mob_on_rail = Some(
-                WalkPathEvaluator::path_type(
+                self.path_type(
                     context,
                     mob_position.x(),
                     mob_position.y(),
                     mob_position.z(),
                 ) == PathType::Rail
-                    || WalkPathEvaluator::path_type(
+                    || self.path_type(
                         context,
                         mob_position.x(),
                         mob_position.y() - 1,
@@ -649,6 +722,83 @@ impl WalkNodeEvaluator {
         }
 
         true
+    }
+
+    /// Vanilla `AmphibiousNodeEvaluator.getNeighbors` after the walking
+    /// neighbors: swim straight up or down, and avoid deep water when the mob
+    /// prefers shallow swimming.
+    fn push_amphibious_neighbors(
+        &mut self,
+        context: &mut PathfindingContext<'_>,
+        collision: &mut impl WalkNodeCollision,
+        neighbors: &mut NodeNeighbors,
+        pos: BlockPos,
+        pos_cost_malus: f32,
+        prefers_shallow_swimming: bool,
+    ) {
+        let path_type_above = self.get_path_type_of_mob(context, pos.x(), pos.y() + 1, pos.z());
+        let current_path_type = self.get_path_type_of_mob(context, pos.x(), pos.y(), pos.z());
+        let jump_size = if self.settings.pathfinding_malus(path_type_above) >= 0.0
+            && current_path_type != PathType::StickyHoney
+        {
+            fast_floor(f64::from(self.settings.max_up_step()).max(1.0))
+        } else {
+            0
+        };
+        let pos_height = self.get_floor_level(context, pos);
+        let up_node = self.find_accepted_node(
+            context,
+            collision,
+            AcceptedNodeRequest {
+                pos: pos.offset(0, 1, 0),
+                jump_size: (jump_size - 1).max(0),
+                node_height: pos_height,
+                travel_direction: Direction::Up,
+                current_path_type,
+            },
+        );
+        let down_node = self.find_accepted_node(
+            context,
+            collision,
+            AcceptedNodeRequest {
+                pos: pos.offset(0, -1, 0),
+                jump_size,
+                node_height: pos_height,
+                travel_direction: Direction::Down,
+                current_path_type,
+            },
+        );
+        if self.is_vertical_neighbor_valid(up_node, pos_cost_malus)
+            && let Some(node) = up_node
+        {
+            neighbors.push(node);
+        }
+        if self.is_vertical_neighbor_valid(down_node, pos_cost_malus)
+            && current_path_type != PathType::Trapdoor
+            && let Some(node) = down_node
+        {
+            neighbors.push(node);
+        }
+
+        if !prefers_shallow_swimming {
+            return;
+        }
+        let deep_water_y = context.level().sea_level() - 10;
+        for hash in neighbors.iter().collect::<Vec<_>>() {
+            if let Some(node) = self.node_mut(hash)
+                && node.path_type == PathType::Water
+                && node.y < deep_water_y
+            {
+                node.cost_malus += 1.0;
+            }
+        }
+    }
+
+    fn is_vertical_neighbor_valid(&self, node: Option<i32>, current_cost_malus: f32) -> bool {
+        self.is_neighbor_valid(node, current_cost_malus)
+            && node
+                .and_then(|hash| self.node(hash))
+                .is_some_and(|node| node.path_type == PathType::Water)
     }
 
     fn mob_jump_height(&self) -> f64 {

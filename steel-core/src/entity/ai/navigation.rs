@@ -50,6 +50,8 @@ pub enum NavigationKind {
     /// `WaterBoundPathNavigation`. Breaching lets the path leave the water
     /// surface; vanilla enables it for dolphins only.
     WaterBound { allow_breaching: bool },
+    /// `AmphibiousPathNavigation`: walks on land and swims through water.
+    Amphibious,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -199,6 +201,15 @@ impl PathNavigation {
         }
     }
 
+    /// Creates a vanilla `AmphibiousPathNavigation`.
+    #[must_use]
+    pub fn amphibious() -> Self {
+        Self {
+            kind: NavigationKind::Amphibious,
+            ..Self::new()
+        }
+    }
+
     #[must_use]
     pub const fn kind(&self) -> NavigationKind {
         self.kind
@@ -207,14 +218,17 @@ impl PathNavigation {
     /// Vanilla `PathNavigation.canNavigateGround`.
     #[must_use]
     pub const fn can_navigate_ground(&self) -> bool {
-        matches!(self.kind, NavigationKind::Ground)
+        matches!(
+            self.kind,
+            NavigationKind::Ground | NavigationKind::Amphibious
+        )
     }
 
     /// Vanilla `PathNavigation.getMaxVerticalDistanceToWaypoint`.
     #[must_use]
     pub const fn max_vertical_distance_to_waypoint(&self) -> f64 {
         match self.kind {
-            NavigationKind::Ground => 1.0,
+            NavigationKind::Ground | NavigationKind::Amphibious => 1.0,
             NavigationKind::WaterBound { .. } => 0.5,
         }
     }
@@ -293,7 +307,10 @@ impl PathNavigation {
 
     pub const fn set_can_float(&mut self, can_float: bool) {
         // `WaterBoundPathNavigation.setCanFloat` ignores the request.
-        if matches!(self.kind, NavigationKind::WaterBound { .. }) {
+        if matches!(
+            self.kind,
+            NavigationKind::WaterBound { .. } | NavigationKind::Amphibious
+        ) {
             return;
         }
         self.can_float = can_float;

@@ -36,7 +36,7 @@ pub(super) fn tick_path_navigation_target<M: Mob + ?Sized>(
             NavigationKind::Ground => {
                 ground_navigation_temp_mob_pos(mob, world.as_ref(), navigation.can_float())
             }
-            NavigationKind::WaterBound { .. } => {
+            NavigationKind::WaterBound { .. } | NavigationKind::Amphibious => {
                 let position = mob.position();
                 DVec3::new(
                     position.x,
@@ -58,6 +58,21 @@ pub(super) fn tick_path_navigation_target<M: Mob + ?Sized>(
                         bounding_box.height(),
                     )
                 }),
+            // Vanilla `AmphibiousPathNavigation.canMoveDirectly`.
+            NavigationKind::Amphibious => {
+                (mob.is_in_water() || mob.is_in_lava())
+                    && navigation
+                        .path()
+                        .and_then(|path| path_move_target(path, bounding_box.width()))
+                        .is_some_and(|next| {
+                            is_clear_for_movement_between(
+                                world.as_ref(),
+                                temp_mob_position,
+                                next,
+                                bounding_box.height(),
+                            )
+                        })
+            }
         };
         let context = NavigationTickContext {
             ground_mob_position: temp_mob_position,
@@ -79,8 +94,10 @@ pub(super) fn tick_path_navigation_target<M: Mob + ?Sized>(
     };
 
     let target_pos = BlockPos::containing(target.x, target.y, target.z);
-    let ground_y = if matches!(kind, NavigationKind::WaterBound { .. })
-        || world.get_block_state(target_pos.below()).is_air()
+    let ground_y = if matches!(
+        kind,
+        NavigationKind::WaterBound { .. } | NavigationKind::Amphibious
+    ) || world.get_block_state(target_pos.below()).is_air()
     {
         target.y
     } else {
@@ -176,6 +193,7 @@ pub trait PathfinderMob: Mob {
             NavigationKind::WaterBound { allow_breaching } => {
                 allow_breaching || self.is_in_water() || self.is_in_lava()
             }
+            NavigationKind::Amphibious => true,
         }
     }
 
@@ -253,6 +271,7 @@ pub trait PathfinderMob: Mob {
         match kind {
             NavigationKind::Ground => world.get_block_state(pos.below()).is_solid_render(),
             NavigationKind::WaterBound { .. } => !world.get_block_state(pos).is_solid_render(),
+            NavigationKind::Amphibious => !world.get_block_state(pos.below()).is_air(),
         }
     }
 
@@ -507,7 +526,11 @@ pub trait PathfinderMob: Mob {
             );
         }
 
-        let mut evaluator = WalkNodeEvaluator::new(settings);
+        let mut evaluator = if kind == NavigationKind::Amphibious {
+            WalkNodeEvaluator::amphibious(settings, false)
+        } else {
+            WalkNodeEvaluator::new(settings)
+        };
         let collision_world =
             WorldCollisionProvider::for_path_navigation(world, self.as_entity_event_source());
         let mut collision = |aabb| {
@@ -543,7 +566,7 @@ fn path_target_for_mob<M: PathfinderMob + ?Sized, L: LevelReader>(
 ) -> BlockPos {
     // Only `GroundPathNavigation.createPath` moves the target to the surface.
     if mob.can_path_to_targets_below_surface()
-        || !mob.mob_base().navigation().lock().can_navigate_ground()
+        || mob.mob_base().navigation().lock().kind() != NavigationKind::Ground
     {
         target
     } else {

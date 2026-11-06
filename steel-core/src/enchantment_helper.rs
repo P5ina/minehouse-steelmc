@@ -171,6 +171,19 @@ pub(crate) fn process_projectile_count(
         .max(0)
 }
 
+/// Vanilla `EnchantmentHelper.getTridentReturnToOwnerAcceleration` (Loyalty).
+pub(crate) fn trident_return_to_owner_acceleration(
+    trident: &ItemStack,
+    entity: &dyn Entity,
+) -> i32 {
+    apply_entity_filtered_value_effects(
+        trident,
+        EnchantmentEffectComponent::TridentReturnAcceleration,
+        entity,
+        0.0,
+    ) as i32
+}
+
 /// Vanilla `EnchantmentHelper.processProjectileSpread` (Multishot fan angle).
 pub(crate) fn process_projectile_spread(
     weapon: &ItemStack,

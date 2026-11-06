@@ -11,14 +11,17 @@ use steel_registry::{
 use steel_utils::types::{Difficulty, UpdateFlags};
 use steel_utils::{BlockPos, ChunkPos, Downcast as _};
 
-use super::{GiantEntity, HuskEntity, ZombieEntity, ZombieGroupData};
+use super::{DrownedEntity, GiantEntity, HuskEntity, ZombieEntity, ZombieGroupData};
 use crate::behavior::init_behaviors;
+use crate::entity::RangedAttackMob as _;
+use crate::entity::ai::navigation::NavigationKind;
+use crate::entity::ai::path::PathType;
 use crate::entity::entities::CowEntity;
 use crate::entity::{
     Entity, EntitySpawnReason, LivingEntity, Mob, SharedEntity, SpawnGroupData, init_entities,
     next_entity_id,
 };
-use crate::test_support::{fresh_test_world, insert_ready_full_chunk};
+use crate::test_support::{TestWorld, fresh_test_world, insert_ready_full_chunk};
 use crate::world::World;
 
 fn add<T: Entity + 'static>(world: &Arc<World>, entity: T) -> SharedEntity {
@@ -302,4 +305,166 @@ fn giant_has_no_goals() {
         Vec::<i32>::new()
     );
     assert_eq!(giant.get_max_health(), 100.0);
+}
+
+fn flooded_world(name: &'static str) -> TestWorld {
+    init_vanilla_registry();
+    init_behaviors();
+    init_entities();
+    let fixture = fresh_test_world(name);
+    insert_ready_full_chunk(&fixture.world, ChunkPos::new(0, 0));
+    let water = vanilla_blocks::WATER.default_state();
+    for y in 64..68 {
+        fixture
+            .world
+            .set_block(BlockPos::new(8, y, 8), water, UpdateFlags::UPDATE_ALL);
+    }
+    fixture
+}
+
+#[test]
+fn drowned_swims_with_amphibious_navigation() {
+    init_vanilla_registry();
+    let drowned = DrownedEntity::new(&vanilla_entities::DROWNED, 1, DVec3::ZERO, Weak::new());
+    assert_eq!(
+        drowned.mob_base().navigation().lock().kind(),
+        NavigationKind::Amphibious
+    );
+    assert!(
+        drowned
+            .mob_base()
+            .pathfinding_malus()
+            .lock()
+            .get(PathType::Water)
+            .abs()
+            < f32::EPSILON,
+        "vanilla Drowned sets the water malus to 0"
+    );
+    assert!(
+        (drowned.max_up_step() - 1.0).abs() < f32::EPSILON,
+        "drowned step one block"
+    );
+}
+
+#[test]
+fn zombie_converts_into_a_drowned() {
+    let fixture = flooded_world("zombie_to_drowned");
+    let world = &fixture.world;
+    let zombie = add(
+        world,
+        ZombieEntity::new(
+            &vanilla_entities::ZOMBIE,
+            next_entity_id(),
+            DVec3::new(8.5, 65.0, 8.5),
+            Arc::downgrade(world),
+        ),
+    );
+    let zombie_ref = zombie
+        .downcast_ref::<ZombieEntity>()
+        .expect("zombie is concrete");
+    zombie_ref.set_in_water_time(599);
+    Arc::clone(&zombie).tick();
+    zombie_ref.set_conversion_time(0);
+    Arc::clone(&zombie).tick();
+
+    assert!(zombie.is_removed(), "the zombie is replaced");
+    let drowned = world
+        .get_entities_in_aabb_matching(&zombie.bounding_box().inflate(1.0), |entity| {
+            entity.entity_type() == &vanilla_entities::DROWNED
+        })
+        .into_iter()
+        .next()
+        .expect("the zombie becomes a drowned");
+    assert!(drowned.downcast_ref::<DrownedEntity>().is_some());
+}
+
+#[test]
+fn drowned_never_converts_underwater() {
+    let fixture = flooded_world("drowned_no_conversion");
+    let world = &fixture.world;
+    let drowned = add(
+        world,
+        DrownedEntity::new(
+            &vanilla_entities::DROWNED,
+            next_entity_id(),
+            DVec3::new(8.5, 65.0, 8.5),
+            Arc::downgrade(world),
+        ),
+    );
+    let drowned_ref = drowned
+        .downcast_ref::<DrownedEntity>()
+        .expect("drowned is concrete");
+    drowned_ref.set_in_water_time(599);
+    Arc::clone(&drowned).tick();
+    assert!(!drowned_ref.is_under_water_converting());
+    assert!(!drowned.is_removed());
+}
+
+#[test]
+fn drowned_throws_a_trident_at_its_target() {
+    let fixture = flooded_world("drowned_trident");
+    let world = &fixture.world;
+    let drowned = add(
+        world,
+        DrownedEntity::new(
+            &vanilla_entities::DROWNED,
+            next_entity_id(),
+            DVec3::new(8.5, 65.0, 8.5),
+            Arc::downgrade(world),
+        ),
+    );
+    let target = add(
+        world,
+        CowEntity::new(
+            &vanilla_entities::COW,
+            next_entity_id(),
+            DVec3::new(8.5, 65.0, 14.5),
+            Arc::downgrade(world),
+        ),
+    );
+    let drowned_ref = drowned
+        .downcast_ref::<DrownedEntity>()
+        .expect("drowned is concrete");
+    drowned_ref.perform_ranged_attack(&drowned, &target, 1.0);
+
+    let trident = world
+        .get_entities_in_aabb_matching(&drowned.bounding_box().inflate(3.0), |entity| {
+            entity.entity_type() == &vanilla_entities::TRIDENT
+        })
+        .into_iter()
+        .next()
+        .expect("the drowned throws a trident");
+    assert!(
+        trident.velocity().z > 0.0,
+        "the trident flies at the target"
+    );
+}
+
+#[test]
+fn drowned_spawn_needs_water_below() {
+    let fixture = flooded_world("drowned_spawn_rule");
+    let world = &fixture.world;
+    let mut random = rand::rng();
+    assert!(
+        !(DrownedEntity::SPAWN_RULE)(
+            &vanilla_entities::DROWNED,
+            world.as_ref(),
+            EntitySpawnReason::Natural,
+            BlockPos::new(2, 66, 2),
+            &mut random,
+        ),
+        "natural spawns need water below"
+    );
+}
+
+#[test]
+fn drowned_ranged_uncertainty_override() {
+    init_vanilla_registry();
+    let fixture = fresh_test_world("drowned_uncertainty");
+    let drowned = DrownedEntity::new(&vanilla_entities::DROWNED, 1, DVec3::ZERO, Weak::new());
+    let default = drowned.ranged_attack_uncertainty(&fixture.world);
+    drowned.set_ranged_attack_uncertainty(0.0);
+    assert!(drowned.ranged_attack_uncertainty(&fixture.world).abs() < f32::EPSILON);
+    drowned.set_ranged_attack_uncertainty(-1.0);
+    assert!((drowned.ranged_attack_uncertainty(&fixture.world) - default).abs() < f32::EPSILON);
 }
