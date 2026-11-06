@@ -33,7 +33,8 @@ impl BoneMealItem {
         }
     }
 
-    fn grow(world: &Arc<World>, pos: BlockPos) -> bool {
+    /// Vanilla `BoneMealItem.growCrop` without the stack shrink.
+    pub(crate) fn grow(world: &Arc<World>, pos: BlockPos) -> bool {
         let state = world.get_block_state(pos);
         let Some(behavior) = BLOCK_BEHAVIORS.get_behavior_for_state(state) else {
             return false;
@@ -53,7 +54,12 @@ impl BoneMealItem {
         false
     }
 
-    fn grow_water_plant(world: &Arc<World>, pos: BlockPos, _clicked_face: Direction) -> bool {
+    /// Vanilla `BoneMealItem.growWaterPlant` without the stack shrink.
+    pub(crate) fn grow_water_plant(
+        world: &Arc<World>,
+        pos: BlockPos,
+        _clicked_face: Option<Direction>,
+    ) -> bool {
         let state = world.get_block_state(pos);
         if state.get_block() != &vanilla_blocks::WATER || !state.get_fluid_state().is_full() {
             return false;
@@ -139,7 +145,7 @@ impl ItemBehavior for BoneMealItem {
                     .hit_result
                     .block_pos
                     .relative(context.hit_result.direction),
-                context.hit_result.direction,
+                Some(context.hit_result.direction),
             )
         {
             context.inv.with_item(ItemStack::shrink_one);

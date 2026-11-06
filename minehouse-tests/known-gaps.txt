@@ -2,12 +2,9 @@
 # CI fails when a spec not listed here fails. A listed spec that passes is
 # reported; remove it from the list in the same change that fixes it.
 
-# containers: the dispenser is not implemented yet
-minehouse_dispenser_water_flows_7
-minehouse_water_meets_lava_obsidian
+# golems: dispensing a carved pumpkin and the golem entities are not implemented yet
 minehouse_iron_golem_from_blocks
 minehouse_snow_golem_from_blocks
-minehouse_nether_portal_lights
 
 # mobs: the entity (or the lightning bolt / summoned mob it needs) does not exist in SteelMC yet
 minehouse_mob_allay
