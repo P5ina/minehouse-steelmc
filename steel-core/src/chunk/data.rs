@@ -2,7 +2,7 @@
 use std::fmt::{self, Formatter};
 use std::sync::{
     Arc, OnceLock, Weak,
-    atomic::{AtomicBool, Ordering},
+    atomic::{AtomicBool, AtomicI64, Ordering},
 };
 
 use parking_lot::{RwLockReadGuard, RwLockWriteGuard};
@@ -108,6 +108,8 @@ pub struct Chunk {
     full_runtime: OnceLock<Box<FullChunkRuntime>>,
     /// Generator-owned state retained only between generation stages.
     transient_generation_state: SyncMutex<TransientGenerationState>,
+    /// Vanilla `ChunkAccess.inhabitedTime`: ticks a player spent near this chunk.
+    inhabited_time: AtomicI64,
 }
 
 enum PendingPromotionCommit {
@@ -148,6 +150,7 @@ impl Chunk {
             light: SyncRwLock::new(ChunkLightData::for_valid_world_height(min_y, height)),
             full_runtime: OnceLock::new(),
             transient_generation_state: SyncMutex::new(TransientGenerationState::default()),
+            inhabited_time: AtomicI64::new(0),
         }
     }
 
@@ -208,6 +211,7 @@ impl Chunk {
             light: SyncRwLock::new(light),
             full_runtime: OnceLock::new(),
             transient_generation_state: SyncMutex::new(TransientGenerationState::default()),
+            inhabited_time: AtomicI64::new(0),
         };
 
         if status >= ChunkStatus::InitializeLight {
@@ -215,6 +219,22 @@ impl Chunk {
         }
 
         chunk
+    }
+
+    /// Returns how many ticks players have spent near this chunk.
+    #[must_use]
+    pub fn inhabited_time(&self) -> i64 {
+        self.inhabited_time.load(Ordering::Relaxed)
+    }
+
+    /// Sets the inhabited time, as loaded from disk.
+    pub fn set_inhabited_time(&self, inhabited_time: i64) {
+        self.inhabited_time.store(inhabited_time, Ordering::Relaxed);
+    }
+
+    /// Vanilla `ChunkAccess.incrementInhabitedTime`.
+    pub fn increment_inhabited_time(&self) {
+        self.inhabited_time.fetch_add(1, Ordering::Relaxed);
     }
 
     /// Returns the minimum Y coordinate of the world.

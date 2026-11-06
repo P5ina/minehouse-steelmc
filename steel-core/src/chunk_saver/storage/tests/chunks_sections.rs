@@ -236,6 +236,7 @@ fn full_chunk_postprocessing_roundtrips_through_persistent_chunk() {
         Vec::new(),
         Vec::new(),
         Vec::new(),
+        1234,
         pos,
     );
 
@@ -261,6 +262,15 @@ fn full_chunk_postprocessing_roundtrips_through_persistent_chunk() {
     };
 
     assert_eq!(prepared.persistent.postprocessing, vec![vec![packed]]);
+    assert_eq!(
+        chunk.inhabited_time(),
+        1234,
+        "inhabited time loads from disk"
+    );
+    assert_eq!(
+        prepared.persistent.inhabited_time, 1234,
+        "inhabited time saves back"
+    );
 }
 
 #[test]
