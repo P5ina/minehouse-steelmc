@@ -3,6 +3,7 @@ use std::{
     sync::{Arc, Weak},
 };
 
+use steel_registry::damage_type::DamageType;
 use steel_utils::locks::SyncMutex;
 
 use super::{DamageHistory, DamageRecord, DamageSource, RecentDamageSource, WeakDamageSource};
@@ -20,6 +21,10 @@ struct BindingState {
     victim: Option<Arc<DamageHistoryVictim>>,
     owner: Weak<()>,
     removed: bool,
+    /// Type and game time of the last recorded damage. Unlike the retained
+    /// source it holds no entities, so it serves vanilla callers that ask for
+    /// sources older than the 40 ticks history keeps.
+    last_damage: Option<(&'static DamageType, i64)>,
 }
 
 /// Owned only by the entity's binding; records observe its lifetime weakly.
@@ -50,6 +55,7 @@ impl DamageHistoryBinding {
         let descriptor = WeakDamageSource::new(source);
         let replaced = {
             let mut state = self.state.lock();
+            state.last_damage = Some((source.damage_type, clock.ticks()));
             let victim_lifetime = match &state.victim {
                 Some(bound) if ptr::eq(bound.history.as_ptr(), Arc::as_ptr(history)) => {
                     Arc::downgrade(bound)
@@ -103,8 +109,24 @@ impl DamageHistoryBinding {
         history.last_damage_source(victim)
     }
 
+    /// The type of vanilla `getLastDamageSource(timeout)` for timeouts past the
+    /// 40 ticks full sources are kept: `None` once the damage is more than
+    /// `timeout` ticks old at game time `now`.
+    pub(crate) fn last_damage_type_within(
+        &self,
+        now: i64,
+        timeout: i64,
+    ) -> Option<&'static DamageType> {
+        self.state
+            .lock()
+            .last_damage
+            .filter(|&(_, timestamp)| now.wrapping_sub(timestamp) <= timeout)
+            .map(|(damage_type, _)| damage_type)
+    }
+
     /// Clears transient history when a target domain's state is restored.
     pub(crate) fn clear(&self) {
+        self.state.lock().last_damage = None;
         if let Some((history, victim)) = self.bound_history() {
             history.clear_victim(victim);
         }

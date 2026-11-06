@@ -46,6 +46,11 @@ impl AvoidEntityGoal {
                 .selector(selector),
         }
     }
+
+    /// The entity the last successful `can_use` found to flee from.
+    pub(crate) const fn to_avoid(&self) -> Option<&SharedEntity> {
+        self.to_avoid.as_ref()
+    }
 }
 
 impl Goal for AvoidEntityGoal {

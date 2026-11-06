@@ -250,7 +250,8 @@ pub trait AgeableMob: Mob {
             Some(
                 SpawnGroupData::SpiderEffects(_)
                 | SpawnGroupData::Zombie(_)
-                | SpawnGroupData::School(_),
+                | SpawnGroupData::School(_)
+                | SpawnGroupData::WolfPack(_),
             )
             | None => AgeableMobGroupData::with_should_spawn_baby(true),
         };

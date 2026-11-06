@@ -42,6 +42,7 @@ mod spellcaster_goals;
 mod squid_flee_goal;
 mod squid_random_movement_goal;
 mod swell_goal;
+mod tamable_goals;
 mod target_goal;
 mod tempt_goal;
 mod try_find_water;
@@ -88,6 +89,10 @@ pub(crate) use spellcaster_goals::{SpellcasterCastingSpellGoal, SpellcasterUseSp
 pub(crate) use squid_flee_goal::SquidFleeGoal;
 pub(crate) use squid_random_movement_goal::SquidRandomMovementGoal;
 pub(crate) use swell_goal::SwellGoal;
+pub(crate) use tamable_goals::{
+    FollowOwnerGoal, NonTameRandomTargetGoal, OwnerTargetGoal, SitWhenOrderedToGoal,
+    TamableAnimalPanicGoal,
+};
 pub(crate) use tempt_goal::TemptGoal;
 pub(crate) use try_find_water::TryFindLiquidGoal;
 pub(crate) use vex_goals::{VexChargeAttackGoal, VexCopyOwnerTargetGoal, VexRandomMoveGoal};
