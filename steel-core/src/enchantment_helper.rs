@@ -12,6 +12,7 @@ use steel_registry::enchantment_effect::{
 use steel_registry::entity_type::EntityTypeRef;
 use steel_registry::item_stack::ItemStack;
 use steel_registry::{REGISTRY, RegistryExt, TaggedRegistryExt, vanilla_entities, vanilla_items};
+use steel_utils::random::legacy_random::LegacyRandom;
 
 use crate::entity::damage::DamageSource;
 use crate::entity::{Entity, LivingEntity, MobEffectInstance, SharedEntity};
@@ -129,6 +130,117 @@ pub(crate) fn modify_knockback(
         context,
         knockback,
     )
+}
+
+/// Vanilla `EnchantmentHelper.processAmmoUse`: how much ammo one shot of
+/// `weapon` uses (Infinity drops it to 0 for plain arrows).
+pub(crate) fn process_ammo_use(weapon: &ItemStack, ammo: &ItemStack, amount: i32) -> i32 {
+    apply_item_filtered_value_effects(
+        weapon,
+        EnchantmentEffectComponent::AmmoUse,
+        ammo,
+        amount as f32,
+    ) as i32
+}
+
+/// Vanilla `EnchantmentHelper.getPiercingCount`: how many entities an arrow
+/// shot from `weapon` passes through.
+pub(crate) fn get_piercing_count(weapon: &ItemStack, ammo: &ItemStack) -> i32 {
+    (apply_item_filtered_value_effects(
+        weapon,
+        EnchantmentEffectComponent::ProjectilePiercing,
+        ammo,
+        0.0,
+    ) as i32)
+        .max(0)
+}
+
+/// Vanilla `EnchantmentHelper.processProjectileCount` (Multishot).
+pub(crate) fn process_projectile_count(
+    weapon: &ItemStack,
+    shooter: &dyn Entity,
+    count: i32,
+) -> i32 {
+    (apply_entity_filtered_value_effects(
+        weapon,
+        EnchantmentEffectComponent::ProjectileCount,
+        shooter,
+        count as f32,
+    ) as i32)
+        .max(0)
+}
+
+/// Vanilla `EnchantmentHelper.processProjectileSpread` (Multishot fan angle).
+pub(crate) fn process_projectile_spread(
+    weapon: &ItemStack,
+    shooter: &dyn Entity,
+    angle: f32,
+) -> f32 {
+    apply_entity_filtered_value_effects(
+        weapon,
+        EnchantmentEffectComponent::ProjectileSpread,
+        shooter,
+        angle,
+    )
+    .max(0.0)
+}
+
+/// Vanilla `Enchantment.modifyItemFilteredCount`, run over every enchantment
+/// on `weapon` with `item` as the loot context tool.
+fn apply_item_filtered_value_effects(
+    weapon: &ItemStack,
+    component: EnchantmentEffectComponent,
+    item: &ItemStack,
+    input: f32,
+) -> f32 {
+    let Some(enchantments) = weapon.get_enchantments() else {
+        return input;
+    };
+    let mut random = LegacyRandom::from_seed(rand::random());
+    let mut value = input;
+    for (key, level) in enchantments.iter() {
+        let Some(enchantment) = REGISTRY.enchantments.by_key(key) else {
+            continue;
+        };
+        let level = *level as i32;
+        for effect in enchantment.effects.value_effects(component) {
+            if effect.requirements.is_some_and(|requirements| {
+                requirements.matches_item_context(item.item()) != Some(true)
+            }) {
+                continue;
+            }
+            value = effect.effect.process_with_random(level, &mut random, value);
+        }
+    }
+    value
+}
+
+/// Vanilla `Enchantment.modifyEntityFilteredValue`, run over every
+/// enchantment on `weapon` with `entity` as the loot context's `this`.
+fn apply_entity_filtered_value_effects(
+    weapon: &ItemStack,
+    component: EnchantmentEffectComponent,
+    entity: &dyn Entity,
+    input: f32,
+) -> f32 {
+    let Some(enchantments) = weapon.get_enchantments() else {
+        return input;
+    };
+    let mut random = LegacyRandom::from_seed(rand::random());
+    let mut value = input;
+    for (key, level) in enchantments.iter() {
+        let Some(enchantment) = REGISTRY.enchantments.by_key(key) else {
+            continue;
+        };
+        let level = *level as i32;
+        for effect in enchantment.effects.value_effects(component) {
+            if !entity_requirements_match(effect.requirements, entity, level) {
+                continue;
+            }
+            value = effect.effect.process_with_random(level, &mut random, value);
+        }
+    }
+    value
 }
 
 pub(crate) fn modify_armor_effectiveness(

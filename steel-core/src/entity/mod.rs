@@ -777,6 +777,7 @@ pub mod entities;
 )]
 mod entity;
 pub mod entity_selector;
+mod fish;
 mod fluid_contact;
 #[expect(warnings)]
 #[rustfmt::skip]
@@ -796,9 +797,11 @@ pub mod mob_effect;
 mod monster;
 mod movement_sync;
 mod neutral_mob;
+mod patrolling_monster;
 mod potion_contents;
 pub mod projectile;
 pub(crate) mod pushing;
+mod raider;
 mod ranged_attack_mob;
 mod reference;
 mod registry;
@@ -835,6 +838,11 @@ pub(crate) use entity::position_rider_default;
 pub use entity::{
     AcceptedClientMovement, AcceptedClientMovementOutcome, Entity, EntityEventSource,
 };
+pub(crate) use fish::{
+    AbstractFish, AbstractSchoolingFish, SchoolSpawnGroupData, SchoolState,
+    WATER_ANIMAL_AMBIENT_SOUND_INTERVAL, handle_water_animal_air_supply, init_abstract_fish,
+    water_animal_experience_reward, water_animal_spawn_unobstructed,
+};
 pub use fluid_contact::EntityFluidContact;
 pub use identity::EntityGeneration;
 pub use inside_block_effects::{
@@ -866,14 +874,18 @@ pub use movement_sync::{
     PackedEntityRotation, ServerEntityMovementSyncState, ServerEntityMovementSyncUpdate,
 };
 pub(crate) use neutral_mob::{NeutralMob, NeutralMobState};
+pub(crate) use patrolling_monster::{PatrollingMonster, PatrollingMonsterState};
 pub(crate) use potion_contents::apply_potion_contents;
 pub use projectile::{
-    AbstractThrownPotion, EntityHitResult, Projectile, ProjectileBase, ProjectileDeflection,
-    ProjectileEventSource, ProjectileHit, SPLASH_HORIZONTAL_REACH, SPLASH_RANGE_SQ,
-    SPLASH_VERTICAL_REACH, ThrowableItemProjectile, ThrowableProjectile, ViewVectorHitResult,
-    compute_margin, get_hit_result_on_view_vector, spawn_throwable_item_projectile,
+    ARROW_BASE_DAMAGE, ARROW_GRAVITY, AbstractArrow, AbstractThrownPotion, ArrowBase, ArrowPickup,
+    EntityHitResult, Projectile, ProjectileBase, ProjectileDeflection, ProjectileEventSource,
+    ProjectileHit, SPLASH_HORIZONTAL_REACH, SPLASH_RANGE_SQ, SPLASH_VERTICAL_REACH,
+    ThrowableItemProjectile, ThrowableProjectile, ViewVectorHitResult, compute_margin,
+    get_hit_result_on_view_vector, spawn_mob_throwable_item_projectile,
+    spawn_throwable_item_projectile,
 };
 pub use pushing::{DefaultEntityPush, EntityPushSnapshot};
+pub(crate) use raider::{Raider, RaiderState, ominous_banner_instance};
 pub(crate) use ranged_attack_mob::RangedAttackMob;
 pub use reference::EntityReference;
 pub(crate) use registry::SpawnRule;

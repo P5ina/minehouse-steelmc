@@ -1,8 +1,8 @@
 use std::collections::BTreeSet;
 
 use super::*;
-use crate::entity::entities::LightningBoltEntity;
 use crate::entity::entities::mobs::hostile::cube_mob::AbstractCubeMob;
+use crate::entity::entities::{LightningBoltEntity, Squid};
 use crate::entity::{leash::Leashable, pushing::EntityPush};
 use rand::{RngExt, rng};
 use steel_math::DEGREE_90;
@@ -651,6 +651,12 @@ pub trait Entity: EntityEventSource + ErasedType + Send + Sync + 'static {
     /// Returns whether projectile collision may interact with this entity.
     fn can_be_hit_by_projectile(&self) -> bool {
         !self.is_removed() && self.is_pickable()
+    }
+
+    /// Vanilla `Entity.projectileReceivesSideEffectsOnHit`: whether a
+    /// projectile that failed to hurt this entity still bounces off it.
+    fn projectile_receives_side_effects_on_hit(&self, _was_hurt: bool) -> bool {
+        true
     }
 
     /// Returns this entity's Vanilla projectile deflection behavior.
@@ -1660,6 +1666,21 @@ pub trait Entity: EntityEventSource + ErasedType + Send + Sync + 'static {
         try_as_dyn::<Self, dyn Animal>(self)
     }
 
+    /// Returns this entity as a fish when it has vanilla `AbstractFish` behavior.
+    fn as_abstract_fish(&self) -> Option<&dyn AbstractFish> {
+        try_as_dyn::<Self, dyn AbstractFish>(self)
+    }
+
+    /// Returns this entity as a schooling fish (vanilla `AbstractSchoolingFish`).
+    fn as_schooling_fish(&self) -> Option<&dyn AbstractSchoolingFish> {
+        try_as_dyn::<Self, dyn AbstractSchoolingFish>(self)
+    }
+
+    /// Returns this entity as a squid (vanilla `Squid`, including glow squids).
+    fn as_squid(&self) -> Option<&dyn Squid> {
+        try_as_dyn::<Self, dyn Squid>(self)
+    }
+
     /// Returns true for entities that implement vanilla hostile-mob behavior.
     fn is_monster(&self) -> bool {
         self.as_monster().is_some()
@@ -1678,6 +1699,17 @@ pub trait Entity: EntityEventSource + ErasedType + Send + Sync + 'static {
     /// Returns the `Enemy` marker, equivalent to vanilla's `instanceof Enemy`.
     fn as_enemy(&self) -> Option<&dyn Enemy> {
         try_as_dyn::<Self, dyn Enemy>(self)
+    }
+
+    /// Returns the `PatrollingMonster` capability, equivalent to vanilla's
+    /// `instanceof PatrollingMonster`.
+    fn as_patrolling_monster(&self) -> Option<&dyn PatrollingMonster> {
+        try_as_dyn::<Self, dyn PatrollingMonster>(self)
+    }
+
+    /// Returns the `Raider` capability, equivalent to vanilla's `instanceof Raider`.
+    fn as_raider(&self) -> Option<&dyn Raider> {
+        try_as_dyn::<Self, dyn Raider>(self)
     }
 
     /// Returns the `NeutralMob` capability, equivalent to vanilla's `instanceof NeutralMob`.
@@ -3571,11 +3603,21 @@ pub trait Entity: EntityEventSource + ErasedType + Send + Sync + 'static {
     /// Moves the entity with collision detection.
     ///
     /// Updates position, `on_ground`, velocity (on collision), and returns collision info.
+    fn move_entity(self: Arc<Self>, mover_type: MoverType, delta: DVec3) -> Option<MoveResult> {
+        self.default_move_entity(mover_type, delta)
+    }
+
+    /// The base `Entity.move`; overrides of [`Entity::move_entity`] call this
+    /// for vanilla `super.move(...)`.
     #[expect(
         clippy::too_many_lines,
         reason = "keeps vanilla movement phases in order"
     )]
-    fn move_entity(self: Arc<Self>, mover_type: MoverType, delta: DVec3) -> Option<MoveResult> {
+    fn default_move_entity(
+        self: Arc<Self>,
+        mover_type: MoverType,
+        delta: DVec3,
+    ) -> Option<MoveResult> {
         let world = self.level()?;
         if self.no_physics() {
             return self.move_without_physics(delta);

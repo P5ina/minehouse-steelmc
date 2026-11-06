@@ -7,13 +7,16 @@ mod breed_goal;
 mod climb_on_top_of_powder_snow;
 mod door_interact;
 mod eat_block_goal;
+mod fish_swim;
 mod flee_sun;
 mod float_goal;
+mod follow_flock_leader;
 mod follow_mob;
 mod follow_parent;
 mod hurt_by_target;
 mod interact;
 mod leap_at_target;
+mod long_distance_patrol;
 mod look_at_player;
 mod melee_attack;
 mod move_to_block;
@@ -37,6 +40,7 @@ mod target_goal;
 mod tempt_goal;
 mod try_find_water;
 mod water_avoiding_random_stroll;
+mod witch_targets;
 mod zombie_attack;
 
 pub(crate) use avoid_entity::AvoidEntityGoal;
@@ -44,10 +48,13 @@ pub(crate) use break_door::BreakDoorGoal;
 pub(crate) use breed_goal::BreedGoal;
 pub(crate) use climb_on_top_of_powder_snow::ClimbOnTopOfPowderSnowGoal;
 pub(crate) use eat_block_goal::EatBlockGoal;
+pub(crate) use fish_swim::FishSwimGoal;
 pub(crate) use float_goal::FloatGoal;
+pub(crate) use follow_flock_leader::FollowFlockLeaderGoal;
 pub(crate) use follow_parent::FollowParentGoal;
 pub(crate) use hurt_by_target::HurtByTargetGoal;
 pub(crate) use leap_at_target::LeapAtTargetGoal;
+pub(crate) use long_distance_patrol::LongDistancePatrolGoal;
 pub(crate) use look_at_player::LookAtPlayerGoal;
 pub(crate) use melee_attack::MeleeAttackGoal;
 pub(crate) use move_towards_target::MoveTowardsTargetGoal;
@@ -62,6 +69,9 @@ pub(crate) use squid_random_movement_goal::SquidRandomMovementGoal;
 pub(crate) use swell_goal::SwellGoal;
 pub(crate) use tempt_goal::TemptGoal;
 pub(crate) use water_avoiding_random_stroll::WaterAvoidingRandomStrollGoal;
+pub(crate) use witch_targets::{
+    CanAttackFlag, HealCooldown, NearestAttackableWitchTargetGoal, NearestHealableRaiderTargetGoal,
+};
 pub(crate) use zombie_attack::ZombieAttackGoal;
 
 pub(crate) const fn reduced_tick_delay(ticks: i32) -> i32 {
