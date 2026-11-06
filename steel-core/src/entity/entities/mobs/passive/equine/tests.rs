@@ -229,3 +229,77 @@ fn resizing_the_inventory_invalidates_open_menus() {
 
     assert!(donkey.horse_base().has_inventory_changed(&before));
 }
+
+mod skeleton_trap {
+    use std::sync::Arc;
+
+    use glam::DVec3;
+    use steel_registry::{init_vanilla_registry, vanilla_entities};
+    use steel_utils::{ChunkPos, Downcast as _, WorldAabb};
+
+    use super::super::skeleton_trap::SkeletonTrapGoal;
+    use super::super::{AbstractHorse as _, SkeletonHorseEntity};
+    use crate::behavior::init_behaviors;
+    use crate::entity::ai::goal::Goal as _;
+    use crate::entity::{AgeableMob as _, SharedEntity, init_entities, next_entity_id};
+    use crate::test_support::{fresh_test_world, insert_ready_full_chunk};
+
+    #[test]
+    fn sprung_trap_spawns_four_skeleton_horsemen() {
+        init_vanilla_registry();
+        init_behaviors();
+        init_entities();
+        let fixture = fresh_test_world("skeleton_trap");
+        let world = &fixture.world;
+        insert_ready_full_chunk(world, ChunkPos::new(0, 0));
+        let position = DVec3::new(8.5, 65.0, 8.5);
+        let horse: SharedEntity = Arc::new(SkeletonHorseEntity::new(
+            &vanilla_entities::SKELETON_HORSE,
+            next_entity_id(),
+            position,
+            Arc::downgrade(world),
+        ));
+        world
+            .try_add_entity(Arc::clone(&horse))
+            .expect("trap horse should attach to the loaded chunk");
+        let Some(trap) = horse.downcast_ref::<SkeletonHorseEntity>() else {
+            panic!("the entity is a skeleton horse");
+        };
+        trap.set_trap(true);
+        trap.set_age(-24000);
+
+        let Some(mob) = horse.as_pathfinder_mob() else {
+            panic!("skeleton horses are pathfinder mobs");
+        };
+        SkeletonTrapGoal::new().tick(mob, &horse);
+
+        assert!(!trap.is_trap());
+        assert!(trap.is_tamed());
+        assert!(!trap.is_baby());
+        let rider = horse
+            .first_passenger()
+            .unwrap_or_else(|| panic!("the trap horse gets a skeleton rider"));
+        assert_eq!(rider.entity_type(), &vanilla_entities::SKELETON);
+
+        let around = WorldAabb::new(0.0, 0.0, 0.0, 16.0, 128.0, 16.0);
+        let entities = world.get_entities_in_aabb(&around);
+        let count = |entity_type| {
+            entities
+                .iter()
+                .filter(|entity| entity.entity_type() == entity_type)
+                .count()
+        };
+        assert_eq!(count(&vanilla_entities::SKELETON_HORSE), 4);
+        assert_eq!(count(&vanilla_entities::SKELETON), 4);
+        assert_eq!(count(&vanilla_entities::LIGHTNING_BOLT), 1);
+        for entity in &entities {
+            if entity.entity_type() == &vanilla_entities::SKELETON {
+                let Some(skeleton) = entity.as_mob() else {
+                    panic!("skeletons are mobs");
+                };
+                assert!(skeleton.is_persistence_required());
+                assert!(entity.vehicle().is_some(), "every skeleton rides a horse");
+            }
+        }
+    }
+}

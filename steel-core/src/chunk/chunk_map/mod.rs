@@ -997,6 +997,11 @@ impl ChunkMap {
                 spawning_holders.insert(tickable_chunk.pos, &tickable_chunk.holder);
             }
         }
+        let entity_ticking: FxHashSet<ChunkPos> = tickable_chunks
+            .random_chunk_indices
+            .iter()
+            .map(|&index| tickable_chunks.block[index].pos)
+            .collect();
         let spawn_chunk_count = self.scheduling.natural_spawn_chunk_count();
         world.tick_spawning_chunks(&mut spawning_chunks, spawn_chunk_count, |pos| {
             if let Some(chunk) = spawning_holders
@@ -1004,6 +1009,10 @@ impl ChunkMap {
                 .and_then(|holder| holder.try_full_chunk())
             {
                 chunk.common().increment_inhabited_time();
+            }
+            // Vanilla `tickSpawningChunk`: thunder only in entity-ticking range.
+            if entity_ticking.contains(&pos) {
+                world.tick_thunder(pos);
             }
         });
     }

@@ -9,6 +9,7 @@ mod goals;
 mod horse;
 pub(crate) mod menu;
 mod skeleton_horse;
+mod skeleton_trap;
 #[cfg(test)]
 mod tests;
 mod zombie_horse;
