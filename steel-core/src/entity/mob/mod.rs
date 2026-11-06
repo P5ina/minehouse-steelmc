@@ -1,6 +1,7 @@
 //! Vanilla-shaped mob foundations.
 
 mod pathfinder;
+pub(crate) mod spawn_equipment;
 
 use crate::entity::leash::{LeashData, Leashable};
 pub use pathfinder::PathfinderMob;

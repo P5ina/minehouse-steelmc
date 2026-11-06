@@ -4,7 +4,7 @@ use steel_utils::{DowncastTypeKey, WorldAabb};
 use super::selector::{Goal, GoalControls};
 use super::target_goal::{TargetGoalBase, follow_distance};
 use crate::entity::ai::targeting::TargetingConditions;
-use crate::entity::{PathfinderMob, SharedEntity};
+use crate::entity::{Entity, PathfinderMob, SharedEntity};
 
 const HURT_BY_UNSEEN_MEMORY_TICKS: i32 = 300;
 const ALERT_RANGE_Y: f64 = 10.0;
@@ -16,6 +16,7 @@ pub(crate) struct HurtByTargetGoal {
     ignore_damage_types: Vec<DowncastTypeKey>,
     alert_same_type: bool,
     ignore_alert_types: Vec<DowncastTypeKey>,
+    alert_matcher: Option<fn(&dyn Entity) -> bool>,
 }
 
 impl HurtByTargetGoal {
@@ -30,6 +31,7 @@ impl HurtByTargetGoal {
             ignore_damage_types: Vec::new(),
             alert_same_type: false,
             ignore_alert_types: Vec::new(),
+            alert_matcher: None,
         }
     }
 
@@ -49,6 +51,21 @@ impl HurtByTargetGoal {
     ) -> Self {
         self.alert_same_type = true;
         self.ignore_alert_types = except_types.into_iter().collect();
+        self
+    }
+
+    /// Like [`set_alert_others`](Self::set_alert_others), but alerts every
+    /// entity `matcher` accepts instead of only the same type. Mirrors
+    /// vanilla's `mob.getClass().isAssignableFrom(other.getClass())`, which
+    /// also alerts subclasses (a zombie alerts husks and drowned).
+    #[must_use]
+    pub(crate) fn set_alert_others_matching(
+        mut self,
+        matcher: fn(&dyn Entity) -> bool,
+        except_types: impl IntoIterator<Item = DowncastTypeKey>,
+    ) -> Self {
+        self = self.set_alert_others(except_types);
+        self.alert_matcher = Some(matcher);
         self
     }
 
@@ -72,8 +89,12 @@ impl HurtByTargetGoal {
         let mob_uuid = mob.uuid();
 
         for entity in world.get_entities_in_aabb_matching(&search_box, |entity| {
+            let same_kind = self.alert_matcher.map_or_else(
+                || entity.downcast_type_key() == mob_type_key,
+                |matcher| matcher(entity),
+            );
             if entity.uuid() == mob_uuid
-                || entity.downcast_type_key() != mob_type_key
+                || !same_kind
                 || self
                     .ignore_alert_types
                     .contains(&entity.downcast_type_key())
