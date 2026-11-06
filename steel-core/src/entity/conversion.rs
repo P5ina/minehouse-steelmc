@@ -199,10 +199,10 @@ fn convert_common(from: &dyn Mob, to: &dyn Mob, params: ConversionParams) {
         to.add_mob_effect(effect);
     }
 
-    if from.is_baby()
-        && let Some(to_ageable) = to.as_ageable_mob()
-    {
-        to_ageable.set_baby(true);
+    // Vanilla `newMob.setBaby(this.isBaby())`: `Mob::set_baby` covers both
+    // ageable mobs and mobs with their own baby flag, such as zombies.
+    if from.is_baby() {
+        to.set_baby(true);
     }
 
     if let (Some(old_ageable), Some(converted_ageable)) =
@@ -527,14 +527,14 @@ mod tests {
             .downcast_ref::<PigEntity>()
             .expect("pig is concrete")
             .convert_to(
-                &vanilla_entities::ZOMBIE,
+                &vanilla_entities::ILLUSIONER,
                 ConversionParams::single(true, true),
                 None,
             );
 
         assert!(
             converted.is_none(),
-            "no zombie factory is registered, so conversion cannot happen"
+            "no illusioner factory is registered, so conversion cannot happen"
         );
         assert!(
             !pig.is_removed(),
@@ -559,7 +559,7 @@ mod tests {
             .downcast_ref::<PigEntity>()
             .expect("pig is concrete")
             .convert_to(
-                &vanilla_entities::ZOMBIE,
+                &vanilla_entities::ILLUSIONER,
                 ConversionParams::single(true, true),
                 None,
             );
@@ -593,7 +593,7 @@ mod tests {
             .downcast_ref::<PigEntity>()
             .expect("pig is concrete")
             .convert_to(
-                &vanilla_entities::ZOMBIE,
+                &vanilla_entities::ILLUSIONER,
                 ConversionParams::single(true, true),
                 None,
             );
@@ -628,7 +628,7 @@ mod tests {
             .downcast_ref::<PigEntity>()
             .expect("pig is concrete")
             .convert_to(
-                &vanilla_entities::ZOMBIE,
+                &vanilla_entities::ILLUSIONER,
                 ConversionParams::single(true, true),
                 None,
             );

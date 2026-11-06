@@ -1,6 +1,7 @@
 //! Vanilla-shaped mob foundations.
 
 mod pathfinder;
+pub(crate) mod spawn_equipment;
 
 use crate::entity::leash::{LeashData, Leashable};
 pub use pathfinder::PathfinderMob;
@@ -55,13 +56,13 @@ use crate::entity::damage::DamageSource;
 use crate::entity::entities::objects::items::ItemEntity;
 use crate::entity::{
     ConversionParams, Entity, EntitySpawnReason, LivingEntity, LivingTravelInput, RemovalReason,
-    SharedEntity, SpawnGroupData, WeakEntity, aabb_contains_any_liquid,
+    SharedEntity, SpawnGroupData, WeakEntity, level_contains_any_liquid,
 };
 use crate::inventory::equipment::EquipmentSlot;
 use crate::physics::MoveResult;
 use crate::player::Player;
 use crate::world::game_event::GameEventContext;
-use crate::world::{LevelReader, World};
+use crate::world::{LevelReader, ServerLevelAccessor, World};
 
 const MOB_FLAG_NO_AI: i8 = 1;
 const MOB_FLAG_LEFT_HANDED: i8 = 2;
@@ -355,8 +356,29 @@ pub trait Mob: LivingEntity + Leashable {
     fn set_mob_flags(&self, flags: i8);
 
     /// Returns whether the entity-specific spawn predicate accepts this spawn.
-    fn check_spawn_rules(&self, _world: &Arc<World>, _reason: EntitySpawnReason) -> bool {
-        true
+    ///
+    /// Vanilla `Mob.checkSpawnRules` is `true`; `PathfinderMob` overrides it to
+    /// require a non-negative walk target value at the mob's block position.
+    fn check_spawn_rules(
+        &self,
+        level: &dyn ServerLevelAccessor,
+        _reason: EntitySpawnReason,
+    ) -> bool {
+        self.as_pathfinder_mob().is_none_or(|pathfinder| {
+            pathfinder.get_walk_target_value_in(self.block_position(), level) >= 0.0
+        })
+    }
+
+    /// Vanilla `Mob.getMaxSpawnClusterSize`: natural spawning stops the whole
+    /// cluster once this many mobs spawned from one start position.
+    fn max_spawn_cluster_size(&self) -> i32 {
+        4
+    }
+
+    /// Vanilla `Mob.isMaxGroupSizeReached`: natural spawning ends the current
+    /// group early when this returns true.
+    fn is_max_group_size_reached(&self, _group_size: i32) -> bool {
+        false
     }
 
     /// Sets the vanilla baby state. Vanilla `Mob.setBaby` is a no-op; ageable
@@ -436,6 +458,11 @@ pub trait Mob: LivingEntity + Leashable {
     /// Returns whether this mob may attack the target; excludes ghasts, which
     /// mobs never target directly.
     fn can_attack(&self, target: &dyn LivingEntity) -> bool {
+        self.default_can_attack_mob(target)
+    }
+
+    /// The `Mob.canAttack` body, for overrides that call `super.canAttack`.
+    fn default_can_attack_mob(&self, target: &dyn LivingEntity) -> bool {
         target.entity_type() != &vanilla_entities::GHAST && LivingEntity::can_attack(self, target)
     }
 
@@ -579,19 +606,11 @@ pub trait Mob: LivingEntity + Leashable {
             .is_valid_spawn(state, level, below, entity_type)
     }
 
-    fn check_spawn_obstruction(&self, world: &Arc<World>) -> bool {
-        let aabb = self.bounding_box();
-        if aabb_contains_any_liquid(world, aabb) {
-            return false;
-        }
-
-        !world.has_entity_in_aabb_matching(&aabb, |entity| {
-            entity.id() != self.id()
-                && !entity.is_removed()
-                && !entity.is_spectator()
-                && entity.blocks_building()
-                && !entity.is_passenger_of_same_vehicle(self.as_entity_event_source())
-        })
+    /// Vanilla `Mob.checkSpawnObstruction`: no liquid inside the box and no
+    /// other entity in the way.
+    fn check_spawn_obstruction(&self, level: &dyn ServerLevelAccessor) -> bool {
+        !level_contains_any_liquid(level, self.bounding_box())
+            && level.is_unobstructed_by_entities(self.as_entity_event_source())
     }
 
     /// Dispatches held-item, entity, and mob-specific interactions in order.

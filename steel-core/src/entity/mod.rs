@@ -291,6 +291,23 @@ pub(crate) fn equipment_items_to_packet_items(
         .collect()
 }
 
+/// Vanilla `BlockGetter.containsAnyLiquid` for any level surface.
+pub(crate) fn level_contains_any_liquid(
+    level: &(impl LevelReader + ?Sized),
+    aabb: WorldAabb,
+) -> bool {
+    (aabb.min_x().floor() as i32..aabb.max_x().ceil() as i32).any(|x| {
+        (aabb.min_y().floor() as i32..aabb.max_y().ceil() as i32).any(|y| {
+            (aabb.min_z().floor() as i32..aabb.max_z().ceil() as i32).any(|z| {
+                !level
+                    .get_block_state(BlockPos::new(x, y, z))
+                    .get_fluid_state()
+                    .is_empty()
+            })
+        })
+    })
+}
+
 pub(crate) fn aabb_contains_any_liquid(world: &Arc<World>, aabb: WorldAabb) -> bool {
     (aabb.min_x().floor() as i32..aabb.max_x().ceil() as i32).any(|x| {
         (aabb.min_y().floor() as i32..aabb.max_y().ceil() as i32).any(|y| {
@@ -778,9 +795,11 @@ mod mob;
 pub mod mob_effect;
 mod monster;
 mod movement_sync;
+mod neutral_mob;
 mod potion_contents;
 pub mod projectile;
 pub(crate) mod pushing;
+mod ranged_attack_mob;
 mod reference;
 mod registry;
 pub(crate) mod selector;
@@ -846,6 +865,7 @@ pub use movement_sync::{
     EntityRotationSyncState, EntityVelocitySyncState, POSITION_SYNC_THRESHOLD,
     PackedEntityRotation, ServerEntityMovementSyncState, ServerEntityMovementSyncUpdate,
 };
+pub(crate) use neutral_mob::{NeutralMob, NeutralMobState};
 pub(crate) use potion_contents::apply_potion_contents;
 pub use projectile::{
     AbstractThrownPotion, EntityHitResult, Projectile, ProjectileBase, ProjectileDeflection,
@@ -854,6 +874,7 @@ pub use projectile::{
     compute_margin, get_hit_result_on_view_vector, spawn_throwable_item_projectile,
 };
 pub use pushing::{DefaultEntityPush, EntityPushSnapshot};
+pub(crate) use ranged_attack_mob::RangedAttackMob;
 pub use reference::EntityReference;
 pub(crate) use registry::SpawnRule;
 pub use registry::{ENTITIES, EntityLoadRequest, EntityRegistry, init_entities};
@@ -864,6 +885,7 @@ pub(crate) use spawn::{
     create_entity_instance, load_entity_recursive_owned, spawn_entity,
 };
 pub(crate) use spawn_placements::SpawnPlacements;
+pub(crate) use spawn_placements::spawn_aabb;
 pub(crate) use storage::{EntityStorage, EntityStorageAddResult};
 pub use synced_data::{EntitySyncedData, LivingEntitySyncedData};
 pub(crate) use ticking::{snapshot_old_pos_and_rot_for_tick, tick_vehicle_passengers_if};

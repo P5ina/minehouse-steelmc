@@ -4,8 +4,10 @@ pub mod mobs;
 pub mod objects;
 
 pub use mobs::ambient::BatEntity;
+pub use mobs::golems::{IronGolemEntity, SnowGolemEntity};
 pub use mobs::hostile::{
-    CaveSpiderEntity, CreeperEntity, EndermiteEntity, MagmaCubeEntity, SlimeEntity, SpiderEntity,
+    CaveSpiderEntity, CreeperEntity, EndermiteEntity, GiantEntity, HuskEntity, MagmaCubeEntity,
+    SlimeEntity, SpiderEntity, ZombieEntity, ZombieGroupData,
 };
 pub use mobs::passive::*;
 pub use objects::display_ui::{BlockDisplayEntity, ItemFrameEntity, LeashFenceKnotEntity};

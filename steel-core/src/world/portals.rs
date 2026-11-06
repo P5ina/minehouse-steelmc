@@ -273,7 +273,7 @@ impl World {
         Ok(true)
     }
 
-    pub(super) fn loaded_block_state(&self, pos: BlockPos) -> Option<BlockStateId> {
+    pub(crate) fn loaded_block_state(&self, pos: BlockPos) -> Option<BlockStateId> {
         if !self.is_in_valid_bounds(pos) {
             return Some(REGISTRY.blocks.get_base_state_id(&vanilla_blocks::AIR));
         }

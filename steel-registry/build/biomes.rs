@@ -503,6 +503,108 @@ fn generate_biome_effects(effects: &BiomeEffects) -> TokenStream {
     }
 }
 
+/// Vanilla `CREATURE_WORLD_GEN_SPAWN_PROBABILITY` default.
+const DEFAULT_CREATURE_SPAWN_PROBABILITY: f32 = 0.1;
+
+/// One `spawns_by_category` entry of the `natural_mob_spawns` attribute.
+#[derive(Deserialize)]
+struct NaturalSpawnerJson {
+    #[serde(rename = "type")]
+    entity_type: Identifier,
+    weight: i32,
+    count: SpawnCountJson,
+}
+
+/// Vanilla spawner counts: a constant or a `minecraft:uniform` provider.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum SpawnCountJson {
+    Constant(i32),
+    Uniform {
+        #[serde(rename = "type")]
+        provider: String,
+        min_inclusive: i32,
+        max_inclusive: i32,
+    },
+}
+
+/// The `natural_mob_spawns` attribute argument (`MobSpawnSettings`).
+#[derive(Deserialize)]
+struct NaturalMobSpawnsJson {
+    #[serde(default)]
+    spawn_costs: FxHashMap<Identifier, SpawnCost>,
+    #[serde(default)]
+    spawns_by_category: FxHashMap<String, Vec<NaturalSpawnerJson>>,
+}
+
+/// Fills spawners, spawn costs and the creature probability from the 26.x
+/// environment attributes, which replaced the old top-level biome fields.
+///
+/// Biomes only use the `overlay` modifier, and no dimension defines a base
+/// value, so the biome argument is the effective `MobSpawnSettings`.
+fn extract_spawn_attributes(biome: &mut BiomeJson, biome_name: &str) {
+    biome.creature_spawn_probability = biome
+        .attributes
+        .get("minecraft:gameplay/creature_world_gen_spawn_probability")
+        .map_or(DEFAULT_CREATURE_SPAWN_PROBABILITY, |value| {
+            value.as_f64().unwrap_or_else(|| {
+                panic!("{biome_name}: creature spawn probability must be a number")
+            }) as f32
+        });
+
+    let Some(value) = biome
+        .attributes
+        .get("minecraft:gameplay/natural_mob_spawns")
+    else {
+        return;
+    };
+    let modifier = value.get("modifier").and_then(Value::as_str);
+    assert_eq!(
+        modifier,
+        Some("overlay"),
+        "{biome_name}: unsupported natural_mob_spawns modifier"
+    );
+    let argument = value
+        .get("argument")
+        .unwrap_or_else(|| panic!("{biome_name}: natural_mob_spawns has no argument"));
+    let settings: NaturalMobSpawnsJson = serde_json::from_value(argument.clone())
+        .unwrap_or_else(|e| panic!("{biome_name}: invalid natural_mob_spawns: {e}"));
+
+    biome.spawn_costs = settings.spawn_costs;
+    biome.spawners = settings
+        .spawns_by_category
+        .into_iter()
+        .map(|(category, entries)| {
+            let entries = entries
+                .into_iter()
+                .map(|entry| {
+                    let (min_count, max_count) = match entry.count {
+                        SpawnCountJson::Constant(count) => (count, count),
+                        SpawnCountJson::Uniform {
+                            provider,
+                            min_inclusive,
+                            max_inclusive,
+                        } => {
+                            assert_eq!(
+                                provider, "minecraft:uniform",
+                                "{biome_name}: unsupported spawner count provider"
+                            );
+                            (min_inclusive, max_inclusive)
+                        }
+                    };
+                    SpawnerData {
+                        entity_type: entry.entity_type,
+                        weight: entry.weight,
+                        min_count,
+                        max_count,
+                    }
+                })
+                .collect();
+            (category, entries)
+        })
+        .collect();
+}
+
 pub(crate) fn build() -> TokenStream {
     let biome_dir = "../steel-utils/build_assets/builtin_datapacks/minecraft/worldgen/biome";
     println!("cargo:rerun-if-changed={biome_dir}");
@@ -521,6 +623,7 @@ pub(crate) fn build() -> TokenStream {
 
             // Extract attributes and populate effects
             extract_attributes_to_effects(&mut biome.effects, &biome.attributes);
+            extract_spawn_attributes(&mut biome, &biome_name);
 
             biomes.push((biome_name, biome));
         }
@@ -553,6 +656,13 @@ pub(crate) fn build() -> TokenStream {
         let temperature_modifier = generate_temperature_modifier(&biome.temperature_modifier);
         let effects = generate_biome_effects(&biome.effects);
         let creature_spawn_probability = biome.creature_spawn_probability;
+        let snow_golem_melts = if let Some(Value::Bool(melts)) =
+            biome.attributes.get("minecraft:gameplay/snow_golem_melts")
+        {
+            quote! { Some(#melts) }
+        } else {
+            quote! { None }
+        };
         let spawners =
             generate_hashmap_string(&biome.spawners, |v| generate_vec(v, generate_spawner_data));
         let spawn_costs = generate_hashmap_resource(&biome.spawn_costs, generate_spawn_cost);
@@ -570,6 +680,7 @@ pub(crate) fn build() -> TokenStream {
                 temperature_modifier: #temperature_modifier,
                 effects: #effects,
                 creature_spawn_probability: #creature_spawn_probability,
+                snow_golem_melts: #snow_golem_melts,
                 spawners: #spawners,
                 spawn_costs: #spawn_costs,
                 carvers: #carvers,

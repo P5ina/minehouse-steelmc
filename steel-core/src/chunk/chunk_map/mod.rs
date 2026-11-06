@@ -926,16 +926,9 @@ impl ChunkMap {
             timings.tickable_count = tickable_chunks.block.len();
 
             if runs_normally {
-                // Vanilla `ServerChunkCache.tickSpawningChunk`: every ticking chunk a
-                // non-spectator player is close enough to spawn mobs in counts as inhabited.
-                // Natural spawning itself is not implemented yet.
-                for tickable_chunk in &tickable_chunks.block {
-                    if let Some(chunk) = tickable_chunk.holder.try_full_chunk()
-                        && world.any_player_close_enough_for_spawning(chunk.common().pos())
-                    {
-                        chunk.common().increment_inhabited_time();
-                    }
-                }
+                let start = Instant::now();
+                self.tick_spawning_chunks(world, &tickable_chunks);
+                timings.tick_chunks += start.elapsed();
             }
 
             if runs_normally && random_tick_speed > 0 && !tickable_chunks.block.is_empty() {
@@ -980,6 +973,32 @@ impl ChunkMap {
         }
 
         timings
+    }
+
+    /// Vanilla `ServerChunkCache.tickChunks` spawning half: spawning chunks are the
+    /// ticking chunks a non-spectator player is close enough to spawn mobs in. Each
+    /// one counts as inhabited, then natural spawning runs in shuffled order.
+    fn tick_spawning_chunks(&self, world: &Arc<World>, tickable_chunks: &TickingChunkSnapshot) {
+        let _span = tracing::trace_span!("tick_spawning_chunks").entered();
+        let mut spawning_chunks = Vec::new();
+        let mut spawning_holders = FxHashMap::default();
+        for tickable_chunk in &tickable_chunks.block {
+            if tickable_chunk.holder.try_full_chunk().is_some()
+                && world.any_player_close_enough_for_spawning(tickable_chunk.pos)
+            {
+                spawning_chunks.push(tickable_chunk.pos);
+                spawning_holders.insert(tickable_chunk.pos, &tickable_chunk.holder);
+            }
+        }
+        let spawn_chunk_count = self.scheduling.natural_spawn_chunk_count();
+        world.tick_spawning_chunks(&mut spawning_chunks, spawn_chunk_count, |pos| {
+            if let Some(chunk) = spawning_holders
+                .get(&pos)
+                .and_then(|holder| holder.try_full_chunk())
+            {
+                chunk.common().increment_inhabited_time();
+            }
+        });
     }
 
     /// Runs the chunk-source phase outside a live game tick.

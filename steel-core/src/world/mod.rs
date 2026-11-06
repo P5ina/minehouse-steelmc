@@ -123,6 +123,7 @@ pub mod explosion;
 pub mod game_event;
 mod level_effects;
 mod level_reader;
+pub(crate) mod natural_spawner;
 mod player_index;
 pub(crate) mod player_spawn_finder;
 mod portals;
@@ -778,6 +779,17 @@ impl ServerLevelAccessor for World {
     fn dimension_type(&self) -> DimensionTypeRef {
         self.dimension_type
     }
+
+    fn is_unobstructed_by_entities(&self, entity: &dyn Entity) -> bool {
+        let aabb = entity.bounding_box();
+        !self.has_entity_in_aabb_matching(&aabb, |other| {
+            other.id() != entity.id()
+                && !other.is_removed()
+                && !other.is_spectator()
+                && other.blocks_building()
+                && !other.is_passenger_of_same_vehicle(entity)
+        })
+    }
 }
 
 impl LevelReader for Arc<World> {
@@ -855,6 +867,10 @@ impl ServerLevelAccessor for Arc<World> {
 
     fn dimension_type(&self) -> DimensionTypeRef {
         self.dimension_type
+    }
+
+    fn is_unobstructed_by_entities(&self, entity: &dyn Entity) -> bool {
+        self.as_ref().is_unobstructed_by_entities(entity)
     }
 }
 

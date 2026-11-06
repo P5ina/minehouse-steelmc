@@ -117,6 +117,7 @@ fn pig_path_target_feeds_move_control_forward_input() {
             mob_bounding_box_width: pig.bounding_box().width(),
             mob_speed: pig.get_speed(),
             game_time: 0,
+            can_move_directly_to_next_node: false,
         })
     };
     let Some((target, speed_modifier)) = target else {

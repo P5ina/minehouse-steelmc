@@ -22,6 +22,7 @@ use steel_utils::{BlockPos, Direction, WorldAabb, axis::Axis};
 use crate::behavior::{BLOCK_BEHAVIORS, BlockCollisionContext, BlockStateBehaviorExt as _};
 use crate::entity::Mob;
 use crate::entity::ai::node::{Node, NodeStore};
+use crate::entity::ai::node_evaluator::{NodeEvaluator, NodeNeighbors};
 use crate::entity::ai::path::{
     PathComputationType, PathType, PathTypeSet, PathfindingContext, PathfindingMalus,
 };

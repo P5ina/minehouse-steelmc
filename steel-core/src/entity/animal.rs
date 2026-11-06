@@ -180,15 +180,11 @@ pub trait Animal: AgeableMob {
 
     /// Returns how attractive `pos` is as an AI walk target: favors grass
     /// blocks, otherwise falls back to light-level pathfinding cost.
-    fn animal_walk_target_value(&self, pos: BlockPos) -> f32 {
-        let Some(world) = self.level() else {
-            return 0.0;
-        };
-
-        if world.get_block_state(pos.below()).get_block() == &vanilla_blocks::GRASS_BLOCK {
+    fn animal_walk_target_value(&self, pos: BlockPos, level: &dyn LevelReader) -> f32 {
+        if level.get_block_state(pos.below()).get_block() == &vanilla_blocks::GRASS_BLOCK {
             10.0
         } else {
-            world.pathfinding_cost_from_light_levels(pos)
+            level.pathfinding_cost_from_light_levels(pos)
         }
     }
 

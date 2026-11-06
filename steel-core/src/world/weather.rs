@@ -17,6 +17,8 @@ use super::{
     obfuscate_biome_seed, vanilla_dimension_types,
 };
 
+use glam::DVec3;
+
 use crate::chunk::light::MAX_LIGHT_LEVEL;
 
 static BIOME_TEMPERATURE_NOISE: LazyLock<PerlinSimplexNoise> = LazyLock::new(|| {
@@ -335,6 +337,21 @@ impl World {
         }
 
         REGISTRY.biomes.by_id(usize::from(biome_id))
+    }
+
+    /// The `minecraft:gameplay/snow_golem_melts` environment attribute at `pos`: the
+    /// noise biome's value when it sets one, otherwise the dimension's.
+    pub(crate) fn snow_golem_melts(&self, pos: DVec3) -> bool {
+        let biome = self
+            .noise_biome_id(
+                (pos.x.floor() as i32) >> 2,
+                (pos.y.floor() as i32) >> 2,
+                (pos.z.floor() as i32) >> 2,
+            )
+            .and_then(|id| REGISTRY.biomes.by_id(usize::from(id)));
+        biome
+            .and_then(|biome| biome.snow_golem_melts)
+            .unwrap_or(self.dimension_type.snow_golem_melts)
     }
 
     pub(super) fn noise_biome_id(&self, quart_x: i32, quart_y: i32, quart_z: i32) -> Option<u16> {

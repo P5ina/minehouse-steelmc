@@ -17,6 +17,7 @@ use steel_utils::{BlockPos, BlockStateId, types::Difficulty, types::UpdateFlags}
 use crate::block_entity::SharedBlockEntity;
 use crate::chunk::heightmap::HeightmapType;
 use crate::chunk::light::{LightLayer, MAX_LIGHT_LEVEL};
+use crate::entity::Entity;
 use crate::world::game_event::GameEventContext;
 
 use super::World;
@@ -137,6 +138,16 @@ pub trait ServerLevelAccessor: LevelReader {
 
     /// Returns this level's dimension type.
     fn dimension_type(&self) -> DimensionTypeRef;
+
+    /// Vanilla `EntityGetter.isUnobstructed(Entity)`: no other live entity that
+    /// blocks building overlaps `entity`'s bounding box.
+    ///
+    /// Level surfaces without entities, such as vanilla `WorldGenRegion` whose
+    /// `getEntities` is always empty, report every box as unobstructed.
+    #[expect(unused_variables, reason = "default level surfaces hold no entities")]
+    fn is_unobstructed_by_entities(&self, entity: &dyn Entity) -> bool {
+        true
+    }
 }
 
 /// Level access needed by vanilla block `updateShape` logic.
