@@ -1004,7 +1004,13 @@ impl Player {
                 }
             }
             PlayerCommandAction::OpenVehicleInventory => {
-                // TODO: Open mount inventories once the horse inventory menu exists.
+                // Vanilla `HasCustomInventoryScreen`; chest boats and minecarts
+                // join this once they have inventory screens.
+                if let Some(vehicle) = self.vehicle()
+                    && let Some(horse) = vehicle.as_abstract_horse()
+                {
+                    horse.open_custom_inventory_screen(self);
+                }
             }
         }
 
