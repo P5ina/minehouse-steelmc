@@ -4,6 +4,7 @@
 //! `canSurvive` should depend on the world-reading surface, not on the concrete
 //! `World` type. `World` and `WorldGenRegion` both implement this trait.
 
+use glam::DVec3;
 use steel_registry::blocks::BlockRef;
 use steel_registry::blocks::block_state_ext::BlockStateExt as _;
 use steel_registry::blocks::properties::Direction;
@@ -171,6 +172,20 @@ pub trait ServerLevelAccessor: LevelReader {
     )]
     fn is_block_within_world_border(&self, pos: BlockPos) -> bool {
         true
+    }
+
+    /// Vanilla `EntityGetter.getNearestPlayer(x, y, z, distance, filterOutCreative) != null`.
+    ///
+    /// Level surfaces without players, such as vanilla `WorldGenRegion`,
+    /// never have one nearby.
+    #[expect(unused_variables, reason = "default level surfaces hold no players")]
+    fn has_nearby_player(
+        &self,
+        position: DVec3,
+        max_distance: f64,
+        exclude_creative: bool,
+    ) -> bool {
+        false
     }
 
     /// Vanilla `EntityGetter.isUnobstructed(Entity)`: no other live entity that

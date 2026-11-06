@@ -18,6 +18,7 @@ use crate::chunk::light::{
 };
 use crate::chunk::status::ChunkStatus;
 use crate::entity::damage::DamageHistory;
+use crate::entity::entity_selector::no_creative_or_spectator;
 use crate::poi::OccupationStatus;
 use crate::portal::WorldChangeRequest;
 use crate::world::game_event::{
@@ -791,6 +792,22 @@ impl ServerLevelAccessor for World {
         Self::is_block_within_world_border(self, pos)
     }
 
+    fn has_nearby_player(
+        &self,
+        position: DVec3,
+        max_distance: f64,
+        exclude_creative: bool,
+    ) -> bool {
+        self.nearest_player(position, max_distance, |player| {
+            if exclude_creative {
+                no_creative_or_spectator(player)
+            } else {
+                !player.is_spectator()
+            }
+        })
+        .is_some()
+    }
+
     fn is_unobstructed_by_entities(&self, entity: &dyn Entity) -> bool {
         let aabb = entity.bounding_box();
         !self.has_entity_in_aabb_matching(&aabb, |other| {
@@ -882,6 +899,16 @@ impl ServerLevelAccessor for Arc<World> {
 
     fn is_block_within_world_border(&self, pos: BlockPos) -> bool {
         World::is_block_within_world_border(self, pos)
+    }
+
+    fn has_nearby_player(
+        &self,
+        position: DVec3,
+        max_distance: f64,
+        exclude_creative: bool,
+    ) -> bool {
+        self.as_ref()
+            .has_nearby_player(position, max_distance, exclude_creative)
     }
 
     fn is_unobstructed_by_entities(&self, entity: &dyn Entity) -> bool {

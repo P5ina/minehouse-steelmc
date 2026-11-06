@@ -14,6 +14,10 @@ pub use endermite::EndermiteEntity;
 pub mod cube_mob;
 pub use cube_mob::{MagmaCubeEntity, SlimeEntity};
 
+/// Silverfish entity module.
+pub mod silverfish;
+pub use silverfish::SilverfishEntity;
+
 /// Skeleton, stray, bogged, wither skeleton and parched entity module.
 pub mod skeleton;
 pub use skeleton::{

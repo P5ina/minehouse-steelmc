@@ -383,6 +383,12 @@ pub trait BlockBehavior: Send + Sync {
         None
     }
 
+    /// Vanilla `InfestedBlock.getHostBlock`: the block an infested block
+    /// imitates, or `None` for every other block.
+    fn infested_host_block(&self) -> Option<BlockRef> {
+        None
+    }
+
     /// Called for post-break effects such as experience drops.
     ///
     /// Vanilla parity: `Block.spawnAfterBreak(BlockState, ServerLevel, BlockPos,
