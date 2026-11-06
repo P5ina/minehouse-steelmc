@@ -15,7 +15,7 @@ const USAGE: &str =
     "usage: steel import-anvil <vanilla world dir> [--save-path <dir>] [--domain <name>]
 
 Converts the overworld, the nether and the end of a vanilla save into
-<save-path>/<domain>/worlds/<dimension>/region. Defaults: --save-path saves, --domain minecraft.
+<save-path>/<domain>/worlds/<dimension> (region files and level.toml). Defaults: --save-path saves, --domain minecraft.
 The world must be saved by the Minecraft version Steel targets.";
 
 struct Options {
@@ -84,24 +84,25 @@ pub fn run(args: &[String]) -> i32 {
     };
 
     runtime.block_on(async {
-        let seed = match anvil_import::read_world_seed(&options.world) {
-            Ok(seed) => seed,
+        let dimensions =
+            anvil_import::vanilla_dimensions(&options.world, &options.save_path, &options.domain);
+        let level = match anvil_import::import_level_data(&options.world, &dimensions) {
+            Ok(level) => level,
             Err(error) => {
                 eprintln!("{error}");
                 return 1;
             }
         };
+        print!("{level}");
 
         let mut total = ImportReport::default();
-        for dimension in
-            anvil_import::vanilla_dimensions(&options.world, &options.save_path, &options.domain)
-        {
+        for dimension in &dimensions {
             println!(
                 "Importing {} into {}",
                 dimension.source.display(),
                 dimension.target.display()
             );
-            match anvil_import::import_dimension(&dimension, Arc::clone(&pool)).await {
+            match anvil_import::import_dimension(dimension, Arc::clone(&pool)).await {
                 Ok(report) => {
                     print!("{report}");
                     total.merge(report);
@@ -114,10 +115,25 @@ pub fn run(args: &[String]) -> i32 {
         }
 
         println!(
-            "Done: {} chunks. Set `seed = \"{seed}\"` in config/worlds.toml so Steel generates \
-             new chunks of the same world.",
-            total.chunks_imported
+            "Done: {} chunks, seed {}. The seed, spawn, time, weather, difficulty and game rules \
+             are in each world's level.toml.",
+            total.chunks_imported, level.seed
         );
+        let game_mode = match level.game_type {
+            1 => Some("creative"),
+            2 => Some("adventure"),
+            3 => Some("spectator"),
+            _ => None,
+        };
+        if let Some(game_mode) = game_mode {
+            println!(
+                "The vanilla default game mode is {game_mode}; set `default_gamemode = \
+                 \"{game_mode}\"` in config/worlds.toml."
+            );
+        }
+        if level.hardcore {
+            println!("The vanilla world is hardcore; Steel has no hardcore mode, so it runs as a normal world.");
+        }
         if total.failed_chunks.is_empty() {
             0
         } else {
