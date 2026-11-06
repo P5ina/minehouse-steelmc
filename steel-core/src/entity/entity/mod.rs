@@ -2,6 +2,7 @@ use std::collections::BTreeSet;
 
 use super::*;
 use crate::entity::entities::LightningBoltEntity;
+use crate::entity::entities::mobs::hostile::cube_mob::AbstractCubeMob;
 use crate::entity::{leash::Leashable, pushing::EntityPush};
 use rand::{RngExt, rng};
 use steel_math::DEGREE_90;
@@ -918,6 +919,11 @@ pub trait Entity: EntityEventSource + ErasedType + Send + Sync + 'static {
 
     /// Applies vanilla entity-to-entity push separation.
     fn push_entity(&self, entity: &dyn Entity) {
+        self.default_push_entity(entity);
+    }
+
+    /// The default implementation of `Entity.push(Entity)` when not overridden.
+    fn default_push_entity(&self, entity: &dyn Entity) {
         if self
             .as_living_entity()
             .is_some_and(LivingEntity::is_sleeping)
@@ -1680,6 +1686,12 @@ pub trait Entity: EntityEventSource + ErasedType + Send + Sync + 'static {
     /// Returns true for entities that implement vanilla ageable-mob behavior.
     fn is_ageable_mob(&self) -> bool {
         self.as_ageable_mob().is_some()
+    }
+
+    /// Returns this entity as a slime-like cube mob, equivalent to vanilla's
+    /// `instanceof AbstractCubeMob`.
+    fn as_cube_mob(&self) -> Option<&dyn AbstractCubeMob> {
+        try_as_dyn::<Self, dyn AbstractCubeMob>(self)
     }
 
     /// Returns this entity as an ageable mob when it has ageable behavior.
@@ -2852,6 +2864,11 @@ pub trait Entity: EntityEventSource + ErasedType + Send + Sync + 'static {
 
     /// Refreshes dimensions for the current physical pose.
     fn refresh_dimensions(&self) {
+        self.default_refresh_dimensions();
+    }
+
+    /// The default implementation of `Entity.refreshDimensions` when not overridden.
+    fn default_refresh_dimensions(&self) {
         let pose = self.pose();
         let old_dimensions = self.base().dimensions();
         let new_dimensions = self.dimensions_for_pose(pose);
