@@ -26,14 +26,12 @@ minehouse_mob_illusioner
 minehouse_mob_llama
 minehouse_mob_mule
 minehouse_mob_nautilus
-minehouse_mob_ocelot
 minehouse_mob_panda
 minehouse_mob_parrot
 minehouse_mob_pig
 minehouse_mob_piglin
 minehouse_mob_piglin_brute
 minehouse_mob_pillager
-minehouse_mob_polar_bear
 minehouse_mob_rabbit
 minehouse_mob_ravager
 minehouse_mob_shulker

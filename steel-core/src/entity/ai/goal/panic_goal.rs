@@ -1,7 +1,7 @@
 use glam::DVec3;
 use steel_registry::blocks::block_state_ext::BlockStateExt as _;
 use steel_registry::vanilla_damage_type_tags;
-use steel_utils::BlockPos;
+use steel_utils::{BlockPos, Identifier};
 
 use super::random_pos::default_random_pos;
 use super::selector::{Goal, GoalControls};
@@ -15,6 +15,11 @@ pub struct PanicGoal {
     wanted_position: Option<DVec3>,
     speed_modifier: f64,
     is_running: bool,
+    panic_causes: fn(&dyn PathfinderMob) -> Identifier,
+}
+
+fn default_panic_causes(_mob: &dyn PathfinderMob) -> Identifier {
+    vanilla_damage_type_tags::DamageTypeTag::PANIC_CAUSES
 }
 
 impl PanicGoal {
@@ -24,7 +29,19 @@ impl PanicGoal {
             wanted_position: None,
             speed_modifier,
             is_running: false,
+            panic_causes: default_panic_causes,
         }
+    }
+
+    /// Vanilla `PanicGoal(mob, speed, panicCausingDamageTypes)`: picks the damage
+    /// type tag that makes this mob panic.
+    #[must_use]
+    pub(crate) const fn with_panic_causes(
+        mut self,
+        panic_causes: fn(&dyn PathfinderMob) -> Identifier,
+    ) -> Self {
+        self.panic_causes = panic_causes;
+        self
     }
 
     #[must_use]
@@ -32,9 +49,10 @@ impl PanicGoal {
         self.is_running
     }
 
-    fn should_panic(mob: &dyn PathfinderMob) -> bool {
+    fn should_panic(&self, mob: &dyn PathfinderMob) -> bool {
+        let panic_causes = (self.panic_causes)(mob);
         mob.last_damage_source()
-            .is_some_and(|source| source.is(&vanilla_damage_type_tags::DamageTypeTag::PANIC_CAUSES))
+            .is_some_and(|source| source.is(&panic_causes))
     }
 
     fn find_random_position(&mut self, mob: &dyn PathfinderMob) -> bool {
@@ -57,7 +75,7 @@ impl Goal for PanicGoal {
     }
 
     fn can_use(&mut self, mob: &dyn PathfinderMob) -> bool {
-        if !Self::should_panic(mob) {
+        if !self.should_panic(mob) {
             return false;
         }
 
@@ -143,20 +161,20 @@ mod tests {
             Arc::downgrade(test_world()),
         );
 
-        assert!(!PanicGoal::should_panic(&pig));
+        assert!(!PanicGoal::new(1.0).should_panic(&pig));
 
         assert!(pig.hurt_server(
             test_world(),
             &DamageSource::environment(&vanilla_damage_types::GENERIC),
             1.0
         ));
-        assert!(!PanicGoal::should_panic(&pig));
+        assert!(!PanicGoal::new(1.0).should_panic(&pig));
 
         assert!(pig.hurt_server(
             test_world(),
             &DamageSource::environment(&vanilla_damage_types::PLAYER_ATTACK),
             2.0
         ));
-        assert!(PanicGoal::should_panic(&pig));
+        assert!(PanicGoal::new(1.0).should_panic(&pig));
     }
 }
