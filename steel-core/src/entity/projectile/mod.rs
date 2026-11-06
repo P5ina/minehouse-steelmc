@@ -61,6 +61,8 @@ const MAX_ENTITY_HIT_MARGIN: f32 = 0.3;
 
 /// Vanilla `ThrowableItemProjectile` spawn offset below the shooter's eye.
 const THROWN_ITEM_SPAWN_EYE_OFFSET: f64 = 0.1;
+/// Vanilla `ThrowableProjectile(type, owner, level)` spawns at `owner.getEyeY() - 0.1F`.
+const THROWN_ITEM_SPAWN_EYE_OFFSET_F32: f32 = 0.1;
 
 /// Returns a triangle-distributed random value.
 #[must_use]
@@ -757,6 +759,48 @@ where
         return None;
     }
     enchantment_helper::on_projectile_spawned(world, item_stack, entity.as_ref(), Some(&owner));
+
+    Some(entity)
+}
+
+/// Vanilla `Projectile.spawnProjectileUsingShoot` for a thrown item fired by a mob:
+/// the projectile starts at the shooter's eyes and flies along `direction`.
+/// Returns `None` when the world rejects the projectile.
+pub fn spawn_mob_throwable_item_projectile<E>(
+    world: &Arc<World>,
+    shooter: &SharedEntity,
+    mut item_stack: ItemStack,
+    direction: DVec3,
+    power: f32,
+    uncertainty: f32,
+    create: impl FnOnce(DVec3) -> E,
+) -> Option<SharedEntity>
+where
+    E: Projectile + ThrowableItemProjectile + Entity + 'static,
+{
+    let shooter_pos = shooter.position();
+    let spawn_pos = DVec3::new(
+        shooter_pos.x,
+        shooter.get_eye_y() - f64::from(THROWN_ITEM_SPAWN_EYE_OFFSET_F32),
+        shooter_pos.z,
+    );
+
+    let entity = create(spawn_pos);
+    entity.set_owner_entity(Some(shooter));
+    entity.set_item_clamped(item_stack.clone());
+    entity.shoot(direction, power, uncertainty);
+
+    let entity: SharedEntity = Arc::new(entity);
+    if let Err(error) = world.try_add_entity(Arc::clone(&entity)) {
+        log::debug!("failed to spawn mob projectile: {error}");
+        return None;
+    }
+    enchantment_helper::on_projectile_spawned(
+        world,
+        &mut item_stack,
+        entity.as_ref(),
+        Some(shooter),
+    );
 
     Some(entity)
 }
