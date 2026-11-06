@@ -30,6 +30,7 @@ use steel_utils::{
     BlockPos, BlockStateId, Downcast as _, DowncastType, DowncastTypeKey, Identifier,
 };
 
+use crate::entity::SpawnRule;
 use crate::entity::ai::goal::{
     BreakDoorGoal, HurtByTargetGoal, LookAtPlayerGoal, NearestAttackableTargetGoal,
     RandomLookAroundGoal, WaterAvoidingRandomStrollGoal, ZombieAttackGoal,
@@ -938,7 +939,7 @@ macro_rules! impl_zombie_traits {
 }
 
 /// A hostile zombie.
-#[entity_behavior(class = "Zombie")]
+#[entity_behavior(class = "Zombie", spawn_rule)]
 pub struct ZombieEntity {
     base: EntityBase,
     entity_type: EntityTypeRef,
@@ -954,6 +955,11 @@ unsafe impl DowncastType for ZombieEntity {
 }
 
 impl ZombieEntity {
+    /// Vanilla `SpawnPlacements` predicate: `Monster.checkMonsterSpawnRules`.
+    pub(crate) const SPAWN_RULE: SpawnRule = |entity_type, level, spawn_reason, pos, random| {
+        <Self as Monster>::check_monster_spawn_rules(entity_type, level, spawn_reason, pos, random)
+    };
+
     /// Creates a new zombie.
     #[must_use]
     pub fn new(entity_type: EntityTypeRef, id: i32, position: DVec3, world: Weak<World>) -> Self {
@@ -1003,7 +1009,7 @@ impl ZombieEntity {
 }
 
 /// A hostile husk: a desert zombie that does not burn and starves its targets.
-#[entity_behavior(class = "Husk")]
+#[entity_behavior(class = "Husk", spawn_rule)]
 pub struct HuskEntity {
     base: EntityBase,
     entity_type: EntityTypeRef,
@@ -1019,6 +1025,17 @@ unsafe impl DowncastType for HuskEntity {
 }
 
 impl HuskEntity {
+    /// Vanilla `SpawnPlacements` predicate: `Monster.checkSurfaceMonstersSpawnRules`.
+    pub(crate) const SPAWN_RULE: SpawnRule = |entity_type, level, spawn_reason, pos, random| {
+        <Self as Monster>::check_surface_monsters_spawn_rules(
+            entity_type,
+            level,
+            spawn_reason,
+            pos,
+            random,
+        )
+    };
+
     /// Creates a new husk.
     #[must_use]
     pub fn new(entity_type: EntityTypeRef, id: i32, position: DVec3, world: Weak<World>) -> Self {
@@ -1079,7 +1096,7 @@ impl HuskEntity {
 }
 
 /// A giant: a huge zombie with no AI goals, only reachable through commands.
-#[entity_behavior(class = "Giant")]
+#[entity_behavior(class = "Giant", spawn_rule)]
 pub struct GiantEntity {
     base: EntityBase,
     entity_type: EntityTypeRef,
@@ -1094,6 +1111,11 @@ unsafe impl DowncastType for GiantEntity {
 }
 
 impl GiantEntity {
+    /// Vanilla `SpawnPlacements` predicate: `Monster.checkMonsterSpawnRules`.
+    pub(crate) const SPAWN_RULE: SpawnRule = |entity_type, level, spawn_reason, pos, random| {
+        <Self as Monster>::check_monster_spawn_rules(entity_type, level, spawn_reason, pos, random)
+    };
+
     /// Creates a new giant.
     #[must_use]
     pub fn new(entity_type: EntityTypeRef, id: i32, position: DVec3, world: Weak<World>) -> Self {

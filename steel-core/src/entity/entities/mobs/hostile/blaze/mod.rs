@@ -16,6 +16,7 @@ use steel_registry::{level_events, sound_events, vanilla_attributes, vanilla_ent
 use steel_utils::locks::SyncMutex;
 use steel_utils::{Downcast as _, DowncastType, DowncastTypeKey};
 
+use crate::entity::SpawnRule;
 use crate::entity::ai::goal::{
     Goal, GoalControls, HurtByTargetGoal, LookAtPlayerGoal, MoveTowardsRestrictionGoal,
     NearestAttackableTargetGoal, RandomLookAroundGoal, WaterAvoidingRandomStrollGoal,
@@ -47,7 +48,7 @@ const LOST_SIGHT_CHASE_TICKS: i32 = 5;
 const FIREBALL_SPREAD: f64 = 2.297;
 
 /// A blaze.
-#[entity_behavior(class = "Blaze")]
+#[entity_behavior(class = "Blaze", spawn_rule)]
 pub struct BlazeEntity {
     base: EntityBase,
     entity_type: EntityTypeRef,
@@ -69,6 +70,16 @@ unsafe impl DowncastType for BlazeEntity {
 }
 
 impl BlazeEntity {
+    /// Vanilla `SpawnPlacements` predicate: `Monster.checkAnyLightMonsterSpawnRules`.
+    pub(crate) const SPAWN_RULE: SpawnRule = |entity_type, level, spawn_reason, pos, _random| {
+        <Self as Monster>::check_any_light_monster_spawn_rules(
+            entity_type,
+            level,
+            spawn_reason,
+            pos,
+        )
+    };
+
     /// Creates a new blaze.
     #[must_use]
     pub fn new(entity_type: EntityTypeRef, id: i32, position: DVec3, world: Weak<World>) -> Self {

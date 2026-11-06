@@ -22,6 +22,7 @@ use steel_utils::locks::SyncMutex;
 use steel_utils::types::Difficulty;
 use steel_utils::{BlockPos, BlockStateId, ChunkPos, DowncastType, DowncastTypeKey};
 
+use crate::entity::SpawnRule;
 use crate::entity::ai::goal::{
     FloatGoal, Goal, GoalControls, HurtByTargetGoal, LeapAtTargetGoal, LookAtPlayerGoal,
     MeleeAttackGoal, NearestAttackableTargetGoal, RandomLookAroundGoal,
@@ -393,7 +394,7 @@ macro_rules! impl_spider_traits {
 }
 
 /// A hostile spider.
-#[entity_behavior(class = "Spider")]
+#[entity_behavior(class = "Spider", spawn_rule)]
 pub struct SpiderEntity {
     base: EntityBase,
     entity_type: EntityTypeRef,
@@ -408,6 +409,11 @@ unsafe impl DowncastType for SpiderEntity {
 }
 
 impl SpiderEntity {
+    /// Vanilla `SpawnPlacements` predicate: `Monster.checkMonsterSpawnRules`.
+    pub(crate) const SPAWN_RULE: SpawnRule = |entity_type, level, spawn_reason, pos, random| {
+        <Self as Monster>::check_monster_spawn_rules(entity_type, level, spawn_reason, pos, random)
+    };
+
     /// Creates a new spider.
     #[must_use]
     pub fn new(entity_type: EntityTypeRef, id: i32, position: DVec3, world: Weak<World>) -> Self {
@@ -504,7 +510,7 @@ impl Mob for SpiderEntity {
 }
 
 /// A hostile cave spider: a smaller spider whose bite poisons.
-#[entity_behavior(class = "CaveSpider")]
+#[entity_behavior(class = "CaveSpider", spawn_rule)]
 pub struct CaveSpiderEntity {
     base: EntityBase,
     entity_type: EntityTypeRef,
@@ -519,6 +525,11 @@ unsafe impl DowncastType for CaveSpiderEntity {
 }
 
 impl CaveSpiderEntity {
+    /// Vanilla `SpawnPlacements` predicate: `Monster.checkMonsterSpawnRules`.
+    pub(crate) const SPAWN_RULE: SpawnRule = |entity_type, level, spawn_reason, pos, random| {
+        <Self as Monster>::check_monster_spawn_rules(entity_type, level, spawn_reason, pos, random)
+    };
+
     /// Creates a new cave spider.
     #[must_use]
     pub fn new(entity_type: EntityTypeRef, id: i32, position: DVec3, world: Weak<World>) -> Self {
