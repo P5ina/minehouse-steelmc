@@ -143,6 +143,7 @@ pub(crate) use waterlogging::{
 };
 
 mod collision;
+mod valid_spawn;
 
 pub(crate) use collision::push_entities_up;
 #[cfg(test)]
@@ -231,17 +232,20 @@ pub trait BlockBehavior: Send + Sync {
     }
 
     /// Whether this block accepts a mob spawning on or inside it.
-    /// Defaults to full UP support and emission below [`MAX_MOB_SPAWN_LIGHT_EMISSION`].
+    ///
+    /// Defaults to the predicate vanilla `Blocks` registers in the block's
+    /// properties: never (glass, trapdoors, bedrock…), always (soul sand, mud…),
+    /// leaves for ocelots and parrots, ice for polar bears, magma for
+    /// fire-immune mobs, otherwise full UP support and emission below
+    /// [`MAX_MOB_SPAWN_LIGHT_EMISSION`].
     fn is_valid_spawn(
         &self,
         state: BlockStateId,
         world: &dyn LevelReader,
         pos: BlockPos,
-        _entity_type: EntityTypeRef,
+        entity_type: EntityTypeRef,
     ) -> bool {
-        // TODO: extract the correct rules from block spawn rule
-        world.is_face_sturdy_for(state, pos, Direction::Up, SupportType::Full)
-            && state.get_light_emission() < MAX_MOB_SPAWN_LIGHT_EMISSION
+        valid_spawn::properties_is_valid_spawn(state, world, pos, entity_type)
     }
 
     /// Returns whether this block can be occupied by a forced respawn position
