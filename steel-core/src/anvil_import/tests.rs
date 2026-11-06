@@ -36,21 +36,33 @@ use steel_registry::template_pool::Projection;
 use steel_registry::vanilla_dimension_types::OVERWORLD;
 use steel_registry::{REGISTRY, vanilla_blocks};
 use steel_utils::{BlockPos, ChunkPos, Identifier};
-use steel_worldgen::structure::{StructurePiecePayload, TemplateMarkerHandling};
+use steel_worldgen::structure::{
+    ProceduralPieceData, StructurePiecePayload, TemplateMarkerHandling,
+};
 
 use super::*;
 use crate::bootstrap::init_globals;
 use crate::chunk::full_chunk::FullChunkRef;
 use crate::chunk_saver::{
-    ChunkStorage, PersistentBoundingBox, PersistentJigsawPieceData, PersistentPoolElement,
-    PersistentProcessorList, PersistentStructurePiece, PersistentStructurePiecePayload,
-    PersistentStructureStart, PersistentTemplatePieceData, PersistentTemplatePlacementAdjustment,
-    PersistentTemplateProcessorList,
+    ChunkStorage, PersistentBoundingBox, PersistentDesertPyramidPieceData,
+    PersistentJigsawPieceData, PersistentJungleTemplePieceData, PersistentMineshaftPieceData,
+    PersistentMineshaftPieceKind, PersistentNetherFortressPieceData, PersistentPoolElement,
+    PersistentProceduralPieceData, PersistentProcessorList, PersistentStrongholdPieceData,
+    PersistentStrongholdSmallDoorType, PersistentStructurePiece, PersistentStructurePiecePayload,
+    PersistentStructureStart, PersistentSwampHutPieceData, PersistentTemplatePieceData,
+    PersistentTemplatePlacementAdjustment, PersistentTemplateProcessorList,
 };
 use crate::player::player_data::{PersistentPlayerData, PersistentSlot};
 
 const OVERWORLD_MIN_Y: i32 = -64;
 const OVERWORLD_HEIGHT: i32 = 384;
+/// Seed of the world the structure fixtures come from.
+const STRUCTURE_SEED: i64 = 777;
+const OVERWORLD_DIMENSION: ChunkDimension = ChunkDimension {
+    min_y: OVERWORLD_MIN_Y,
+    height: OVERWORLD_HEIGHT,
+    seed: 12345,
+};
 
 fn fixture_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("src/anvil_import/fixtures/overworld")
@@ -71,8 +83,7 @@ fn convert_fixture(pos: ChunkPos, report: &mut ImportReport) -> ChunkConversion 
         entities.as_deref(),
         poi_bytes.as_deref(),
         pos,
-        OVERWORLD_MIN_Y,
-        OVERWORLD_HEIGHT,
+        OVERWORLD_DIMENSION,
         report,
     )
     .expect("fixture chunk should convert")
@@ -267,8 +278,7 @@ fn chunks_from_another_data_version_are_rejected() {
         None,
         None,
         ChunkPos::new(0, 0),
-        OVERWORLD_MIN_Y,
-        OVERWORLD_HEIGHT,
+        OVERWORLD_DIMENSION,
         &mut report,
     ) else {
         panic!("an old chunk must not be imported without a DataFixer");
@@ -302,6 +312,7 @@ async fn imported_dimension_loads_from_steel_region_files() {
         target: target.clone(),
         min_y: OVERWORLD_MIN_Y,
         height: OVERWORLD_HEIGHT,
+        seed: OVERWORLD_DIMENSION.seed,
     };
 
     let report = import_dimension(&dimension, Arc::clone(&pool))
@@ -370,6 +381,7 @@ async fn vanilla_level_data_loads_as_steel_level_toml() {
         target: world_dir.join("region"),
         min_y: OVERWORLD_MIN_Y,
         height: OVERWORLD_HEIGHT,
+        seed: OVERWORLD_DIMENSION.seed,
     };
     let vanilla_world =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("src/anvil_import/fixtures/level");
@@ -558,6 +570,8 @@ fn assert_imported_items(data: &PersistentPlayerData) {
 /// - `jigsaw.nbt`: a plains village, an ancient city and trial chambers.
 /// - `templates.nbt`: a shipwreck, an igloo with a basement, a cold ocean ruin, a ruined portal,
 ///   a nether fossil, an end city and a woodland mansion.
+/// - `procedural.nbt`: a jungle temple, a mineshaft, a badlands mineshaft, a desert pyramid,
+///   a swamp hut, a stronghold, an ocean monument, buried treasure and a nether fortress.
 fn structure_fixture(name: &str) -> NbtCompound {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("src/anvil_import/fixtures/structures")
@@ -580,7 +594,11 @@ fn template_data(piece: &PersistentStructurePiece) -> &PersistentTemplatePieceDa
 fn vanilla_template_starts_are_converted() {
     init_globals();
     let mut report = ImportReport::default();
-    let starts = structures::structure_starts(&structure_fixture("templates.nbt"), &mut report);
+    let starts = structures::structure_starts(
+        &structure_fixture("templates.nbt"),
+        STRUCTURE_SEED,
+        &mut report,
+    );
     assert!(report.structure_starts_dropped.is_empty(), "{report}");
     let piece_counts: Vec<_> = starts
         .iter()
@@ -703,11 +721,165 @@ fn assert_small_template_pieces(starts: &[PersistentStructureStart]) {
     assert_eq!((fossil.placement_clip, fossil.post_process), (1, 1));
 }
 
+fn procedural_data(piece: &PersistentStructurePiece) -> &PersistentProceduralPieceData {
+    let PersistentStructurePiecePayload::Procedural(data) = &piece.payload else {
+        panic!("{} is a procedural piece", piece.piece_type);
+    };
+    data
+}
+
+fn first_piece<'a>(
+    start: &'a PersistentStructureStart,
+    piece_type: &str,
+) -> &'a PersistentStructurePiece {
+    start
+        .pieces
+        .iter()
+        .find(|piece| piece.piece_type.path == piece_type)
+        .unwrap_or_else(|| panic!("{} has a {piece_type} piece", start.structure))
+}
+
+#[test]
+fn vanilla_procedural_starts_are_converted() {
+    init_globals();
+    let mut report = ImportReport::default();
+    let starts = structures::structure_starts(
+        &structure_fixture("procedural.nbt"),
+        STRUCTURE_SEED,
+        &mut report,
+    );
+    assert!(report.structure_starts_dropped.is_empty(), "{report}");
+    let piece_counts: Vec<_> = starts
+        .iter()
+        .map(|start| (start.structure.path.as_ref().to_owned(), start.pieces.len()))
+        .collect();
+    let expected = [
+        ("jungle_pyramid", 1),
+        ("mineshaft", 165),
+        ("mineshaft_mesa", 94),
+        ("desert_pyramid", 1),
+        ("swamp_hut", 1),
+        ("stronghold", 204),
+        ("monument", 1),
+        ("buried_treasure", 1),
+        ("fortress", 133),
+    ];
+    assert_eq!(
+        piece_counts,
+        expected.map(|(structure, pieces)| (structure.to_owned(), pieces))
+    );
+
+    assert!(matches!(
+        procedural_data(&starts[0].pieces[0]),
+        PersistentProceduralPieceData::JungleTemple(PersistentJungleTemplePieceData {
+            height_position: 84,
+            placed_main_chest: true,
+            placed_hidden_chest: true,
+            placed_trap1: true,
+            placed_trap2: true,
+        })
+    ));
+    assert!(matches!(
+        procedural_data(&starts[3].pieces[0]),
+        PersistentProceduralPieceData::DesertPyramid(PersistentDesertPyramidPieceData {
+            height_position: 63,
+            has_placed_chest: [true, true, true, true],
+        })
+    ));
+    assert!(matches!(
+        procedural_data(&starts[4].pieces[0]),
+        PersistentProceduralPieceData::SwampHut(PersistentSwampHutPieceData {
+            height_position: 63,
+            spawned_witch: true,
+            spawned_cat: true,
+        })
+    ));
+
+    assert_mineshaft_and_stronghold_pieces(&starts);
+
+    // Vanilla saves the monument building without its rooms and builds them again on load.
+    let monument = &starts[6].pieces[0];
+    assert_eq!(monument.orientation, 0);
+    assert_eq!(
+        (monument.bounding_box.min_x, monument.bounding_box.min_z),
+        (595, -925)
+    );
+    assert!(matches!(
+        procedural_data(monument),
+        PersistentProceduralPieceData::OceanMonument(data) if !data.child_pieces.is_empty()
+    ));
+
+    assert!(matches!(
+        procedural_data(&starts[7].pieces[0]),
+        PersistentProceduralPieceData::BuriedTreasure
+    ));
+    assert!(matches!(
+        procedural_data(first_piece(&starts[8], "nebef")),
+        PersistentProceduralPieceData::NetherFortress(
+            PersistentNetherFortressPieceData::BridgeEndFiller {
+                self_seed: 742_451_517
+            }
+        )
+    ));
+}
+
+/// Mineshaft, badlands mineshaft and stronghold of `procedural.nbt`.
+fn assert_mineshaft_and_stronghold_pieces(starts: &[PersistentStructureStart]) {
+    let room = first_piece(&starts[1], "msroom");
+    assert!(matches!(
+        procedural_data(room),
+        PersistentProceduralPieceData::Mineshaft(PersistentMineshaftPieceData {
+            mineshaft_type: 0,
+            kind: PersistentMineshaftPieceKind::Room { child_entrance_boxes },
+        }) if child_entrance_boxes.len() == 3 && child_entrance_boxes[1].max_y == 0
+    ));
+    let corridor = first_piece(&starts[1], "mscorridor");
+    assert!(matches!(
+        procedural_data(corridor),
+        PersistentProceduralPieceData::Mineshaft(PersistentMineshaftPieceData {
+            kind: PersistentMineshaftPieceKind::Corridor {
+                num_sections: 2,
+                ..
+            },
+            ..
+        })
+    ));
+    assert!(matches!(
+        procedural_data(first_piece(&starts[2], "mscrossing")),
+        PersistentProceduralPieceData::Mineshaft(PersistentMineshaftPieceData {
+            mineshaft_type: 1,
+            ..
+        })
+    ));
+
+    let stronghold = &starts[5];
+    assert!(matches!(
+        procedural_data(&stronghold.pieces[0]),
+        PersistentProceduralPieceData::Stronghold(PersistentStrongholdPieceData::StairsDown {
+            entry_door: PersistentStrongholdSmallDoorType::Opening,
+            is_source: true,
+        })
+    ));
+    assert!(matches!(
+        procedural_data(first_piece(stronghold, "shli")),
+        PersistentProceduralPieceData::Stronghold(PersistentStrongholdPieceData::Library {
+            entry_door: PersistentStrongholdSmallDoorType::WoodDoor,
+            is_tall: true,
+        })
+    ));
+    assert!(matches!(
+        procedural_data(first_piece(stronghold, "shfc")),
+        PersistentProceduralPieceData::Stronghold(PersistentStrongholdPieceData::FillerCorridor {
+            steps: 3
+        })
+    ));
+}
+
 #[test]
 fn vanilla_jigsaw_starts_are_converted() {
     init_globals();
     let mut report = ImportReport::default();
-    let starts = structures::structure_starts(&jigsaw_fixture(), &mut report);
+    let starts = structures::structure_starts(&jigsaw_fixture(), STRUCTURE_SEED, &mut report);
     assert!(report.structure_starts_dropped.is_empty(), "{report}");
     let piece_counts: Vec<_> = starts
         .iter()
@@ -818,7 +990,7 @@ fn starts_with_pieces_steel_cannot_place_are_dropped_whole() {
     chambers.insert("id", "INVALID");
 
     let mut report = ImportReport::default();
-    let converted = structures::structure_starts(&fixture, &mut report);
+    let converted = structures::structure_starts(&fixture, STRUCTURE_SEED, &mut report);
     let kept: Vec<_> = converted
         .iter()
         .map(|start| start.structure.to_string())
@@ -852,11 +1024,20 @@ async fn imported_structure_starts_load_in_steel() {
     let ChunkConversion::Imported(mut persistent) = convert_fixture(pos, &mut report) else {
         panic!("fixture chunk (0, 0) is full");
     };
-    persistent.structure_starts = structures::structure_starts(&jigsaw_fixture(), &mut report);
+    persistent.structure_starts =
+        structures::structure_starts(&jigsaw_fixture(), STRUCTURE_SEED, &mut report);
     persistent
         .structure_starts
         .extend(structures::structure_starts(
             &structure_fixture("templates.nbt"),
+            STRUCTURE_SEED,
+            &mut report,
+        ));
+    persistent
+        .structure_starts
+        .extend(structures::structure_starts(
+            &structure_fixture("procedural.nbt"),
+            STRUCTURE_SEED,
             &mut report,
         ));
 
@@ -908,7 +1089,19 @@ async fn imported_structure_starts_load_in_steel() {
             StructurePiecePayload::Template(data)
                 if data.marker_handling == TemplateMarkerHandling::WoodlandMansion
         ));
-        assert_eq!(starts.len(), 10);
+        let monument = starts
+            .get(&Identifier::vanilla_static("monument"))
+            .expect("monument start should load");
+        assert!(matches!(
+            &monument.pieces[0].payload,
+            StructurePiecePayload::Procedural(ProceduralPieceData::OceanMonument(data))
+                if !data.child_pieces.is_empty()
+        ));
+        let stronghold = starts
+            .get(&Identifier::vanilla_static("stronghold"))
+            .expect("stronghold start should load");
+        assert_eq!(stronghold.pieces.len(), 204);
+        assert_eq!(starts.len(), 19);
     }
     manager
         .release_chunk(pos)

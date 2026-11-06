@@ -108,8 +108,9 @@ async fn import(
     options: &Options,
     pool: &Arc<rayon::ThreadPool>,
 ) -> Result<Summary, AnvilImportError> {
+    let seed = anvil_import::read_world_seed(&options.world)?;
     let dimensions =
-        anvil_import::vanilla_dimensions(&options.world, &options.save_path, &options.domain);
+        anvil_import::vanilla_dimensions(&options.world, &options.save_path, &options.domain, seed);
     let level = anvil_import::import_level_data(&options.world, &dimensions)?;
     print!("{level}");
     let players =

@@ -204,6 +204,27 @@ impl Structure for OceanMonumentStructure {
     }
 }
 
+/// Rebuilds a saved monument building, vanilla `OceanMonumentStructure.regeneratePiecesAfterLoad`.
+///
+/// Vanilla saves only the `omb` piece without its rooms and builds the rooms again on load from
+/// the world seed, the start chunk, the saved west and north edges and the saved orientation.
+#[must_use]
+pub fn regenerate_monument_building(
+    seed: i64,
+    chunk_x: i32,
+    chunk_z: i32,
+    west: i32,
+    north: i32,
+    saved_orientation: Option<Direction>,
+) -> StructurePiece {
+    let mut rng = LegacyRandom::from_seed(0);
+    rng.set_large_feature_seed(seed, chunk_x, chunk_z);
+    // Drawn even when the orientation was saved, so the rooms use the same random state.
+    let default_orientation = random_horizontal_direction(&mut rng);
+    let orientation = saved_orientation.unwrap_or(default_orientation);
+    monument_building_piece(west, north, orientation, &mut rng)
+}
+
 fn monument_building_piece(
     west: i32,
     north: i32,

@@ -13,7 +13,7 @@
 //!
 //! Chunks that are not `minecraft:full` are skipped; Steel generates them again from the seed.
 //! Structure starts are converted when Steel can represent every piece of them; the others are
-//! dropped and counted in the report. Jigsaw and template-backed structures are converted so far.
+//! dropped and counted in the report.
 //!
 //! Content Steel does not know (blocks, biomes, block entities or entities from mods) cannot be
 //! represented in Steel's typed format. Unknown blocks become air, unknown biomes become
@@ -28,6 +28,7 @@ mod players;
 mod poi;
 pub mod region;
 mod report;
+mod structure_procedural;
 mod structure_templates;
 mod structures;
 
@@ -47,7 +48,7 @@ use steel_utils::{ChunkPos, Identifier};
 use crate::chunk::status::ChunkStatus;
 use crate::chunk_saver::{PersistentChunk, PreparedChunkSave, RegionManager};
 
-pub use chunk::{ChunkConversion, convert_chunk};
+pub use chunk::{ChunkConversion, ChunkDimension, convert_chunk};
 pub use level::{LevelReport, import_level_data};
 pub use players::{PlayerReport, import_players};
 pub use region::AnvilRegion;
@@ -108,6 +109,20 @@ pub struct DimensionImport {
     pub min_y: i32,
     /// Build height of the dimension type.
     pub height: i32,
+    /// World seed, from [`read_world_seed`].
+    pub seed: i64,
+}
+
+impl DimensionImport {
+    /// What chunk conversion needs to know about this dimension.
+    #[must_use]
+    pub const fn chunk_dimension(&self) -> ChunkDimension {
+        ChunkDimension {
+            min_y: self.min_y,
+            height: self.height,
+            seed: self.seed,
+        }
+    }
 }
 
 /// Imports one dimension.
@@ -256,8 +271,7 @@ fn convert_one(
         entity_bytes.as_deref(),
         poi_bytes.as_deref(),
         pos,
-        dimension.min_y,
-        dimension.height,
+        dimension.chunk_dimension(),
         report,
     )? {
         ChunkConversion::Imported(persistent) => {
@@ -284,7 +298,12 @@ fn open_optional_region(path: &Path) -> Result<Option<AnvilRegion>, AnvilImportE
 /// Vanilla keeps each dimension in `dimensions/<namespace>/<name>`; Steel's default world
 /// layout is `<save_path>/<domain>/worlds/<name>/region`.
 #[must_use]
-pub fn vanilla_dimensions(world: &Path, save_path: &Path, domain: &str) -> Vec<DimensionImport> {
+pub fn vanilla_dimensions(
+    world: &Path,
+    save_path: &Path,
+    domain: &str,
+    seed: i64,
+) -> Vec<DimensionImport> {
     use steel_registry::vanilla_dimension_types::{OVERWORLD, THE_END, THE_NETHER};
 
     [&OVERWORLD, &THE_NETHER, &THE_END]
@@ -301,6 +320,7 @@ pub fn vanilla_dimensions(world: &Path, save_path: &Path, domain: &str) -> Vec<D
                     .join("region"),
                 min_y: dimension_type.min_y,
                 height: dimension_type.height,
+                seed,
             }
         })
         .collect()
