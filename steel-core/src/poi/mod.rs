@@ -9,4 +9,4 @@ pub mod poi_storage;
 
 pub use poi_instance::PointOfInterest;
 pub use poi_set::PointOfInterestSet;
-pub use poi_storage::{OccupationStatus, PointOfInterestStorage};
+pub use poi_storage::{MAX_VILLAGE_DISTANCE, OccupationStatus, PointOfInterestStorage};

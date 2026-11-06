@@ -97,6 +97,12 @@ pub trait Goal: Send {
         false
     }
 
+    /// Identifies vanilla `AbstractSkeleton.bowGoal` / `meleeGoal` so
+    /// `reassessWeaponGoal` can swap them.
+    fn is_skeleton_weapon_goal(&self) -> bool {
+        false
+    }
+
     fn start(&mut self, _mob: &dyn PathfinderMob) {}
 
     fn stop(&mut self, _mob: &dyn PathfinderMob) {}

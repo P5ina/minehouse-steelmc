@@ -14,6 +14,12 @@ pub use endermite::EndermiteEntity;
 pub mod cube_mob;
 pub use cube_mob::{MagmaCubeEntity, SlimeEntity};
 
+/// Skeleton, stray, bogged, wither skeleton and parched entity module.
+pub mod skeleton;
+pub use skeleton::{
+    BoggedEntity, ParchedEntity, SkeletonEntity, StrayEntity, WitherSkeletonEntity,
+};
+
 /// Hostile spider and cave spider entity module.
 pub mod spider;
 pub use spider::{CaveSpiderEntity, SpiderEntity};
@@ -28,3 +34,7 @@ pub use zombie::{GiantEntity, HuskEntity, ZombieEntity, ZombieGroupData};
 /// Hostile vex entity module.
 pub mod vex;
 pub use vex::VexEntity;
+
+/// Hostile guardian and elder guardian entity module.
+pub mod guardian;
+pub use guardian::{ElderGuardianEntity, Guardian, GuardianEntity};
