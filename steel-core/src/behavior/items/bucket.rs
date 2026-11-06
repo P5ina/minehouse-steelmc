@@ -7,7 +7,9 @@ use crate::behavior::{
 };
 use crate::entity::Entity;
 use crate::fluid::{fluid_state_to_block, is_lava_fluid, is_water_fluid};
-use crate::world::RaytraceAction;
+use crate::player::Player;
+use crate::world::{RaytraceAction, World};
+use std::sync::Arc;
 use steel_macros::item_behavior;
 use steel_registry::blocks::block_state_ext::BlockStateExt;
 use steel_registry::blocks::properties::Direction;
@@ -157,93 +159,23 @@ fn use_filled_bucket(fluid: FluidRef, context: &mut UseItemContext) -> Interacti
     }
 
     let clicked_state = context.world.get_block_state(clicked_pos);
-    let is_sneaking = context.player.is_crouching();
     // Only water itself enters liquid containers, not water-tagged fluids.
     let is_water_bucket = fluid == &vanilla_fluids::WATER;
-
-    // `check_sneak` is false for the secondary attempt, which ignores sneaking.
-    let try_place_fluid = |pos: BlockPos, check_sneak: bool| -> bool {
-        if !context.world.is_in_valid_bounds(pos) {
-            return false;
-        }
-
-        let state = context.world.get_block_state(pos);
-        let fluid_state = state.get_fluid_state();
-
-        // When sneaking, only air accepts the fluid here; other blocks redirect to the
-        // neighbor through the secondary attempt.
-        if check_sneak && is_sneaking && !state.get_block().config.is_air {
-            return false;
-        }
-
-        let behavior = BLOCK_BEHAVIORS.get_behavior(state.get_block());
-        let is_liquid_container = state.is_liquid_container();
-        let can_place_liquid = is_liquid_container
-            && behavior.can_place_liquid_with_player(state, fluid, Some(context.player));
-        let can_replace = state.can_be_replaced_by_fluid(fluid);
-
-        if !can_replace && !can_place_liquid {
-            return false;
-        }
-
-        // Water-tagged fluids fizz out where water evaporates (e.g. the Nether).
-        // TODO: Read the per-position WATER_EVAPORATES attribute once Steel has environment attributes.
-        if is_water_fluid(fluid) && context.world.dimension_type.water_evaporates {
-            context
-                .world
-                .level_event(level_events::PARTICLES_WATER_EVAPORATING, pos, 0, None);
-            return true;
-        }
-
-        if is_water_bucket && is_liquid_container {
-            let source_water = FluidState::source(&vanilla_fluids::WATER);
-            behavior.place_liquid(context.world, pos, state, source_water);
-            play_empty_sound_and_event(context, pos, fluid);
-            return true;
-        }
-
-        // Containers that accept a fluid other than water get overwritten here too.
-        // An existing source of the same fluid just consumes the bucket.
-        let is_same_fluid = FLUID_BEHAVIORS
-            .get_behavior(fluid)
-            .is_same(fluid_state.fluid_id);
-
-        if is_same_fluid && fluid_state.is_source() {
-            play_empty_sound_and_event(context, pos, fluid);
-            return true;
-        }
-
-        // Destroy non-liquid replaceable blocks first so they drop their items.
-        if can_replace && !state.get_block().config.liquid && !state.get_block().config.is_air {
-            context.player.get_world().destroy_block(pos, true);
-        }
-
-        let fluid_state_to_place = fluid_state_to_block(FluidState::source(fluid));
-        if context
-            .world
-            .set_block(pos, fluid_state_to_place, UpdateFlags::UPDATE_ALL_IMMEDIATE)
-        {
-            let tick_delay = FLUID_BEHAVIORS
-                .get_behavior(fluid)
-                .tick_delay(context.world);
-            context
-                .world
-                .schedule_fluid_tick_default(pos, fluid, tick_delay);
-
-            play_empty_sound_and_event(context, pos, fluid);
-
-            return true;
-        }
-        false
-    };
+    let player = Some(context.player.as_ref());
 
     // If the primary attempt fails, the secondary one retries at the offset position,
     // whatever the bucket.
     let primary_pos =
         filled_bucket_primary_pos(clicked_state, clicked_pos, direction, is_water_bucket);
 
-    if !try_place_fluid(primary_pos, true)
-        && !try_place_fluid(direction.relative(clicked_pos), false)
+    if !empty_contents(context.world, fluid, primary_pos, player, true)
+        && !empty_contents(
+            context.world,
+            fluid,
+            direction.relative(clicked_pos),
+            player,
+            false,
+        )
     {
         return InteractionResult::Fail;
     }
@@ -251,6 +183,82 @@ fn use_filled_bucket(fluid: FluidRef, context: &mut UseItemContext) -> Interacti
     let result_stack = filled_bucket_success_stack(context);
     create_filled_result(context, result_stack, true);
     InteractionResult::Success
+}
+
+/// Pours `fluid` from a bucket at `pos` (Vanilla `BucketItem.emptyContents`).
+///
+/// `player` is `None` for a dispenser. `check_sneak` is false for the secondary
+/// attempt, which ignores sneaking. Returns whether the bucket was emptied.
+pub(crate) fn empty_contents(
+    world: &Arc<World>,
+    fluid: FluidRef,
+    pos: BlockPos,
+    player: Option<&Player>,
+    check_sneak: bool,
+) -> bool {
+    if !world.is_in_valid_bounds(pos) {
+        return false;
+    }
+
+    let state = world.get_block_state(pos);
+    let fluid_state = state.get_fluid_state();
+    let is_sneaking = player.is_some_and(Player::is_crouching);
+    let is_water_bucket = fluid == &vanilla_fluids::WATER;
+
+    // When sneaking, only air accepts the fluid here; other blocks redirect to the
+    // neighbor through the secondary attempt.
+    if check_sneak && is_sneaking && !state.get_block().config.is_air {
+        return false;
+    }
+
+    let behavior = BLOCK_BEHAVIORS.get_behavior(state.get_block());
+    let is_liquid_container = state.is_liquid_container();
+    let can_place_liquid =
+        is_liquid_container && behavior.can_place_liquid_with_player(state, fluid, player);
+    let can_replace = state.can_be_replaced_by_fluid(fluid);
+
+    if !can_replace && !can_place_liquid {
+        return false;
+    }
+
+    // Water-tagged fluids fizz out where water evaporates (e.g. the Nether).
+    // TODO: Read the per-position WATER_EVAPORATES attribute once Steel has environment attributes.
+    if is_water_fluid(fluid) && world.dimension_type.water_evaporates {
+        world.level_event(level_events::PARTICLES_WATER_EVAPORATING, pos, 0, None);
+        return true;
+    }
+
+    if is_water_bucket && is_liquid_container {
+        let source_water = FluidState::source(&vanilla_fluids::WATER);
+        behavior.place_liquid(world, pos, state, source_water);
+        play_empty_sound_and_event(world, pos, fluid, player);
+        return true;
+    }
+
+    // Containers that accept a fluid other than water get overwritten here too.
+    // An existing source of the same fluid just consumes the bucket.
+    let is_same_fluid = FLUID_BEHAVIORS
+        .get_behavior(fluid)
+        .is_same(fluid_state.fluid_id);
+
+    if is_same_fluid && fluid_state.is_source() {
+        play_empty_sound_and_event(world, pos, fluid, player);
+        return true;
+    }
+
+    // Destroy non-liquid replaceable blocks first so they drop their items.
+    if can_replace && !state.get_block().config.liquid && !state.get_block().config.is_air {
+        world.destroy_block(pos, true);
+    }
+
+    let fluid_state_to_place = fluid_state_to_block(FluidState::source(fluid));
+    if world.set_block(pos, fluid_state_to_place, UpdateFlags::UPDATE_ALL_IMMEDIATE) {
+        let tick_delay = FLUID_BEHAVIORS.get_behavior(fluid).tick_delay(world);
+        world.schedule_fluid_tick_default(pos, fluid, tick_delay);
+        play_empty_sound_and_event(world, pos, fluid, player);
+        return true;
+    }
+    false
 }
 
 /// Whether the player may use the held bucket against the `direction` face of `pos`.
@@ -261,24 +269,23 @@ fn may_use_bucket_at(context: &UseItemContext, pos: BlockPos, direction: Directi
         .may_use_item_at(direction.relative(pos), direction, &item)
 }
 
-fn play_empty_sound_and_event(context: &UseItemContext, pos: BlockPos, fluid: FluidRef) {
+fn play_empty_sound_and_event(
+    world: &Arc<World>,
+    pos: BlockPos,
+    fluid: FluidRef,
+    player: Option<&Player>,
+) {
     let sound_event = if is_lava_fluid(fluid) {
         &sound_events::ITEM_BUCKET_EMPTY_LAVA
     } else {
         &sound_events::ITEM_BUCKET_EMPTY
     };
-    context.world.play_block_sound(
-        sound_event,
-        pos,
-        1.0,
-        1.0,
-        // Excludes the placing player.
-        Some(context.player.id()),
-    );
-    context.world.game_event(
+    // Excludes the placing player.
+    world.play_block_sound(sound_event, pos, 1.0, 1.0, player.map(Player::id));
+    world.game_event(
         &vanilla_game_events::FLUID_PLACE,
         pos,
-        &GameEventContext::new(Some(context.player.as_ref()), None),
+        &GameEventContext::new(player.map(|player| player as &dyn Entity), None),
     );
 }
 

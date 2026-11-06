@@ -28,6 +28,7 @@ mod block;
 pub mod blocks;
 mod consume_effect;
 mod context;
+pub(crate) mod dispense;
 pub mod fluid;
 mod item;
 pub(crate) mod item_utils;
