@@ -1,16 +1,21 @@
 use std::sync::{Arc, Weak};
 
 use glam::DVec3;
+use rand::RngExt as _;
 use simdnbt::borrow::NbtCompound as BorrowedNbtCompoundView;
 use simdnbt::owned::NbtCompound;
 use steel_macros::entity_behavior;
 use steel_protocol::packets::game::SoundSource;
 use steel_registry::entity_type::{EntityDimensions, EntityTypeRef};
 use steel_registry::sound_event::SoundEventRef;
+use steel_registry::vanilla_biome_tags::BiomeTag;
 use steel_registry::vanilla_entity_data::SlimeEntityData;
 use steel_registry::{sound_events, vanilla_attributes, vanilla_entities};
 use steel_utils::locks::SyncMutex;
-use steel_utils::{DowncastType, DowncastTypeKey};
+use steel_utils::random::Random as _;
+use steel_utils::random::legacy_random::LegacyRandom;
+use steel_utils::types::Difficulty;
+use steel_utils::{ChunkPos, DowncastType, DowncastTypeKey};
 
 use super::{
     AbstractCubeMob, CubeMobAttackGoal, CubeMobBase, CubeMobFloatGoal, CubeMobKeepOnJumpingGoal,
@@ -22,7 +27,7 @@ use crate::entity::entity::EntityEventSource as _;
 use crate::entity::{
     AgeableMob, AgeableMobBase, Entity, EntityBase, EntityBaseLoad, EntityMovementEmission,
     EntityPose, EntitySpawnReason, EntitySyncedData, LivingEntity, LivingEntityBase, Mob, MobBase,
-    PathfinderMob, RemovalReason, SharedEntity, SpawnGroupData, sync_dirty_mob_effects,
+    PathfinderMob, RemovalReason, SharedEntity, SpawnGroupData, SpawnRule, sync_dirty_mob_effects,
 };
 use crate::physics::MoveResult;
 use crate::player::Player;
@@ -32,7 +37,7 @@ use crate::world::World;
 const PLAYER_TARGET_MAX_Y_DIFFERENCE: f64 = 4.0;
 
 /// A slime: splits into smaller slimes when killed.
-#[entity_behavior(class = "Slime")]
+#[entity_behavior(class = "Slime", spawn_rule)]
 pub struct SlimeEntity {
     base: EntityBase,
     entity_type: EntityTypeRef,
@@ -48,7 +53,75 @@ unsafe impl DowncastType for SlimeEntity {
     const TYPE_KEY: DowncastTypeKey = DowncastTypeKey::new("steel:entity/slime");
 }
 
+/// Vanilla `WorldgenRandom.seedSlimeChunk` salt used by `checkSlimeSpawnRules`.
+const SLIME_CHUNK_SALT: i64 = 987_234_911;
+
+/// Vanilla's surface spawn band in slime biomes: above 50 and below 70.
+const SURFACE_SPAWN_MIN_Y_EXCLUSIVE: i32 = 50;
+const SURFACE_SPAWN_MAX_Y_EXCLUSIVE: i32 = 70;
+
+/// Slime chunk spawns stay below this height.
+const SLIME_CHUNK_MAX_Y_EXCLUSIVE: i32 = 40;
+
+/// Vanilla `WorldgenRandom.seedSlimeChunk(x, z, seed, 987234911).nextInt(10) == 0`.
+///
+/// The `x * x * 4987142`, `x * 5947611` and `z * 389711` terms are Java `int`
+/// products and wrap before they widen; only `z * z * 4392871L` is a `long`.
+#[must_use]
+pub(crate) fn is_slime_chunk(chunk_x: i32, chunk_z: i32, seed: i64) -> bool {
+    let x_squared = i64::from(chunk_x.wrapping_mul(chunk_x).wrapping_mul(4_987_142));
+    let x_linear = i64::from(chunk_x.wrapping_mul(5_947_611));
+    let z_squared = i64::from(chunk_z.wrapping_mul(chunk_z)).wrapping_mul(4_392_871);
+    let z_linear = i64::from(chunk_z.wrapping_mul(389_711));
+    let chunk_seed = seed
+        .wrapping_add(x_squared)
+        .wrapping_add(x_linear)
+        .wrapping_add(z_squared)
+        .wrapping_add(z_linear)
+        ^ SLIME_CHUNK_SALT;
+    let mut random = LegacyRandom::from_seed(chunk_seed as u64);
+    random.next_i32_bounded(10) == 0
+}
+
 impl SlimeEntity {
+    /// Vanilla `SpawnPlacements` predicate: `Slime.checkSlimeSpawnRules`.
+    ///
+    /// Outside spawners a slime needs either a swamp surface (y 51-69, the
+    /// moon's surface slime chance and darkness) or a slime chunk below y 40.
+    pub(crate) const SPAWN_RULE: SpawnRule = |entity_type, level, spawn_reason, pos, random| {
+        if level.difficulty() == Difficulty::Peaceful {
+            return false;
+        }
+        if spawn_reason.is_spawner() {
+            return <Self as Mob>::check_mob_spawn_rules(entity_type, level, spawn_reason, pos);
+        }
+
+        if level
+            .biome(pos)
+            .is_some_and(|biome| biome.has_tag(&BiomeTag::ALLOWS_SURFACE_SLIME_SPAWNS))
+            && pos.y() > SURFACE_SPAWN_MIN_Y_EXCLUSIVE
+            && pos.y() < SURFACE_SPAWN_MAX_Y_EXCLUSIVE
+        {
+            let surface_slime_spawn_chance = level.surface_slime_spawn_chance(pos);
+            if random.random::<f32>() < surface_slime_spawn_chance
+                && i32::from(level.max_local_raw_brightness(pos, level.sky_darkening()))
+                    <= random.random_range(0..8)
+            {
+                return <Self as Mob>::check_mob_spawn_rules(entity_type, level, spawn_reason, pos);
+            }
+        }
+
+        let Some(seed) = level.world_gen_seed() else {
+            return false;
+        };
+        let chunk_pos = ChunkPos::from_block_pos(pos);
+        let slime_chunk = is_slime_chunk(chunk_pos.0.x, chunk_pos.0.y, seed);
+        if random.random_range(0..10) == 0 && slime_chunk && pos.y() < SLIME_CHUNK_MAX_Y_EXCLUSIVE {
+            return <Self as Mob>::check_mob_spawn_rules(entity_type, level, spawn_reason, pos);
+        }
+        false
+    };
+
     /// Creates a new slime of size 1.
     #[must_use]
     pub fn new(entity_type: EntityTypeRef, id: i32, position: DVec3, world: Weak<World>) -> Self {

@@ -1,14 +1,25 @@
+use std::convert::Infallible;
 use std::io::Cursor;
 use std::sync::{Arc, Weak};
 
 use glam::DVec3;
+use rand::TryRng;
 use simdnbt::borrow::read_compound;
 use simdnbt::owned::NbtCompound;
 use steel_registry::{init_vanilla_registry, vanilla_attributes, vanilla_entities};
 use steel_utils::{ChunkPos, Downcast as _, WorldAabb};
 
+use steel_registry::vanilla_blocks;
+use steel_utils::BlockPos;
+use steel_utils::types::{Difficulty, UpdateFlags};
+
+use super::slime::is_slime_chunk;
 use super::{AbstractCubeMob, MagmaCubeEntity, SlimeEntity};
-use crate::entity::{Entity, LivingEntity, SharedEntity, init_entities, next_entity_id};
+use crate::behavior::init_behaviors;
+use crate::entity::{
+    Entity, EntitySpawnReason, LivingEntity, SharedEntity, SpawnPlacements, init_entities,
+    next_entity_id,
+};
 use crate::test_support::{fresh_test_world, insert_ready_full_chunk};
 
 #[test]
@@ -165,5 +176,155 @@ impl<T: LivingEntity> TickDeath for T {
             self.tick_death();
         }
         panic!("death animation never removed the entity");
+    }
+}
+
+/// Returns the same raw value for every draw, so bounded rolls land on zero.
+struct ZeroRng;
+
+impl TryRng for ZeroRng {
+    type Error = Infallible;
+
+    fn try_next_u32(&mut self) -> Result<u32, Self::Error> {
+        Ok(0)
+    }
+
+    fn try_next_u64(&mut self) -> Result<u64, Self::Error> {
+        Ok(0)
+    }
+
+    fn try_fill_bytes(&mut self, bytes: &mut [u8]) -> Result<(), Self::Error> {
+        bytes.fill(0);
+        Ok(())
+    }
+}
+
+#[test]
+fn slime_chunks_match_vanilla_java_random() {
+    // Reference values from vanilla `SlimeChunk` on the JVM.
+    assert!(is_slime_chunk(1, -3, 0));
+    assert!(is_slime_chunk(100, -200, 0));
+    assert!(!is_slime_chunk(0, 0, 0));
+    assert!(!is_slime_chunk(-7, 12, 0));
+    assert!(!is_slime_chunk(-30_000, 29_999, 0));
+    assert!(!is_slime_chunk(9, 9, 0));
+    assert!(is_slime_chunk(9, 9, -4_172_144_997_902_289_642));
+    assert!(is_slime_chunk(0, 7, 12_345));
+    assert!(is_slime_chunk(19, 11, 12_345));
+    assert!(!is_slime_chunk(1, -3, 12_345));
+}
+
+#[test]
+fn natural_slimes_stay_off_the_surface_outside_swamps() {
+    init_vanilla_registry();
+    init_behaviors();
+    init_entities();
+    let fixture = fresh_test_world("slime_surface_spawn_rule");
+    let world = &fixture.world;
+    world.set_difficulty(Difficulty::Normal);
+    let seed = world.seed();
+    let slime_chunk = (0..64)
+        .flat_map(|x| (0..64).map(move |z| (x, z)))
+        .find(|&(x, z)| is_slime_chunk(x, z, seed))
+        .expect("a slime chunk near the origin");
+    let plain_chunk = (0..64)
+        .flat_map(|x| (0..64).map(move |z| (x, z)))
+        .find(|&(x, z)| !is_slime_chunk(x, z, seed))
+        .expect("a plain chunk near the origin");
+
+    for (x, z) in [slime_chunk, plain_chunk] {
+        insert_ready_full_chunk(world, ChunkPos::new(x, z));
+    }
+    let place_floor = |pos: BlockPos| {
+        assert!(world.set_block(
+            pos.below(),
+            vanilla_blocks::STONE.default_state(),
+            UpdateFlags::UPDATE_ALL,
+        ));
+        pos
+    };
+    let surface = place_floor(BlockPos::new(
+        plain_chunk.0 * 16 + 8,
+        65,
+        plain_chunk.1 * 16 + 8,
+    ));
+    let underground_plain = place_floor(BlockPos::new(
+        plain_chunk.0 * 16 + 4,
+        20,
+        plain_chunk.1 * 16 + 4,
+    ));
+    let underground_slime = place_floor(BlockPos::new(
+        slime_chunk.0 * 16 + 8,
+        20,
+        slime_chunk.1 * 16 + 8,
+    ));
+    let high_slime = place_floor(BlockPos::new(
+        slime_chunk.0 * 16 + 4,
+        45,
+        slime_chunk.1 * 16 + 4,
+    ));
+    let check = |reason, pos| {
+        SpawnPlacements::check_spawn_rules(
+            &vanilla_entities::SLIME,
+            world,
+            reason,
+            pos,
+            &mut ZeroRng,
+        )
+    };
+
+    assert!(
+        !check(EntitySpawnReason::Natural, surface),
+        "no surface slimes outside swamps"
+    );
+    assert!(
+        !check(EntitySpawnReason::Natural, underground_plain),
+        "only slime chunks"
+    );
+    assert!(
+        !check(EntitySpawnReason::Natural, high_slime),
+        "slime chunks stop at y 40"
+    );
+    assert!(check(EntitySpawnReason::Natural, underground_slime));
+    assert!(
+        check(EntitySpawnReason::Spawner, surface),
+        "spawners skip the biome rules"
+    );
+
+    world.set_difficulty(Difficulty::Peaceful);
+    assert!(!check(EntitySpawnReason::Spawner, surface));
+}
+
+#[test]
+fn natural_zombies_need_darkness() {
+    init_vanilla_registry();
+    init_behaviors();
+    init_entities();
+    let fixture = fresh_test_world("zombie_spawn_rule_light");
+    let world = &fixture.world;
+    world.set_difficulty(Difficulty::Normal);
+    insert_ready_full_chunk(world, ChunkPos::new(0, 0));
+    let pos = BlockPos::new(8, 65, 8);
+    assert!(world.set_block(
+        pos.below(),
+        vanilla_blocks::STONE.default_state(),
+        UpdateFlags::UPDATE_ALL,
+    ));
+    for entity_type in [
+        &vanilla_entities::ZOMBIE,
+        &vanilla_entities::SPIDER,
+        &vanilla_entities::HUSK,
+    ] {
+        assert!(
+            !SpawnPlacements::check_spawn_rules(
+                entity_type,
+                world,
+                EntitySpawnReason::Natural,
+                pos,
+                &mut ZeroRng,
+            ),
+            "{} must not spawn under the open daytime sky",
+            entity_type.key
+        );
     }
 }

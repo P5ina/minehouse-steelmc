@@ -13,6 +13,7 @@ pub use mobs::hostile::{
     ZombieGroupData,
 };
 pub use mobs::hostile::{ElderGuardianEntity, Guardian, GuardianEntity};
+pub use mobs::neutral::PolarBearEntity;
 pub use mobs::passive::*;
 pub use mobs::raiders::{EvokerEntity, PillagerEntity, VindicatorEntity, WitchEntity};
 pub use objects::display_ui::{BlockDisplayEntity, ItemFrameEntity, LeashFenceKnotEntity};

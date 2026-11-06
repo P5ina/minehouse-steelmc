@@ -2,7 +2,7 @@ use glam::DVec3;
 
 use super::reduced_tick_delay;
 use super::selector::{Goal, GoalControls};
-use super::target_goal::{TargetGoalBase, follow_distance};
+use super::target_goal::TargetGoalBase;
 use crate::entity::ai::targeting::TargetingConditions;
 use crate::entity::{LivingEntity, PathfinderMob, SharedEntity};
 use crate::world::World;
@@ -121,6 +121,13 @@ impl NearestAttackableTargetGoal {
         self
     }
 
+    /// Scales the follow distance, like vanilla subclasses overriding `getFollowDistance`.
+    #[must_use]
+    pub(crate) const fn with_follow_distance_scale(mut self, scale: f64) -> Self {
+        self.target_goal.set_follow_distance_scale(scale);
+        self
+    }
+
     /// Adds a filter that can read the searching mob's own state.
     #[must_use]
     pub(crate) const fn with_mob_selector(mut self, mob_selector: MobTargetSelector) -> Self {
@@ -144,7 +151,7 @@ impl NearestAttackableTargetGoal {
             return;
         };
 
-        let follow = follow_distance(mob);
+        let follow = self.target_goal.follow_distance(mob);
         let position = mob.position();
         let origin = DVec3::new(position.x, mob.get_eye_y(), position.z);
         let target_conditions = self.target_conditions.clone().range(follow);

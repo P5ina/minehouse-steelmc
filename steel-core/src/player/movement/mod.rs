@@ -987,10 +987,24 @@ impl Player {
                     self.stop_sleep_in_bed(false, true);
                 }
             }
-            PlayerCommandAction::StartRidingJump
-            | PlayerCommandAction::StopRidingJump
-            | PlayerCommandAction::OpenVehicleInventory => {
-                // TODO: Implement once controlled vehicle jumping and vehicle inventory interfaces exist.
+            PlayerCommandAction::StartRidingJump => {
+                if let Some(vehicle) = self.controlled_vehicle()
+                    && let Some(jumpable) = vehicle.as_player_rideable_jumping()
+                    && jumpable.can_jump()
+                    && packet.data > 0
+                {
+                    jumpable.handle_start_jump(packet.data);
+                }
+            }
+            PlayerCommandAction::StopRidingJump => {
+                if let Some(vehicle) = self.controlled_vehicle()
+                    && let Some(jumpable) = vehicle.as_player_rideable_jumping()
+                {
+                    jumpable.handle_stop_jump();
+                }
+            }
+            PlayerCommandAction::OpenVehicleInventory => {
+                // TODO: Open mount inventories once the horse inventory menu exists.
             }
         }
 

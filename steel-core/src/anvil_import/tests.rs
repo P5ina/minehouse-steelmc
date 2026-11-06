@@ -28,17 +28,25 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::{env, fs, process, slice};
 
 use simdnbt::borrow::read_compound;
-use simdnbt::owned::{BaseNbt, NbtCompound};
+use simdnbt::owned::{BaseNbt, NbtCompound, NbtList};
 use steel_utils::text::DisplayResolutor;
 
+use glam::IVec3;
+use steel_registry::template_pool::Projection;
 use steel_registry::vanilla_dimension_types::OVERWORLD;
 use steel_registry::{REGISTRY, vanilla_blocks};
 use steel_utils::{BlockPos, ChunkPos, Identifier};
+use steel_worldgen::structure::{StructurePiecePayload, TemplateMarkerHandling};
 
 use super::*;
 use crate::bootstrap::init_globals;
 use crate::chunk::full_chunk::FullChunkRef;
-use crate::chunk_saver::ChunkStorage;
+use crate::chunk_saver::{
+    ChunkStorage, PersistentBoundingBox, PersistentJigsawPieceData, PersistentPoolElement,
+    PersistentProcessorList, PersistentStructurePiece, PersistentStructurePiecePayload,
+    PersistentStructureStart, PersistentTemplatePieceData, PersistentTemplatePlacementAdjustment,
+    PersistentTemplateProcessorList,
+};
 use crate::player::player_data::{PersistentPlayerData, PersistentSlot};
 
 const OVERWORLD_MIN_Y: i32 = -64;
@@ -541,4 +549,370 @@ fn assert_imported_items(data: &PersistentPlayerData) {
         !sword.item.patch().is_empty(),
         "the sword keeps its components"
     );
+}
+
+/// Reads a file of `fixtures/structures`: structure starts cut unchanged from the
+/// `structures.starts` of their origin chunks in a seed 777 world saved by the vanilla 26.3
+/// server, merged into one `starts` compound.
+///
+/// - `jigsaw.nbt`: a plains village, an ancient city and trial chambers.
+/// - `templates.nbt`: a shipwreck, an igloo with a basement, a cold ocean ruin, a ruined portal,
+///   a nether fossil, an end city and a woodland mansion.
+fn structure_fixture(name: &str) -> NbtCompound {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("src/anvil_import/fixtures/structures")
+        .join(name);
+    level::read_gzip_root(&path).expect("structure fixture should read")
+}
+
+fn jigsaw_fixture() -> NbtCompound {
+    structure_fixture("jigsaw.nbt")
+}
+
+fn template_data(piece: &PersistentStructurePiece) -> &PersistentTemplatePieceData {
+    let PersistentStructurePiecePayload::Template(data) = &piece.payload else {
+        panic!("{} is a template piece", piece.piece_type);
+    };
+    data
+}
+
+#[test]
+fn vanilla_template_starts_are_converted() {
+    init_globals();
+    let mut report = ImportReport::default();
+    let starts = structures::structure_starts(&structure_fixture("templates.nbt"), &mut report);
+    assert!(report.structure_starts_dropped.is_empty(), "{report}");
+    let piece_counts: Vec<_> = starts
+        .iter()
+        .map(|start| (start.structure.path.as_ref().to_owned(), start.pieces.len()))
+        .collect();
+    let expected = [
+        ("shipwreck", 1),
+        ("igloo", 12),
+        ("ocean_ruin_cold", 15),
+        ("ruined_portal", 1),
+        ("nether_fossil", 1),
+        ("end_city", 94),
+        ("mansion", 559),
+    ];
+    assert_eq!(
+        piece_counts,
+        expected.map(|(structure, pieces)| (structure.to_owned(), pieces))
+    );
+    for piece in starts.iter().flat_map(|start| &start.pieces) {
+        assert_eq!((piece.orientation, piece.projection), (2, -1));
+        assert!(piece.junctions.is_empty());
+    }
+
+    assert_small_template_pieces(&starts);
+
+    let end_city = template_data(&starts[5].pieces[0]);
+    assert_eq!(
+        end_city.template_id,
+        Identifier::vanilla_static("end_city/base_floor")
+    );
+    assert_eq!((end_city.block_ignore, end_city.marker_handling), (1, 6));
+
+    let mansion = &starts[6].pieces;
+    let entrance = template_data(&mansion[0]);
+    assert_eq!(
+        entrance.template_id,
+        Identifier::vanilla_static("woodland_mansion/entrance")
+    );
+    assert_eq!((entrance.rotation, entrance.marker_handling), (3, 7));
+    assert!(
+        mansion.iter().any(|piece| template_data(piece).mirror == 2),
+        "mansion rooms keep their LEFT_RIGHT mirror"
+    );
+}
+
+/// Shipwreck, igloo, ocean ruin, ruined portal and nether fossil of `templates.nbt`.
+fn assert_small_template_pieces(starts: &[PersistentStructureStart]) {
+    let shipwreck = &starts[0].pieces[0];
+    assert_eq!(
+        shipwreck.piece_type,
+        Identifier::vanilla_static("shipwreck")
+    );
+    let data = template_data(shipwreck);
+    assert_eq!(
+        data.template_id,
+        Identifier::vanilla_static("shipwreck/upsidedown_fronthalf_degraded")
+    );
+    assert_eq!(data.template_position, [12864, 90, 2208]);
+    assert_eq!((data.rotation, data.rotation_pivot), (2, [4, 0, 15]));
+    assert_eq!((data.block_ignore, data.marker_handling), (2, 2));
+    assert!(matches!(
+        data.placement_adjustment,
+        PersistentTemplatePlacementAdjustment::Shipwreck {
+            is_beached: false,
+            height_adjusted: false
+        }
+    ));
+
+    let igloo = &starts[1].pieces;
+    // Vanilla saved the basement's box moved to the terrain by the placement, at y 33; loading
+    // computes it again from the template position, as vanilla does.
+    assert_eq!(
+        (igloo[0].bounding_box.min_y, igloo[0].bounding_box.max_y),
+        (54, 59)
+    );
+    let bottom = template_data(&igloo[0]);
+    assert_eq!(
+        bottom.template_id,
+        Identifier::vanilla_static("igloo/bottom")
+    );
+    assert_eq!((bottom.rotation_pivot, bottom.post_process), ([3, 6, 7], 0));
+    assert!(matches!(
+        bottom.placement_adjustment,
+        PersistentTemplatePlacementAdjustment::Igloo {
+            template_offset: [0, -3, -2]
+        }
+    ));
+    let top = template_data(igloo.last().expect("igloo has pieces"));
+    assert_eq!(top.template_id, Identifier::vanilla_static("igloo/top"));
+    assert_eq!(
+        (top.post_process, top.liquid_settings, top.block_ignore),
+        (2, 1, 1)
+    );
+
+    let ruin = template_data(&starts[2].pieces[0]);
+    assert_eq!((ruin.late_block_ignore, ruin.marker_handling), (2, 5));
+    assert!(matches!(
+        ruin.processors,
+        PersistentTemplateProcessorList::OceanRuin { biome_temp: 1, integrity } if (integrity - 0.9).abs() < f32::EPSILON
+    ));
+
+    let portal = template_data(&starts[3].pieces[0]);
+    assert_eq!(
+        portal.template_id,
+        Identifier::vanilla_static("ruined_portal/portal_7")
+    );
+    assert_eq!((portal.mirror, portal.block_ignore), (0, 2));
+    assert_eq!((portal.placement_clip, portal.post_process), (2, 3));
+    assert!(matches!(
+        portal.processors,
+        PersistentTemplateProcessorList::RuinedPortal {
+            vertical_placement: 0,
+            cold: false,
+            air_pocket: false,
+            ..
+        }
+    ));
+
+    let fossil = template_data(&starts[4].pieces[0]);
+    assert_eq!((fossil.placement_clip, fossil.post_process), (1, 1));
+}
+
+#[test]
+fn vanilla_jigsaw_starts_are_converted() {
+    init_globals();
+    let mut report = ImportReport::default();
+    let starts = structures::structure_starts(&jigsaw_fixture(), &mut report);
+    assert!(report.structure_starts_dropped.is_empty(), "{report}");
+    let piece_counts: Vec<_> = starts
+        .iter()
+        .map(|start| (start.structure.to_string(), start.pieces.len()))
+        .collect();
+    assert_eq!(
+        piece_counts,
+        [
+            ("minecraft:village_plains".to_owned(), 70),
+            ("minecraft:ancient_city".to_owned(), 90),
+            ("minecraft:trial_chambers".to_owned(), 220),
+        ]
+    );
+
+    let village = &starts[0];
+    assert_eq!((village.chunk_x, village.chunk_z), (636, 110));
+    let center = &village.pieces[0];
+    assert_eq!(
+        center.bounding_box,
+        PersistentBoundingBox {
+            min_x: 10176,
+            min_y: 67,
+            min_z: 1760,
+            max_x: 10186,
+            max_y: 75,
+            max_z: 1770,
+        }
+    );
+    assert_eq!((center.gen_depth, center.orientation), (0, -1));
+    assert_eq!((center.ground_level_delta, center.projection), (1, 0));
+    assert_eq!(center.junctions.len(), 7);
+    let junction = &center.junctions[2];
+    assert_eq!(
+        (
+            junction.source_x,
+            junction.source_ground_y,
+            junction.source_z,
+            junction.delta_y,
+            junction.dest_projection
+        ),
+        (10175, 68, 1765, 0, 1)
+    );
+    let PersistentStructurePiecePayload::Jigsaw(data) = &center.payload else {
+        panic!("village pieces are jigsaw pieces");
+    };
+    assert_eq!(data.position, [10176, 67, 1760]);
+    assert_eq!((data.rotation, data.liquid_settings), (0, 0));
+    assert!(matches!(
+        &data.pool_element,
+        PersistentPoolElement::LegacySingle {
+            location,
+            processors: PersistentProcessorList::Registry(processors),
+            projection: 0,
+        } if *location == Identifier::vanilla_static("village/plains/town_centers/plains_meeting_point_3")
+            && *processors == Identifier::vanilla_static("mossify_70_percent")
+    ));
+    assert!(village.pieces.iter().any(|piece| matches!(
+        &piece.payload,
+        PersistentStructurePiecePayload::Jigsaw(PersistentJigsawPieceData {
+            pool_element: PersistentPoolElement::Feature { feature, .. },
+            ..
+        }) if *feature == Identifier::vanilla_static("flower_plain")
+    )));
+
+    let PersistentStructurePiecePayload::Jigsaw(ice_box) = &starts[1].pieces[30].payload else {
+        panic!("ancient city pieces are jigsaw pieces");
+    };
+    assert_eq!(
+        (ice_box.position, ice_box.rotation),
+        ([13206, -51, 1892], 1)
+    );
+    assert!(matches!(
+        &ice_box.pool_element,
+        PersistentPoolElement::List { elements, projection: 0 } if matches!(
+            elements.as_slice(),
+            [PersistentPoolElement::Single { processors: PersistentProcessorList::Empty, .. }]
+        )
+    ));
+
+    let PersistentStructurePiecePayload::Jigsaw(chamber) = &starts[2].pieces[0].payload else {
+        panic!("trial chamber pieces are jigsaw pieces");
+    };
+    assert_eq!((chamber.rotation, chamber.liquid_settings), (2, 1));
+}
+
+#[test]
+fn starts_with_pieces_steel_cannot_place_are_dropped_whole() {
+    init_globals();
+    let mut fixture = jigsaw_fixture();
+    let starts = fixture.compound_mut("starts").expect("fixture has starts");
+    let village = starts
+        .compound_mut("minecraft:village_plains")
+        .expect("fixture has a village");
+    let element = village
+        .list_mut("Children")
+        .and_then(|children| match children {
+            NbtList::Compound(children) => children.last_mut(),
+            _ => None,
+        })
+        .and_then(|piece| piece.compound_mut("pool_element"))
+        .expect("village pieces have pool elements");
+    let _ = element.remove("location");
+    element.insert("location", "mod:houses/hut");
+    let chambers = starts
+        .compound_mut("minecraft:trial_chambers")
+        .expect("fixture has trial chambers");
+    let _ = chambers.remove("id");
+    chambers.insert("id", "INVALID");
+
+    let mut report = ImportReport::default();
+    let converted = structures::structure_starts(&fixture, &mut report);
+    let kept: Vec<_> = converted
+        .iter()
+        .map(|start| start.structure.to_string())
+        .collect();
+    assert_eq!(kept, ["minecraft:ancient_city"]);
+    assert_eq!(
+        report
+            .structure_starts_dropped
+            .get("minecraft:village_plains"),
+        Some(&1)
+    );
+    assert_eq!(
+        report.structure_starts_dropped.len(),
+        1,
+        "invalid starts are not counted"
+    );
+}
+
+#[tokio::test]
+async fn imported_structure_starts_load_in_steel() {
+    init_globals();
+    let target = test_directory("structures");
+    let pool = Arc::new(
+        rayon::ThreadPoolBuilder::new()
+            .num_threads(2)
+            .build()
+            .expect("test thread pool should build"),
+    );
+    let mut report = ImportReport::default();
+    let pos = ChunkPos::new(0, 0);
+    let ChunkConversion::Imported(mut persistent) = convert_fixture(pos, &mut report) else {
+        panic!("fixture chunk (0, 0) is full");
+    };
+    persistent.structure_starts = structures::structure_starts(&jigsaw_fixture(), &mut report);
+    persistent
+        .structure_starts
+        .extend(structures::structure_starts(
+            &structure_fixture("templates.nbt"),
+            &mut report,
+        ));
+
+    let manager = RegionManager::new(&target);
+    manager
+        .save_chunk_data(
+            PreparedChunkSave {
+                pos,
+                status: ChunkStatus::Full,
+                persistent: *persistent,
+                handled_runtime_entity_ids: Vec::new(),
+            },
+            &pool,
+        )
+        .await
+        .expect("chunk should save");
+    manager.close_all().await.expect("region should close");
+
+    let manager = RegionManager::new(&target);
+    assert!(
+        manager
+            .acquire_chunk(pos)
+            .await
+            .expect("region should open")
+    );
+    let loaded = manager
+        .load_chunk(pos, OVERWORLD_MIN_Y, OVERWORLD_HEIGHT, Weak::new(), &pool)
+        .await
+        .expect("chunk should load")
+        .expect("chunk should exist");
+    {
+        let starts = loaded.chunk.structure_starts();
+        let village = starts
+            .get(&Identifier::vanilla_static("village_plains"))
+            .expect("village start should load");
+        assert_eq!(village.pieces.len(), 70);
+        assert_eq!(village.chunk_pos, ChunkPos::new(636, 110));
+        let StructurePiecePayload::Jigsaw(data) = &village.pieces[0].payload else {
+            panic!("village pieces are jigsaw pieces");
+        };
+        assert_eq!(data.position, IVec3::new(10176, 67, 1760));
+        assert_eq!(village.pieces[0].projection, Some(Projection::Rigid));
+        let mansion = starts
+            .get(&Identifier::vanilla_static("mansion"))
+            .expect("mansion start should load");
+        assert_eq!(mansion.pieces.len(), 559);
+        assert!(matches!(
+            &mansion.pieces[0].payload,
+            StructurePiecePayload::Template(data)
+                if data.marker_handling == TemplateMarkerHandling::WoodlandMansion
+        ));
+        assert_eq!(starts.len(), 10);
+    }
+    manager
+        .release_chunk(pos)
+        .await
+        .expect("region should release");
+    let _ = fs::remove_dir_all(&target);
 }

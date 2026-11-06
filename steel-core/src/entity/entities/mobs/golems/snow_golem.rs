@@ -23,6 +23,7 @@ use steel_utils::{BlockPos, DowncastType, DowncastTypeKey};
 
 use crate::behavior::{BLOCK_BEHAVIORS, InteractionResult};
 use crate::enchantment_helper;
+use crate::entity::SpawnRule;
 use crate::entity::ai::goal::{
     LookAtPlayerGoal, NearestAttackableTargetGoal, RandomLookAroundGoal, RangedAttackGoal,
     WaterAvoidingRandomStrollGoal,
@@ -51,7 +52,7 @@ const SNOWBALL_UNCERTAINTY: f32 = 12.0;
 const STROLL_PROBABILITY: f32 = 1.000_000_1E-5;
 
 /// A snow golem: throws snowballs at monsters and leaves a trail of snow.
-#[entity_behavior(class = "SnowGolem")]
+#[entity_behavior(class = "SnowGolem", spawn_rule)]
 pub struct SnowGolemEntity {
     base: EntityBase,
     entity_type: EntityTypeRef,
@@ -66,6 +67,11 @@ unsafe impl DowncastType for SnowGolemEntity {
 }
 
 impl SnowGolemEntity {
+    /// Vanilla `SpawnPlacements` predicate: `Mob.checkMobSpawnRules`.
+    pub(crate) const SPAWN_RULE: SpawnRule = |entity_type, level, spawn_reason, pos, _random| {
+        <Self as Mob>::check_mob_spawn_rules(entity_type, level, spawn_reason, pos)
+    };
+
     /// Creates a new snow golem.
     #[must_use]
     pub fn new(entity_type: EntityTypeRef, id: i32, position: DVec3, world: Weak<World>) -> Self {

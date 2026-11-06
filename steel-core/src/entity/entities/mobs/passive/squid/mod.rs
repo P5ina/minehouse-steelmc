@@ -6,6 +6,9 @@ use std::{
 use glam::DVec3;
 use simdnbt::{borrow, owned};
 use steel_macros::entity_behavior;
+
+use crate::entity::SpawnRule;
+use crate::entity::fish::check_surface_ageable_water_creature_spawn_rules;
 use steel_math::{angle::DEGREE_90, vector};
 use steel_registry::{
     entity_data::{EntityPose, ParticleData},
@@ -69,7 +72,7 @@ const SQUID_TENTICLE_SCALE_MOVEMENT_THRESHOLD: f32 = 7.5;
 // Still missing from that layer: `checkSpawnObstruction`.
 // Functions `getAmbientSoundInterval` and `getBaseExperienceReward` sit on this
 // entity until the trait exists; `Dolphin` is the only other consumer.
-#[entity_behavior(class = "Squid")]
+#[entity_behavior(class = "Squid", spawn_rule)]
 /// Vanilla Squid entity
 pub struct SquidEntity {
     base: EntityBase,
@@ -97,6 +100,9 @@ unsafe impl DowncastType for SquidEntity {
 }
 
 impl SquidEntity {
+    /// Vanilla `SpawnPlacements` predicate: `AgeableWaterCreature.checkSurfaceAgeableWaterCreatureSpawnRules`.
+    pub(crate) const SPAWN_RULE: SpawnRule = check_surface_ageable_water_creature_spawn_rules;
+
     /// Creates a new Squid entity
     #[must_use]
     pub fn new(entity_type: EntityTypeRef, id: i32, position: DVec3, world: Weak<World>) -> Self {

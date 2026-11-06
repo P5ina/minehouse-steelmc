@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use glam::DVec3;
 use steel_registry::item_stack::ItemStack;
@@ -25,6 +26,8 @@ pub struct TemptGoal {
     items: TemptItemPredicate,
     can_scare: bool,
     stop_distance: f64,
+    scare_condition: Option<fn(&dyn PathfinderMob) -> bool>,
+    running_flag: Option<Arc<AtomicBool>>,
 }
 
 impl TemptGoal {
@@ -55,6 +58,33 @@ impl TemptGoal {
             items: Box::new(items),
             can_scare,
             stop_distance,
+            scare_condition: None,
+            running_flag: None,
+        }
+    }
+
+    /// Adds a mob-side condition to `canScare`, like vanilla subclasses overriding it.
+    #[must_use]
+    pub(crate) const fn with_scare_condition(
+        mut self,
+        condition: fn(&dyn PathfinderMob) -> bool,
+    ) -> Self {
+        self.scare_condition = Some(condition);
+        self
+    }
+
+    /// Mirrors [`is_running`](Self::is_running) into `flag`, so the mob can read
+    /// it the way vanilla mobs keep a reference to their tempt goal.
+    #[must_use]
+    pub(crate) fn with_running_flag(mut self, flag: Arc<AtomicBool>) -> Self {
+        self.running_flag = Some(flag);
+        self
+    }
+
+    fn set_running(&mut self, running: bool) {
+        self.is_running = running;
+        if let Some(flag) = &self.running_flag {
+            flag.store(running, Ordering::Relaxed);
         }
     }
 
@@ -67,8 +97,8 @@ impl TemptGoal {
         player.is_holding(&mut |item_stack| (self.items)(item_stack))
     }
 
-    const fn can_scare(&self) -> bool {
-        self.can_scare
+    fn can_scare(&self, mob: &dyn PathfinderMob) -> bool {
+        self.can_scare && self.scare_condition.is_none_or(|condition| condition(mob))
     }
 
     const fn targeting_conditions(range: f64) -> TargetingConditions {
@@ -129,7 +159,7 @@ impl Goal for TemptGoal {
     }
 
     fn can_continue_to_use(&mut self, mob: &dyn PathfinderMob) -> bool {
-        if self.can_scare() && !self.update_player_scare_state(mob) {
+        if self.can_scare(mob) && !self.update_player_scare_state(mob) {
             return false;
         }
 
@@ -140,14 +170,14 @@ impl Goal for TemptGoal {
         if let Some(player) = &self.player {
             self.player_position = player.position();
         }
-        self.is_running = true;
+        self.set_running(true);
     }
 
     fn stop(&mut self, mob: &dyn PathfinderMob) {
         self.player = None;
         mob.mob_base().navigation().lock().stop();
         self.calm_down = reduced_tick_delay(100);
-        self.is_running = false;
+        self.set_running(false);
     }
 
     fn tick(&mut self, mob: &dyn PathfinderMob, _entity: &SharedEntity) {
