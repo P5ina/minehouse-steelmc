@@ -6,10 +6,7 @@
 minehouse_iron_golem_from_blocks
 minehouse_snow_golem_from_blocks
 
-# lightning: the creeper exists, but the spec charges it with a lightning bolt, which does not exist yet
-minehouse_mob_creeper
-
-# mobs: the entity (or the lightning bolt / summoned mob it needs) does not exist in SteelMC yet
+# mobs: the entity (or the mob it converts into) does not exist in SteelMC yet
 minehouse_mob_allay
 minehouse_mob_armadillo
 minehouse_mob_axolotl

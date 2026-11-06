@@ -17,6 +17,7 @@ use steel_utils::{BlockPos, Direction, DowncastType, DowncastTypeKey, WorldAabb,
 
 use crate::entity::block_attached_entity::{BlockAttachedEntity, BlockAttachedEntityBase};
 use crate::entity::damage::DamageSource;
+use crate::entity::entities::LightningBoltEntity;
 use crate::entity::{
     Entity, EntityBase, EntityBaseLoad, EntityBaseState, EntityMoveError, EntitySyncedData,
     ItemFrame, SharedEntity,
@@ -237,6 +238,9 @@ impl ItemFrame for ItemFrameEntity {
 }
 
 impl Entity for ItemFrameEntity {
+    /// Vanilla `BlockAttachedEntity.thunderHit` ignores lightning.
+    fn thunder_hit(&self, _world: &World, _lightning: &LightningBoltEntity) {}
+
     fn base(&self) -> &EntityBase {
         &self.base
     }

@@ -42,6 +42,7 @@ use crate::entity::ai::goal::{
 };
 use crate::entity::damage::DamageSource;
 use crate::entity::entities::CowEntity;
+use crate::entity::entities::LightningBoltEntity;
 use crate::entity::living_entity::shearing_loot_items_with_rng;
 use crate::entity::{
     AgeableMob, AgeableMobBase, Animal, AnimalBase, DefaultEntityPush, Entity, EntityBase,
@@ -204,9 +205,8 @@ impl MushroomCowEntity {
         self.stew_effects.lock().clone()
     }
 
-    /// Handles a lightning strike hitting the mooshroom.
-    pub fn thunder_hit(&self, lightning_uuid: Uuid) {
-        // TODO: Route server-side LightningBolt hits here once that shared entity and dispatch exist.
+    /// Swaps the red/brown variant when struck by a lightning bolt it has not seen yet.
+    pub fn convert_by_lightning(&self, lightning_uuid: Uuid) {
         let mut last_uuid = self.last_lightning_bolt_uuid.lock();
         if last_uuid.as_ref() == Some(&lightning_uuid) {
             return;
@@ -434,6 +434,10 @@ impl DefaultEntityPush for MushroomCowEntity {}
 impl Entity for MushroomCowEntity {
     fn is_hard_collision_relevant(&self) -> bool {
         false
+    }
+
+    fn thunder_hit(&self, _world: &World, lightning: &LightningBoltEntity) {
+        self.convert_by_lightning(lightning.uuid());
     }
 
     fn as_default_entity_push(&self) -> Option<&dyn DefaultEntityPush> {

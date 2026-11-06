@@ -1,6 +1,7 @@
 use std::collections::BTreeSet;
 
 use super::*;
+use crate::entity::entities::LightningBoltEntity;
 use crate::entity::{leash::Leashable, pushing::EntityPush};
 use rand::{RngExt, rng};
 use steel_math::DEGREE_90;
@@ -13,6 +14,11 @@ const FUDGE_SMALL_DIMENSION_LIMIT: f32 = 4.0;
 const FUDGE_POSITION_EPSILON: f64 = 1.0e-6;
 
 const MAX_ENTITY_MOTION_COMPONENT: f64 = 10.0;
+
+/// Vanilla `Entity.thunderHit` ignition: `igniteForSeconds(8.0F)`.
+const LIGHTNING_IGNITE_TICKS: i32 = 160;
+/// Vanilla `Entity.thunderHit` damage.
+const LIGHTNING_DAMAGE: f32 = 5.0;
 
 fn landing_particle_count(fall_distance: f64, safe_fall_distance: f64) -> Option<i32> {
     let power = (fall_distance + 1.0e-6 - safe_fall_distance)
@@ -2212,6 +2218,25 @@ pub trait Entity: EntityEventSource + ErasedType + Send + Sync + 'static {
         self.base()
             .ignite_for_ticks(number_of_ticks, self.remaining_fire_ticks_cap());
         self.sync_base_fire_freeze_entity_data();
+    }
+
+    /// Vanilla `Entity.thunderHit`: a lightning bolt sets the entity on fire and deals
+    /// 5 lightning damage. Entities with special lightning behavior override this.
+    fn thunder_hit(&self, world: &World, _lightning: &LightningBoltEntity) {
+        self.default_thunder_hit(world);
+    }
+
+    /// The vanilla `Entity.thunderHit` body, for overrides that call `super`.
+    fn default_thunder_hit(&self, world: &World) {
+        self.set_remaining_fire_ticks(self.remaining_fire_ticks() + 1);
+        if self.remaining_fire_ticks() == 0 {
+            self.ignite_for_ticks(LIGHTNING_IGNITE_TICKS);
+        }
+        self.hurt(
+            world,
+            &DamageSource::environment(&vanilla_damage_types::LIGHTNING_BOLT),
+            LIGHTNING_DAMAGE,
+        );
     }
 
     /// Projects base fire/freeze state into generated synced entity data.

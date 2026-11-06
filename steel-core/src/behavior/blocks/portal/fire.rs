@@ -69,6 +69,19 @@ impl FireBlock {
         }
     }
 
+    /// Vanilla `fireState.canSurvive(level, pos)` for a state returned by [`Self::get_state`].
+    pub(crate) fn fire_state_can_survive(
+        world: &dyn LevelReader,
+        fire: BlockStateId,
+        pos: BlockPos,
+    ) -> bool {
+        if fire.get_block() == &vanilla_blocks::SOUL_FIRE {
+            SoulFireBlock::can_survive_at(world, pos)
+        } else {
+            Self::can_survive_at(world, pos)
+        }
+    }
+
     fn selected_fire_can_survive_at(world: &dyn LevelReader, pos: BlockPos) -> bool {
         SoulFireBlock::can_survive_at(world, pos) || Self::can_survive_at(world, pos)
     }
