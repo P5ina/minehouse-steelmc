@@ -5,8 +5,9 @@ use std::cmp::Ordering;
 use steel_utils::BlockPos;
 
 use crate::entity::ai::node::{Node, NodeHeap, Target};
+use crate::entity::ai::node_evaluator::NodeEvaluator;
 use crate::entity::ai::path::{Path, PathfindingContext};
-use crate::entity::ai::walk::{WalkNodeCollision, WalkNodeEvaluator};
+use crate::entity::ai::walk::WalkNodeCollision;
 
 const FUDGING: f32 = 1.5;
 
@@ -45,7 +46,7 @@ impl PathFinder {
     #[must_use]
     pub fn find_path(
         &mut self,
-        evaluator: &mut WalkNodeEvaluator,
+        evaluator: &mut impl NodeEvaluator,
         context: &mut PathfindingContext<'_>,
         collision: &mut impl WalkNodeCollision,
         request: PathRequest<'_>,
@@ -153,7 +154,7 @@ impl PathFinder {
 
     fn prepare_search(
         &mut self,
-        evaluator: &mut WalkNodeEvaluator,
+        evaluator: &mut impl NodeEvaluator,
         from: i32,
         targets: &[BlockPos],
     ) -> Option<(NodePoint, Vec<PathTarget>)> {
@@ -197,7 +198,7 @@ impl PathFinder {
     }
 
     fn best_reached_path(
-        evaluator: &WalkNodeEvaluator,
+        evaluator: &impl NodeEvaluator,
         targets: &[PathTarget],
         reached_targets: &[usize],
     ) -> Option<Path> {
@@ -221,7 +222,7 @@ impl PathFinder {
         best
     }
 
-    fn best_unreached_path(evaluator: &WalkNodeEvaluator, targets: &[PathTarget]) -> Option<Path> {
+    fn best_unreached_path(evaluator: &impl NodeEvaluator, targets: &[PathTarget]) -> Option<Path> {
         let mut best = None;
         for target in targets {
             let Some(path) =
@@ -240,7 +241,7 @@ impl PathFinder {
     }
 
     fn reconstruct_path(
-        evaluator: &WalkNodeEvaluator,
+        evaluator: &impl NodeEvaluator,
         closest: Option<i32>,
         target: BlockPos,
         reached: bool,

@@ -6,9 +6,10 @@ use steel_registry::REGISTRY;
 use steel_registry::vanilla_block_tags::BlockTag;
 use steel_utils::BlockPos;
 
+use crate::entity::ai::node_evaluator::NodeEvaluator;
 use crate::entity::ai::path::{Path, PathType, PathTypeCache, PathfindingContext};
 use crate::entity::ai::pathfinder::{PathFinder, PathRequest};
-use crate::entity::ai::walk::{WalkNodeCollision, WalkNodeEvaluator};
+use crate::entity::ai::walk::WalkNodeCollision;
 use crate::world::LevelReader;
 
 const DIRECT_TARGET_REACHED_DISTANCE_SQR: f64 = 2.500_000_3e-7;
@@ -35,6 +36,20 @@ pub struct NavigationTickContext {
     pub mob_bounding_box_width: f64,
     pub mob_speed: f32,
     pub game_time: i64,
+    /// Vanilla `PathNavigation.canMoveDirectly` from the mob position to the
+    /// next path node. Always false for ground navigation.
+    pub can_move_directly_to_next_node: bool,
+}
+
+/// Which vanilla `PathNavigation` subclass a mob uses.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum NavigationKind {
+    /// `GroundPathNavigation`.
+    #[default]
+    Ground,
+    /// `WaterBoundPathNavigation`. Breaching lets the path leave the water
+    /// surface; vanilla enables it for dolphins only.
+    WaterBound { allow_breaching: bool },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -46,6 +61,7 @@ pub struct NavigationRecomputeRequest {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PathNavigation {
+    kind: NavigationKind,
     path: Option<Path>,
     path_finder: PathFinder,
     path_type_cache: PathTypeCache,
@@ -77,6 +93,7 @@ impl PathNavigation {
     #[must_use]
     pub fn new() -> Self {
         Self {
+            kind: NavigationKind::Ground,
             path: None,
             path_finder: PathFinder::new(0),
             path_type_cache: PathTypeCache::new(),
@@ -102,6 +119,35 @@ impl PathNavigation {
             can_walk_over_fences: false,
             avoid_sun: false,
             can_path_to_targets_below_surface: false,
+        }
+    }
+
+    /// Creates a vanilla `WaterBoundPathNavigation`.
+    #[must_use]
+    pub fn water_bound(allow_breaching: bool) -> Self {
+        Self {
+            kind: NavigationKind::WaterBound { allow_breaching },
+            ..Self::new()
+        }
+    }
+
+    #[must_use]
+    pub const fn kind(&self) -> NavigationKind {
+        self.kind
+    }
+
+    /// Vanilla `PathNavigation.canNavigateGround`.
+    #[must_use]
+    pub const fn can_navigate_ground(&self) -> bool {
+        matches!(self.kind, NavigationKind::Ground)
+    }
+
+    /// Vanilla `PathNavigation.getMaxVerticalDistanceToWaypoint`.
+    #[must_use]
+    pub const fn max_vertical_distance_to_waypoint(&self) -> f64 {
+        match self.kind {
+            NavigationKind::Ground => 1.0,
+            NavigationKind::WaterBound { .. } => 0.5,
         }
     }
 
@@ -178,6 +224,10 @@ impl PathNavigation {
     }
 
     pub const fn set_can_float(&mut self, can_float: bool) {
+        // `WaterBoundPathNavigation.setCanFloat` ignores the request.
+        if matches!(self.kind, NavigationKind::WaterBound { .. }) {
+            return;
+        }
         self.can_float = can_float;
     }
 
@@ -247,7 +297,7 @@ impl PathNavigation {
 
     pub fn create_path(
         &mut self,
-        evaluator: &mut WalkNodeEvaluator,
+        evaluator: &mut impl NodeEvaluator,
         level: &dyn LevelReader,
         collision: &mut impl WalkNodeCollision,
         request: NavigationPathRequest<'_>,
@@ -552,6 +602,7 @@ impl PathNavigation {
     }
 
     fn next_path_move_target(&mut self, context: NavigationTickContext) -> Option<(DVec3, f64)> {
+        let max_vertical_distance_to_waypoint = self.max_vertical_distance_to_waypoint();
         {
             let Some(path) = self.path.as_mut() else {
                 self.done = true;
@@ -575,11 +626,15 @@ impl PathNavigation {
                 (context.mob_position.z - (f64::from(current_node_pos.z()) + 0.5)).abs();
             let is_close_enough_to_current_node = x_distance < max_distance_to_waypoint
                 && z_distance < max_distance_to_waypoint
-                && y_distance < 1.0;
+                && y_distance < max_vertical_distance_to_waypoint;
             let should_cut_corner = path
                 .next_node()
                 .is_some_and(|node| can_cut_corner(node.path_type))
-                && should_target_next_node_in_direction(path, context.ground_mob_position);
+                && should_target_next_node_in_direction(
+                    path,
+                    context.ground_mob_position,
+                    context.can_move_directly_to_next_node,
+                );
             if is_close_enough_to_current_node || should_cut_corner {
                 path.advance();
             }
@@ -669,7 +724,11 @@ impl PathNavigation {
     }
 }
 
-fn should_target_next_node_in_direction(path: &Path, mob_position: DVec3) -> bool {
+fn should_target_next_node_in_direction(
+    path: &Path,
+    mob_position: DVec3,
+    can_move_directly_to_next_node: bool,
+) -> bool {
     let next_node_index = path.next_node_index();
     if next_node_index + 1 >= path.node_count() {
         return false;
@@ -681,6 +740,9 @@ fn should_target_next_node_in_direction(path: &Path, mob_position: DVec3) -> boo
     let current_node = block_bottom_center(current_node_pos);
     if mob_position.distance_squared(current_node) >= 4.0 {
         return false;
+    }
+    if can_move_directly_to_next_node {
+        return true;
     }
 
     let Some(next_node_pos) = path.node_pos(next_node_index + 1) else {
@@ -710,7 +772,7 @@ fn block_center(pos: BlockPos) -> DVec3 {
     DVec3::new(x, y, z)
 }
 
-fn path_move_target(path: &Path, mob_bounding_box_width: f64) -> Option<DVec3> {
+pub(crate) fn path_move_target(path: &Path, mob_bounding_box_width: f64) -> Option<DVec3> {
     path.next_node().map(|node| {
         let offset = f64::from(fast_floor(mob_bounding_box_width + 1.0)) * 0.5;
         DVec3::new(
@@ -816,6 +878,7 @@ mod tests {
             mob_bounding_box_width: 0.9,
             mob_speed: 0.25,
             game_time: 0,
+            can_move_directly_to_next_node: false,
         }
     }
 
@@ -830,6 +893,7 @@ mod tests {
             mob_bounding_box_width: 0.9,
             mob_speed: 0.25,
             game_time: 0,
+            can_move_directly_to_next_node: false,
         }
     }
 
@@ -844,6 +908,7 @@ mod tests {
             mob_bounding_box_width: 0.9,
             mob_speed,
             game_time,
+            can_move_directly_to_next_node: false,
         }
     }
 

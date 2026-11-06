@@ -9,13 +9,15 @@ use steel_utils::{BlockPos, ChunkPos};
 use super::{Mob, TARGET_REACH_DISTANCE_SQR};
 use crate::entity::ai::goal::{Goal, GoalControl};
 use crate::entity::ai::navigation::{
-    NavigationPathRequest, NavigationRecomputeRequest, NavigationTickContext,
+    NavigationKind, NavigationPathRequest, NavigationRecomputeRequest, NavigationTickContext,
+    path_move_target,
 };
 use crate::entity::ai::path::Path;
+use crate::entity::ai::swim::SwimNodeEvaluator;
 use crate::entity::ai::walk::{MobPathSettings, WalkNodeEvaluator};
 use crate::entity::{Entity, LivingEntity, SharedEntity};
 use crate::physics::WorldCollisionProvider;
-use crate::world::{LevelReader, World};
+use crate::world::{ClipBlockShape, ClipFluid, LevelReader, World};
 
 pub(super) const LEASH_CLOSE_RANGE_WANTED_DISTANCE: f64 = 2.0;
 
@@ -25,35 +27,75 @@ pub(super) fn tick_path_navigation_target<M: Mob + ?Sized>(
     game_time: i64,
     can_update_path: bool,
 ) {
-    let (target, speed_modifier) = {
+    let (target, speed_modifier, kind) = {
         let mut navigation = mob.mob_base().navigation().lock();
-        let ground_mob_position =
-            ground_navigation_temp_mob_pos(mob, world.as_ref(), navigation.can_float());
+        let kind = navigation.kind();
+        let bounding_box = mob.bounding_box();
+        let temp_mob_position = match kind {
+            NavigationKind::Ground => {
+                ground_navigation_temp_mob_pos(mob, world.as_ref(), navigation.can_float())
+            }
+            NavigationKind::WaterBound { .. } => {
+                let position = mob.position();
+                DVec3::new(
+                    position.x,
+                    position.y + bounding_box.height() * 0.5,
+                    position.z,
+                )
+            }
+        };
+        let can_move_directly_to_next_node = match kind {
+            NavigationKind::Ground => false,
+            NavigationKind::WaterBound { .. } => navigation
+                .path()
+                .and_then(|path| path_move_target(path, bounding_box.width()))
+                .is_some_and(|next| {
+                    is_clear_for_movement_between(
+                        world.as_ref(),
+                        temp_mob_position,
+                        next,
+                        bounding_box.height(),
+                    )
+                }),
+        };
         let context = NavigationTickContext {
-            ground_mob_position,
+            ground_mob_position: temp_mob_position,
             mob_position: mob.position(),
-            mob_bounding_box_width: mob.bounding_box().width(),
+            mob_bounding_box_width: bounding_box.width(),
             mob_speed: mob.get_speed(),
             game_time,
+            can_move_directly_to_next_node,
         };
         let next_target = if can_update_path {
             navigation.next_move_target(context)
         } else {
             navigation.next_move_target_without_path_update(context, mob.on_ground())
         };
-        let Some(target) = next_target else {
+        let Some((target, speed_modifier)) = next_target else {
             return;
         };
-        target
+        (target, speed_modifier, kind)
     };
 
     let target_pos = BlockPos::containing(target.x, target.y, target.z);
-    let ground_y = if world.get_block_state(target_pos.below()).is_air() {
+    let ground_y = if matches!(kind, NavigationKind::WaterBound { .. })
+        || world.get_block_state(target_pos.below()).is_air()
+    {
         target.y
     } else {
         WalkNodeEvaluator::floor_level(world.as_ref(), target_pos)
     };
     mob.set_wanted_position(DVec3::new(target.x, ground_y, target.z), speed_modifier);
+}
+
+/// Vanilla `PathNavigation.isClearForMovementBetween` without fluids blocking.
+fn is_clear_for_movement_between(world: &World, start: DVec3, stop: DVec3, height: f64) -> bool {
+    let to = DVec3::new(stop.x, stop.y + height * 0.5, stop.z);
+    // TODO: vanilla clips with the mob's collision context; Steel's clip uses
+    // the empty context, which only differs for entity-dependent shapes.
+    world
+        .clip(start, to, ClipBlockShape::Collider, ClipFluid::None)
+        .miss
 }
 
 fn ground_navigation_temp_mob_pos<M: Mob + ?Sized>(
@@ -118,7 +160,15 @@ pub trait PathfinderMob: Mob {
     }
 
     fn can_update_path(&self) -> bool {
-        self.on_ground() || self.is_in_water() || self.is_in_lava() || self.is_passenger()
+        let kind = self.mob_base().navigation().lock().kind();
+        match kind {
+            NavigationKind::Ground => {
+                self.on_ground() || self.is_in_water() || self.is_in_lava() || self.is_passenger()
+            }
+            NavigationKind::WaterBound { allow_breaching } => {
+                allow_breaching || self.is_in_water() || self.is_in_lava()
+            }
+        }
     }
 
     fn can_path_to_targets_below_surface(&self) -> bool {
@@ -174,8 +224,14 @@ pub trait PathfinderMob: Mob {
     }
 
     fn is_stable_destination(&self, pos: BlockPos) -> bool {
-        self.level()
-            .is_some_and(|world| world.get_block_state(pos.below()).is_solid_render())
+        let Some(world) = self.level() else {
+            return false;
+        };
+        let kind = self.mob_base().navigation().lock().kind();
+        match kind {
+            NavigationKind::Ground => world.get_block_state(pos.below()).is_solid_render(),
+            NavigationKind::WaterBound { .. } => !world.get_block_state(pos).is_solid_render(),
+        }
     }
 
     fn create_path_to(&self, target: BlockPos, reach_range: i32) -> Option<Path> {
@@ -372,6 +428,24 @@ pub trait PathfinderMob: Mob {
 
         let mob_position = self.block_position();
         let settings = MobPathSettings::from_mob(self);
+        let kind = self.mob_base().navigation().lock().kind();
+        let request = NavigationPathRequest {
+            mob_position,
+            targets,
+            max_path_length,
+            reach_range,
+        };
+        if let NavigationKind::WaterBound { allow_breaching } = kind {
+            let mut evaluator = SwimNodeEvaluator::new(settings, allow_breaching);
+            let mut no_collision = |_| false;
+            return self.mob_base().navigation().lock().create_path(
+                &mut evaluator,
+                world.as_ref(),
+                &mut no_collision,
+                request,
+            );
+        }
+
         let mut evaluator = WalkNodeEvaluator::new(settings);
         let collision_world =
             WorldCollisionProvider::for_path_navigation(world, self.as_entity_event_source());
@@ -387,12 +461,7 @@ pub trait PathfinderMob: Mob {
             &mut evaluator,
             world.as_ref(),
             &mut collision,
-            NavigationPathRequest {
-                mob_position,
-                targets,
-                max_path_length,
-                reach_range,
-            },
+            request,
         )
     }
 }
@@ -411,7 +480,10 @@ fn path_target_for_mob<M: PathfinderMob + ?Sized, L: LevelReader>(
     level: &L,
     target: BlockPos,
 ) -> BlockPos {
-    if mob.can_path_to_targets_below_surface() {
+    // Only `GroundPathNavigation.createPath` moves the target to the surface.
+    if mob.can_path_to_targets_below_surface()
+        || !mob.mob_base().navigation().lock().can_navigate_ground()
+    {
         target
     } else {
         find_ground_path_target_surface(level, target)
