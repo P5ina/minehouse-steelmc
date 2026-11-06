@@ -1,7 +1,14 @@
 use rustc_hash::FxHashMap;
 use simdnbt::ToNbtTag;
 use simdnbt::owned::NbtTag;
+use std::cmp::Ordering;
+use std::str::FromStr as _;
+
 use steel_utils::Identifier;
+use steel_utils::random::Random;
+
+use crate::biome::BiomeRef;
+use crate::{REGISTRY, TaggedRegistryExt as _};
 
 /// Represents a full cat variant definition from a data pack JSON file.
 #[derive(Debug)]
@@ -73,6 +80,25 @@ impl ToNbtTag for &CatVariant {
     }
 }
 
+impl SpawnCondition {
+    /// Vanilla `BiomeCheck.test`: `biomes` is a biome id or a `#tag`.
+    #[must_use]
+    pub fn matches_biome(biomes: &str, biome: BiomeRef) -> bool {
+        if let Some(tag) = biomes.strip_prefix('#') {
+            Identifier::from_str(tag).is_ok_and(|tag| REGISTRY.biomes.is_in_tag(biome, &tag))
+        } else {
+            Identifier::from_str(biomes).is_ok_and(|key| biome.key == key)
+        }
+    }
+
+    /// Vanilla `MoonBrightnessCheck.test`: `MinMaxBounds.Doubles.matches`,
+    /// inclusive at both ends.
+    #[must_use]
+    pub fn matches_moon_brightness(min: Option<f32>, max: Option<f32>, brightness: f32) -> bool {
+        min.is_none_or(|min| brightness >= min) && max.is_none_or(|max| brightness <= max)
+    }
+}
+
 pub type CatVariantRef = &'static CatVariant;
 
 pub struct CatVariantRegistry {
@@ -89,6 +115,44 @@ impl CatVariantRegistry {
             cat_variants_by_key: FxHashMap::default(),
             allows_registering: true,
         }
+    }
+}
+
+impl CatVariantRegistry {
+    /// Vanilla `VariantUtils.selectVariantToSpawn` for cats, using vanilla
+    /// `PriorityProvider.pick`: among the variants whose conditions `matches`
+    /// accepts, a random one of the highest priority.
+    #[must_use]
+    pub fn select_spawn_variant(
+        &self,
+        matches: impl Fn(&SpawnCondition) -> bool,
+        random: &mut impl Random,
+    ) -> Option<CatVariantRef> {
+        let mut selected = Vec::new();
+        let mut highest_priority = i32::MIN;
+        for (_, variant) in self.iter() {
+            for entry in variant.spawn_conditions {
+                if !entry.condition.as_ref().is_none_or(&matches) {
+                    continue;
+                }
+                match entry.priority.cmp(&highest_priority) {
+                    Ordering::Greater => {
+                        selected.clear();
+                        selected.push(variant);
+                        highest_priority = entry.priority;
+                    }
+                    Ordering::Equal => selected.push(variant),
+                    Ordering::Less => {}
+                }
+            }
+        }
+        let bound = i32::try_from(selected.len()).ok()?;
+        if bound == 0 {
+            return None;
+        }
+        selected
+            .get(random.next_i32_bounded(bound) as usize)
+            .copied()
     }
 }
 

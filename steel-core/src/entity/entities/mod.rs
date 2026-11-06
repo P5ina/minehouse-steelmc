@@ -7,10 +7,10 @@ pub use mobs::ambient::BatEntity;
 pub use mobs::golems::{IronGolemEntity, SnowGolemEntity};
 pub use mobs::hostile::EndermanEntity;
 pub use mobs::hostile::{
-    BlazeEntity, BoggedEntity, CaveSpiderEntity, CreeperEntity, EndermiteEntity, GhastEntity,
-    GiantEntity, HuskEntity, MagmaCubeEntity, ParchedEntity, PhantomEntity, SilverfishEntity,
-    SkeletonEntity, SlimeEntity, SpiderEntity, StrayEntity, VexEntity, WitherSkeletonEntity,
-    ZombieEntity, ZombieGroupData,
+    BlazeEntity, BoggedEntity, CaveSpiderEntity, CreeperEntity, DrownedEntity, EndermiteEntity,
+    GhastEntity, GiantEntity, HuskEntity, MagmaCubeEntity, ParchedEntity, PhantomEntity,
+    SilverfishEntity, SkeletonEntity, SlimeEntity, SpiderEntity, StrayEntity, VexEntity,
+    WitherSkeletonEntity, ZombieEntity, ZombieGroupData,
 };
 pub use mobs::hostile::{ElderGuardianEntity, Guardian, GuardianEntity};
 pub use mobs::neutral::{PolarBearEntity, WolfEntity};
@@ -26,7 +26,7 @@ pub use objects::projectiles::{
     ArrowEntity, EnderPearlEntity, EvokerFangsEntity, EyeOfEnderEntity, Fireball,
     FireworkRocketEntity, FishingHookEntity, LargeFireballEntity, LingeringPotionEntity,
     LlamaSpitEntity, SmallFireballEntity, SnowballEntity, SpectralArrowEntity, SplashPotionEntity,
-    ThrownEggEntity,
+    ThrownEggEntity, ThrownTridentEntity,
 };
 pub use objects::technical::{InteractionEntity, MarkerEntity};
 pub use objects::vehicles::ChestMinecartEntity;

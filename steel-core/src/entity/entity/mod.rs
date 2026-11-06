@@ -1172,6 +1172,7 @@ pub trait Entity: EntityEventSource + ErasedType + Send + Sync + 'static {
             fire_ignite_extra_ticks,
             self.ticks_required_to_freeze(),
             self.remaining_fire_ticks_cap(),
+            &|ticks| self.scale_ignite_ticks(ticks),
         );
         self.sync_base_fire_freeze_entity_data();
     }
@@ -2352,9 +2353,24 @@ pub trait Entity: EntityEventSource + ErasedType + Send + Sync + 'static {
 
     /// Ignites this entity for a vanilla tick duration.
     fn ignite_for_ticks(&self, number_of_ticks: i32) {
-        self.base()
-            .ignite_for_ticks(number_of_ticks, self.remaining_fire_ticks_cap());
+        self.base().ignite_for_ticks(
+            self.scale_ignite_ticks(number_of_ticks),
+            self.remaining_fire_ticks_cap(),
+        );
         self.sync_base_fire_freeze_entity_data();
+    }
+
+    /// Vanilla `LivingEntity.igniteForTicks` scales every ignite by the
+    /// `burning_time` attribute (lowered by Fire Protection).
+    fn scale_ignite_ticks(&self, number_of_ticks: i32) -> i32 {
+        let Some(living) = self.as_living_entity() else {
+            return number_of_ticks;
+        };
+        let burning_time = living
+            .attributes()
+            .lock()
+            .required_value(vanilla_attributes::BURNING_TIME);
+        (f64::from(number_of_ticks) * burning_time).ceil() as i32
     }
 
     /// Vanilla `Entity.thunderHit`: a lightning bolt sets the entity on fire and deals

@@ -46,11 +46,11 @@ use crate::player::Player;
 use crate::world::{ServerLevelAccessor, World};
 
 /// Vanilla `Ocelot.CROUCH_SPEED_MOD`.
-const CROUCH_SPEED_MOD: f64 = 0.6;
+pub(super) const CROUCH_SPEED_MOD: f64 = 0.6;
 /// Vanilla `Ocelot.WALK_SPEED_MOD`.
-const WALK_SPEED_MOD: f64 = 0.8;
+pub(super) const WALK_SPEED_MOD: f64 = 0.8;
 /// Vanilla `Ocelot.SPRINT_SPEED_MOD`.
-const SPRINT_SPEED_MOD: f64 = 1.33;
+pub(super) const SPRINT_SPEED_MOD: f64 = 1.33;
 const OCELOT_BABY_PASSENGER_ATTACHMENTS: [EntityAttachmentPoint; 1] =
     [EntityAttachmentPoint::new(0.0, 0.3125, 0.0)];
 const OCELOT_BABY_DIMENSIONS: EntityDimensions = EntityDimensions::new_with_attachments(
@@ -519,13 +519,13 @@ impl Goal for OcelotAvoidPlayersGoal {
 
 /// Vanilla `OcelotAttackGoal`: stalks the target, sprints in for the kill and
 /// bites once a second.
-struct OcelotAttackGoal {
+pub(super) struct OcelotAttackGoal {
     target: Option<SharedEntity>,
     attack_time: i32,
 }
 
 impl OcelotAttackGoal {
-    const fn new() -> Self {
+    pub(super) const fn new() -> Self {
         Self {
             target: None,
             attack_time: 0,

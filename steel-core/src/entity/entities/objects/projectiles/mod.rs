@@ -12,6 +12,7 @@ mod llama_spit;
 mod snowball;
 mod splash_potion;
 mod thrown_egg;
+mod thrown_trident;
 
 pub use arrow::{ArrowEntity, SpectralArrowEntity};
 pub use ender_pearl::EnderPearlEntity;
@@ -25,3 +26,4 @@ pub use llama_spit::LlamaSpitEntity;
 pub use snowball::SnowballEntity;
 pub use splash_potion::SplashPotionEntity;
 pub use thrown_egg::ThrownEggEntity;
+pub use thrown_trident::ThrownTridentEntity;

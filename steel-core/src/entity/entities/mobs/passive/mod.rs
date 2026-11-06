@@ -21,7 +21,7 @@ pub use equine::{
     DonkeyEntity, HorseEntity, LlamaEntity, MuleEntity, SkeletonHorseEntity, TraderLlamaEntity,
     ZombieHorseEntity,
 };
-pub use feline::OcelotEntity;
+pub use feline::{CatEntity, OcelotEntity};
 pub use fish::{
     COMMON_TROPICAL_FISH_VARIANTS, CodEntity, PufferfishEntity, SalmonEntity, SalmonVariant,
     TropicalFishBase, TropicalFishEntity, TropicalFishPattern, TropicalFishVariant,

@@ -29,6 +29,7 @@ use steel_utils::{BlockPos, Identifier};
 use uuid::Uuid;
 
 use crate::behavior::MOB_EFFECT_BEHAVIORS;
+use crate::enchantment_helper;
 use crate::entity::attribute::{AttributeMap, AttributeModifier, AttributeModifierOperation};
 use crate::entity::synced_data::EntitySyncedData;
 use crate::entity::{LivingEntity, SharedEntity, WeakEntity};
@@ -1062,32 +1063,40 @@ impl LivingEntityBase {
             return;
         }
 
-        let Some(modifiers) = item_stack.get_attribute_modifiers() else {
-            return;
-        };
+        // Vanilla `ItemStack.forEachModifier(EquipmentSlot, ...)`: the item's own
+        // modifiers first, then the ones its enchantments grant.
+        let mut modifiers: Vec<(AttributeRef, AttributeModifier)> = item_stack
+            .get_attribute_modifiers()
+            .into_iter()
+            .flat_map(|modifiers| modifiers.for_slot(slot))
+            .map(|entry| {
+                (
+                    entry.attribute,
+                    AttributeModifier {
+                        id: entry.id.clone(),
+                        amount: entry.amount,
+                        operation: entry.operation,
+                    },
+                )
+            })
+            .collect();
+        enchantment_helper::for_each_modifier(item_stack, slot, |attribute, modifier| {
+            modifiers.push((attribute, modifier));
+        });
 
-        for entry in modifiers.for_slot(slot) {
+        for (attribute, modifier) in modifiers {
             for (index, keys) in installed_modifiers.iter_mut().enumerate() {
                 if index == slot_index {
                     continue;
                 }
-                keys.retain(|key| key.attribute.key != entry.attribute.key || key.id != entry.id);
+                keys.retain(|key| key.attribute.key != attribute.key || key.id != modifier.id);
             }
 
-            attributes.remove_modifier(entry.attribute, &entry.id);
-            if attributes.add_modifier(
-                entry.attribute,
-                AttributeModifier {
-                    id: entry.id.clone(),
-                    amount: entry.amount,
-                    operation: entry.operation,
-                },
-                false,
-            ) {
-                installed_modifiers[slot_index].push(EquipmentAttributeModifierKey {
-                    attribute: entry.attribute,
-                    id: entry.id.clone(),
-                });
+            attributes.remove_modifier(attribute, &modifier.id);
+            let id = modifier.id.clone();
+            if attributes.add_modifier(attribute, modifier, false) {
+                installed_modifiers[slot_index]
+                    .push(EquipmentAttributeModifierKey { attribute, id });
             }
         }
     }

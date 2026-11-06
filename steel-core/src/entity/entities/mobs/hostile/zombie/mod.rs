@@ -1,8 +1,10 @@
-//! Vanilla `Zombie`, `Husk` and `Giant`.
+//! Vanilla `Zombie`, `Husk`, `Drowned` and `Giant`.
 //!
 //! Zombies and husks share everything but their sounds, sunlight and the
-//! mob they turn into after drowning; the giant is a plain monster with no AI
-//! goals at all.
+//! mob they turn into after drowning; the drowned swims, throws tridents and
+//! never converts. The giant is a plain monster with no AI goals at all.
+
+pub use drowned::DrownedEntity;
 
 use std::sync::{Arc, Weak};
 
@@ -46,12 +48,12 @@ use crate::entity::spawn::create_entity_instance;
 use crate::entity::{
     DefaultEntityPush, Entity, EntityBase, EntityBaseLoad, EntityMovementEmission, EntityPose,
     EntitySpawnReason, EntitySyncedData, LivingEntity, LivingEntityBase, Mob, MobBase,
-    MobEffectInstance, Monster, PathfinderMob, SharedEntity, SpawnGroupData, SpawnRule,
-    sync_dirty_mob_effects,
+    MobEffectInstance, Monster, PathfinderMob, RangedAttackMob, SharedEntity, SpawnGroupData,
+    SpawnRule, sync_dirty_mob_effects,
 };
 use crate::inventory::equipment::EquipmentSlot;
 use crate::physics::MoveResult;
-use crate::world::{DifficultyInstance, World};
+use crate::world::{DifficultyInstance, ServerLevelAccessor, World};
 
 const DEFAULT_STEP_HEIGHT: f32 = 0.6;
 const XP_REWARD: i32 = 5;
@@ -121,34 +123,42 @@ pub struct ZombieGroupData {
 enum ZombieVariant {
     Zombie,
     Husk,
+    Drowned,
 }
 
 impl ZombieVariant {
     const fn baby_dimensions(self) -> EntityDimensions {
         match self {
-            Self::Zombie => ZOMBIE_BABY_DIMENSIONS,
+            Self::Zombie | Self::Drowned => ZOMBIE_BABY_DIMENSIONS,
             Self::Husk => HUSK_BABY_DIMENSIONS,
         }
     }
 
-    fn ambient_sound(self) -> SoundEventRef {
+    /// `in_water` picks the drowned's underwater sounds.
+    fn ambient_sound(self, in_water: bool) -> SoundEventRef {
         match self {
             Self::Zombie => &sound_events::ENTITY_ZOMBIE_AMBIENT,
             Self::Husk => &sound_events::ENTITY_HUSK_AMBIENT,
+            Self::Drowned if in_water => &sound_events::ENTITY_DROWNED_AMBIENT_WATER,
+            Self::Drowned => &sound_events::ENTITY_DROWNED_AMBIENT,
         }
     }
 
-    fn hurt_sound(self) -> SoundEventRef {
+    fn hurt_sound(self, in_water: bool) -> SoundEventRef {
         match self {
             Self::Zombie => &sound_events::ENTITY_ZOMBIE_HURT,
             Self::Husk => &sound_events::ENTITY_HUSK_HURT,
+            Self::Drowned if in_water => &sound_events::ENTITY_DROWNED_HURT_WATER,
+            Self::Drowned => &sound_events::ENTITY_DROWNED_HURT,
         }
     }
 
-    fn death_sound(self) -> SoundEventRef {
+    fn death_sound(self, in_water: bool) -> SoundEventRef {
         match self {
             Self::Zombie => &sound_events::ENTITY_ZOMBIE_DEATH,
             Self::Husk => &sound_events::ENTITY_HUSK_DEATH,
+            Self::Drowned if in_water => &sound_events::ENTITY_DROWNED_DEATH_WATER,
+            Self::Drowned => &sound_events::ENTITY_DROWNED_DEATH,
         }
     }
 
@@ -156,13 +166,19 @@ impl ZombieVariant {
         match self {
             Self::Zombie => &sound_events::ENTITY_ZOMBIE_STEP,
             Self::Husk => &sound_events::ENTITY_HUSK_STEP,
+            Self::Drowned => &sound_events::ENTITY_DROWNED_STEP,
         }
+    }
+
+    /// Vanilla `Zombie.convertsInWater`: the drowned has nothing to become.
+    const fn converts_in_water(self) -> bool {
+        !matches!(self, Self::Drowned)
     }
 
     /// Vanilla `convertsToWhenDrowning`.
     fn converts_to_when_drowning(self) -> EntityTypeRef {
         match self {
-            Self::Zombie => &vanilla_entities::DROWNED,
+            Self::Zombie | Self::Drowned => &vanilla_entities::DROWNED,
             Self::Husk => &vanilla_entities::ZOMBIE,
         }
     }
@@ -170,17 +186,19 @@ impl ZombieVariant {
     /// Vanilla `getConversionSound`.
     const fn conversion_sound(self) -> i32 {
         match self {
-            Self::Zombie => level_events::SOUND_ZOMBIE_TO_DROWNED,
+            Self::Zombie | Self::Drowned => level_events::SOUND_ZOMBIE_TO_DROWNED,
             Self::Husk => level_events::SOUND_HUSK_TO_ZOMBIE,
         }
     }
 
     /// Vanilla `HurtByTargetGoal.alertOthers` matches the hurt mob's class and
-    /// its subclasses: a zombie alerts every zombie kind, a husk only husks.
+    /// its subclasses: a zombie alerts every zombie kind, a husk only husks
+    /// and a drowned only drowned.
     fn alert_matcher(self) -> fn(&dyn Entity) -> bool {
         match self {
             Self::Zombie => is_zombie_family,
             Self::Husk => |entity| entity.entity_type() == &vanilla_entities::HUSK,
+            Self::Drowned => |entity| entity.entity_type() == &vanilla_entities::DROWNED,
         }
     }
 }
@@ -219,6 +237,10 @@ struct ZombieState {
     /// Vanilla calls `startRiding` inside `finalizeSpawn`, before the zombie
     /// joins the level; Steel can only link riders that are already in it.
     pending_jockey_mount: Option<SharedEntity>,
+    /// Vanilla `Drowned.searchingForLand`.
+    searching_for_land: bool,
+    /// Vanilla `Drowned.rangedAttackUncertainty`; negative uses the default.
+    ranged_attack_uncertainty: f32,
 }
 
 impl ZombieState {
@@ -228,6 +250,8 @@ impl ZombieState {
             in_water_time: 0,
             conversion_time: 0,
             pending_jockey_mount: None,
+            searching_for_land: false,
+            ranged_attack_uncertainty: -1.0,
         }
     }
 }
@@ -238,10 +262,17 @@ fn zombie_mob_base(variant: ZombieVariant) -> MobBase {
     mob_base.set_xp_reward(XP_REWARD);
     {
         let mut goal_selector = mob_base.goal_selector().lock();
-        // Vanilla priority 4 attacks turtle eggs; priority 2 uses spears and
-        // priority 6 moves through villages. Steel has none of these goals yet.
         goal_selector.add_goal(8, LookAtPlayerGoal::new(8.0));
         goal_selector.add_goal(8, RandomLookAroundGoal::new());
+    }
+    if variant == ZombieVariant::Drowned {
+        drowned::add_behaviour_goals(&mob_base);
+        return mob_base;
+    }
+    {
+        let mut goal_selector = mob_base.goal_selector().lock();
+        // Vanilla priority 4 attacks turtle eggs; priority 2 uses spears and
+        // priority 6 moves through villages. Steel has none of these goals yet.
         goal_selector.add_goal(3, ZombieAttackGoal::new(1.0, false));
         goal_selector.add_goal(7, WaterAvoidingRandomStrollGoal::new(1.0));
 
@@ -353,6 +384,16 @@ fn handle_zombie_attributes<M: Mob + ?Sized>(
 /// `$finalize` is the entity's own `finalizeSpawn`.
 macro_rules! impl_zombie_traits {
     ($entity:ty, $variant:expr, $finalize:ident) => {
+        impl_zombie_traits!($entity, $variant, $finalize, entity {}, living {}, mob {});
+    };
+    (
+        $entity:ty,
+        $variant:expr,
+        $finalize:ident,
+        entity { $($entity_extra:tt)* },
+        living { $($living_extra:tt)* },
+        mob { $($mob_extra:tt)* }
+    ) => {
         impl $entity {
             const VARIANT: ZombieVariant = $variant;
 
@@ -472,6 +513,12 @@ macro_rules! impl_zombie_traits {
                     );
                 } else if let Some(husk) = converted.downcast_ref::<HuskEntity>() {
                     husk.handle_attributes(&mut random, difficulty, EntitySpawnReason::Conversion);
+                } else if let Some(drowned) = converted.downcast_ref::<DrownedEntity>() {
+                    drowned.handle_attributes(
+                        &mut random,
+                        difficulty,
+                        EntitySpawnReason::Conversion,
+                    );
                 }
                 if !converted.is_silent() {
                     world.level_event(
@@ -503,6 +550,12 @@ macro_rules! impl_zombie_traits {
                 random: &mut impl Random,
                 difficulty: DifficultyInstance,
             ) {
+                if Self::VARIANT == ZombieVariant::Drowned {
+                    // Vanilla `Drowned.populateDefaultEquipmentSlots` replaces
+                    // the zombie's armor and iron weapon.
+                    drowned::populate_drowned_equipment(&self.living_base, random);
+                    return;
+                }
                 populate_default_equipment_slots(self, world, random, difficulty);
                 let weapon_chance = if world.difficulty() == Difficulty::Hard {
                     WEAPON_CHANCE_HARD
@@ -665,7 +718,7 @@ macro_rules! impl_zombie_traits {
                 if let Some(living) = entity.as_living_entity() {
                     living.tick_living_entity(&entity);
                 }
-                if !self.is_removed() {
+                if !self.is_removed() && Self::VARIANT.converts_in_water() {
                     self.tick_drowning();
                 }
             }
@@ -709,7 +762,11 @@ macro_rules! impl_zombie_traits {
             }
 
             fn swim_sound(&self) -> SoundEventRef {
-                Monster::swim_sound_monster(self)
+                if Self::VARIANT == ZombieVariant::Drowned {
+                    &sound_events::ENTITY_DROWNED_SWIM
+                } else {
+                    Monster::swim_sound_monster(self)
+                }
             }
 
             fn swim_splash_sound(&self) -> SoundEventRef {
@@ -719,6 +776,8 @@ macro_rules! impl_zombie_traits {
             fn play_step_sound(&self, _pos: BlockPos, _block_state: BlockStateId) {
                 self.play_sound(Self::VARIANT.step_sound(), STEP_SOUND_VOLUME, 1.0);
             }
+
+            $($entity_extra)*
 
             fn save_additional(&self, nbt: &mut NbtCompound) {
                 self.save_mob(nbt);
@@ -794,12 +853,14 @@ macro_rules! impl_zombie_traits {
             }
 
             fn hurt_sound(&self, _source: &DamageSource) -> Option<SoundEventRef> {
-                Some(Self::VARIANT.hurt_sound())
+                Some(Self::VARIANT.hurt_sound(self.is_in_water()))
             }
 
             fn death_sound(&self) -> Option<SoundEventRef> {
-                Some(Self::VARIANT.death_sound())
+                Some(Self::VARIANT.death_sound(self.is_in_water()))
             }
+
+            $($living_extra)*
 
             fn should_drop_experience(&self) -> bool {
                 Monster::should_drop_experience_monster(self)
@@ -836,8 +897,10 @@ macro_rules! impl_zombie_traits {
             }
 
             fn ambient_sound(&self) -> Option<SoundEventRef> {
-                Some(Self::VARIANT.ambient_sound())
+                Some(Self::VARIANT.ambient_sound(self.is_in_water()))
             }
+
+            $($mob_extra)*
 
             fn mob_flags(&self) -> i8 {
                 *self.entity_data.lock().mob().mob_flags.get()
@@ -896,6 +959,12 @@ macro_rules! impl_zombie_traits {
             }
 
             fn wants_to_pick_up(&self, item_stack: &ItemStack) -> bool {
+                // Vanilla `Drowned.wantsToPickUp` refuses spears.
+                if Self::VARIANT == ZombieVariant::Drowned
+                    && REGISTRY.items.is_in_tag(item_stack.item(), &ItemTag::SPEARS)
+                {
+                    return false;
+                }
                 !item_stack.is(&vanilla_items::GLOW_INK_SAC) && self.can_hold_item(item_stack)
             }
 
@@ -936,6 +1005,67 @@ macro_rules! impl_zombie_traits {
         }
     };
 }
+
+mod drowned;
+
+impl_zombie_traits!(
+    DrownedEntity,
+    ZombieVariant::Drowned,
+    finalize_spawn_drowned,
+    entity {
+        /// Vanilla `Drowned.isPushedByFluid`.
+        fn is_pushed_by_fluid(&self) -> bool {
+            !self.is_swimming()
+        }
+
+        /// Vanilla `Drowned.updateSwimming`.
+        fn update_swimming(&self) {
+            self.set_shared_swimming(
+                self.is_effective_ai() && self.is_under_water() && self.wants_to_swim(),
+            );
+        }
+
+        fn as_ranged_attack_mob(&self) -> Option<&dyn RangedAttackMob> {
+            Some(self)
+        }
+    },
+    living {
+        fn travel_in_water(
+            &self,
+            entity: &SharedEntity,
+            input: DVec3,
+            base_gravity: f64,
+            is_falling: bool,
+            old_y: f64,
+        ) -> Option<MoveResult> {
+            self.travel_in_water_drowned(entity, input, base_gravity, is_falling, old_y)
+        }
+    },
+    mob {
+        fn tick_move_control(&self) {
+            self.tick_drowned_move_control();
+        }
+
+        /// Vanilla `Drowned.canReplaceCurrentItem`: never drops a nautilus shell.
+        fn can_replace_current_item(
+            &self,
+            new_item_stack: &ItemStack,
+            current_item_stack: &ItemStack,
+            slot: EquipmentSlot,
+        ) -> bool {
+            !current_item_stack.is(&vanilla_items::NAUTILUS_SHELL)
+                && self.default_can_replace_current_item(new_item_stack, current_item_stack, slot)
+        }
+
+        /// Vanilla `Drowned.checkSpawnObstruction`: water is fine.
+        fn check_spawn_obstruction(
+            &self,
+            level: &dyn ServerLevelAccessor,
+        ) -> bool {
+            level.is_unobstructed_by_entities(self.as_entity_event_source())
+        }
+    }
+);
 
 /// A hostile zombie.
 #[entity_behavior(class = "Zombie", spawn_rule)]

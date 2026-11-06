@@ -23,7 +23,7 @@ mod llama_goals;
 mod long_distance_patrol;
 mod look_at_player;
 mod melee_attack;
-mod move_to_block;
+pub(crate) mod move_to_block;
 mod move_towards_restriction;
 mod move_towards_target;
 mod nearest_attackable_target;
@@ -77,6 +77,7 @@ pub(crate) use llama_goals::{
 pub(crate) use long_distance_patrol::LongDistancePatrolGoal;
 pub(crate) use look_at_player::LookAtPlayerGoal;
 pub(crate) use melee_attack::MeleeAttackGoal;
+pub(crate) use move_to_block::MoveToBlockGoal;
 pub(crate) use move_towards_restriction::MoveTowardsRestrictionGoal;
 pub(crate) use move_towards_target::MoveTowardsTargetGoal;
 pub(crate) use nearest_attackable_target::NearestAttackableTargetGoal;

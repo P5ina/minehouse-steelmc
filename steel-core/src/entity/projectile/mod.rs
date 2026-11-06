@@ -124,7 +124,7 @@ impl ProjectileDeflection {
         self,
         projectile: &dyn Projectile,
         deflecting_entity: Option<&dyn Entity>,
-        power: f64,
+        power: DVec3,
     ) {
         match self {
             Self::None => {}
@@ -482,18 +482,24 @@ pub trait Projectile: Entity + ProjectileEventSource {
         new_owner: Option<EntityReference>,
         by_attack: bool,
     ) -> bool {
-        self.deflect_with_power(deflection, deflecting_entity, new_owner, by_attack, 1.0)
+        self.deflect_with_power(
+            deflection,
+            deflecting_entity,
+            new_owner,
+            by_attack,
+            DVec3::ONE,
+        )
     }
 
-    /// Vanilla `Projectile.deflect(..., double power)`: the deflected
-    /// movement is scaled by `power` on every axis.
+    /// Vanilla `Projectile.deflect(..., Vec3 power)`: the deflected
+    /// movement is scaled by `power` per axis.
     fn deflect_with_power(
         &self,
         deflection: ProjectileDeflection,
         deflecting_entity: Option<&dyn Entity>,
         new_owner: Option<EntityReference>,
         by_attack: bool,
-        power: f64,
+        power: DVec3,
     ) -> bool {
         deflection.apply(self.as_projectile_event_source(), deflecting_entity, power);
         self.projectile_base().state.lock().owner = new_owner;
@@ -874,7 +880,7 @@ pub fn get_hit_result_on_view_vector(
 
 /// Vanilla `ProjectileUtil.getEntityHitResult` (entity-margin overload): returns
 /// the nearest entity whose inflated box the segment `from -> to` enters.
-fn get_entity_hit_result(
+pub(crate) fn get_entity_hit_result(
     world: &World,
     from: DVec3,
     to: DVec3,
