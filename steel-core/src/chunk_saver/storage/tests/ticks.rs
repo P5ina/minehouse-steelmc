@@ -35,6 +35,7 @@ fn persisted_proto_ticks_deduplicate_while_full_ticks_retain_saved_entries() {
         Vec::new(),
         Vec::new(),
         Vec::new(),
+        0,
         pos,
     );
 

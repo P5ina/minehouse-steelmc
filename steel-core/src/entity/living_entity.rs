@@ -5,6 +5,7 @@ use steel_registry::{DyeColor, vanilla_custom_stats};
 
 use super::*;
 use crate::behavior::{BLOCK_BEHAVIORS, InventoryTickContext, MOB_EFFECT_BEHAVIORS};
+use crate::entity::ai::brain::Memories;
 use crate::entity::consume_effect::apply_consume_effect;
 use crate::entity::damage::RecentDamageSource;
 use crate::entity::pushing::EntityPush;
@@ -23,6 +24,12 @@ pub trait LivingEntity: Entity {
     /// living runtime state such as attributes, cached movement speed,
     /// damage cooldown, and death animation counters.
     fn living_base(&self) -> &LivingEntityBase;
+
+    /// Memories of this entity's brain, for entities with one
+    /// (vanilla `LivingEntity.getBrain`; brainless entities use an empty brain).
+    fn brain_memories(&self) -> Option<&SyncMutex<Memories>> {
+        None
+    }
 
     /// Returns vanilla living body/head rotation state.
     fn living_rotation_state(&self) -> LivingRotationState {
@@ -2326,7 +2333,12 @@ pub trait LivingEntity: Entity {
     }
 
     /// Applies upward velocity to jump out of the given liquid.
-    fn jump_in_liquid(&self, _fluid_tag: &Identifier) {
+    fn jump_in_liquid(&self, fluid_tag: &Identifier) {
+        self.default_jump_in_liquid(fluid_tag);
+    }
+
+    /// The default implementation of `LivingEntity.jumpInLiquid` when not overridden.
+    fn default_jump_in_liquid(&self, _fluid_tag: &Identifier) {
         self.set_velocity(self.velocity() + DVec3::new(0.0, f64::from(0.04_f32), 0.0));
     }
 

@@ -2,6 +2,7 @@ use std::collections::BTreeSet;
 
 use super::*;
 use crate::entity::entities::LightningBoltEntity;
+use crate::entity::entities::mobs::hostile::cube_mob::AbstractCubeMob;
 use crate::entity::{leash::Leashable, pushing::EntityPush};
 use rand::{RngExt, rng};
 use steel_math::DEGREE_90;
@@ -799,7 +800,12 @@ pub trait Entity: EntityEventSource + ErasedType + Send + Sync + 'static {
     }
 
     /// Returns this passenger's vehicle attachment point.
-    fn vehicle_attachment_point(&self, _vehicle: &dyn Entity) -> DVec3 {
+    fn vehicle_attachment_point(&self, vehicle: &dyn Entity) -> DVec3 {
+        self.default_vehicle_attachment_point(vehicle)
+    }
+
+    /// Vanilla `Entity.getVehicleAttachmentPoint`, callable from overrides.
+    fn default_vehicle_attachment_point(&self, _vehicle: &dyn Entity) -> DVec3 {
         let dimensions = self.base().dimensions();
         dimensions.attachments.get_clamped(
             EntityAttachment::Vehicle,
@@ -913,6 +919,11 @@ pub trait Entity: EntityEventSource + ErasedType + Send + Sync + 'static {
 
     /// Applies vanilla entity-to-entity push separation.
     fn push_entity(&self, entity: &dyn Entity) {
+        self.default_push_entity(entity);
+    }
+
+    /// The default implementation of `Entity.push(Entity)` when not overridden.
+    fn default_push_entity(&self, entity: &dyn Entity) {
         if self
             .as_living_entity()
             .is_some_and(LivingEntity::is_sleeping)
@@ -1251,6 +1262,13 @@ pub trait Entity: EntityEventSource + ErasedType + Send + Sync + 'static {
     /// Marks the entity as removed with the given reason.
     fn set_removed(&self, reason: RemovalReason) {
         self.base().set_removed(reason);
+        // Vanilla `LivingEntity.remove` forgets everything the brain remembered.
+        if let Some(memories) = self
+            .as_living_entity()
+            .and_then(LivingEntity::brain_memories)
+        {
+            memories.lock().clear();
+        }
     }
 
     /// Emits a vanilla game event from this entity's exact position with an explicit source entity.
@@ -1627,6 +1645,11 @@ pub trait Entity: EntityEventSource + ErasedType + Send + Sync + 'static {
         try_as_dyn::<Self, dyn Leashable>(self)
     }
 
+    /// Returns this entity as a `Shearable` when shears can be used on it.
+    fn as_shearable(&self) -> Option<&dyn Shearable> {
+        try_as_dyn::<Self, dyn Shearable>(self)
+    }
+
     /// Returns true for entities that implement vanilla animal behavior.
     fn is_animal(&self) -> bool {
         self.as_animal().is_some()
@@ -1660,6 +1683,12 @@ pub trait Entity: EntityEventSource + ErasedType + Send + Sync + 'static {
     /// Returns true for entities that implement vanilla ageable-mob behavior.
     fn is_ageable_mob(&self) -> bool {
         self.as_ageable_mob().is_some()
+    }
+
+    /// Returns this entity as a slime-like cube mob, equivalent to vanilla's
+    /// `instanceof AbstractCubeMob`.
+    fn as_cube_mob(&self) -> Option<&dyn AbstractCubeMob> {
+        try_as_dyn::<Self, dyn AbstractCubeMob>(self)
     }
 
     /// Returns this entity as an ageable mob when it has ageable behavior.
@@ -2832,6 +2861,11 @@ pub trait Entity: EntityEventSource + ErasedType + Send + Sync + 'static {
 
     /// Refreshes dimensions for the current physical pose.
     fn refresh_dimensions(&self) {
+        self.default_refresh_dimensions();
+    }
+
+    /// The default implementation of `Entity.refreshDimensions` when not overridden.
+    fn default_refresh_dimensions(&self) {
         let pose = self.pose();
         let old_dimensions = self.base().dimensions();
         let new_dimensions = self.dimensions_for_pose(pose);

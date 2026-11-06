@@ -160,9 +160,15 @@ pub trait AgeableMob: Mob {
         }
     }
 
+    /// Returns whether this mob type has a baby form; ones without it never
+    /// save or load age.
+    fn can_be_a_baby(&self) -> bool {
+        true
+    }
+
     /// Returns whether this ageable mob is a baby.
     fn is_baby(&self) -> bool {
-        self.get_age() < 0
+        self.can_be_a_baby() && self.get_age() < 0
     }
 
     /// Extra age credited by forced growth, reapplied once natural age reaches zero.
@@ -240,7 +246,10 @@ pub trait AgeableMob: Mob {
     ) -> Option<SpawnGroupData> {
         let mut group_data = match group_data {
             Some(SpawnGroupData::AgeableMob(group_data)) => group_data,
-            None => AgeableMobGroupData::with_should_spawn_baby(true),
+            // Vanilla only replaces a missing group; other mob groups never reach an ageable mob.
+            Some(SpawnGroupData::SpiderEffects(_)) | None => {
+                AgeableMobGroupData::with_should_spawn_baby(true)
+            }
         };
         if group_data.finalize_ageable_spawn(rand::random::<f32>) {
             self.set_age(self.get_baby_start_age());
@@ -362,6 +371,9 @@ pub trait AgeableMob: Mob {
 
     /// Saves vanilla ageable mob fields.
     fn save_ageable_mob(&self, nbt: &mut NbtCompound) {
+        if !self.can_be_a_baby() {
+            return;
+        }
         nbt.insert("Age", self.get_age());
         nbt.insert("ForcedAge", self.forced_age());
         nbt.insert("AgeLocked", i8::from(self.is_age_locked()));
@@ -369,6 +381,9 @@ pub trait AgeableMob: Mob {
 
     /// Loads vanilla ageable mob fields.
     fn load_ageable_mob(&self, nbt: BorrowedNbtCompoundView<'_, '_>) {
+        if !self.can_be_a_baby() {
+            return;
+        }
         self.set_age(nbt.int("Age").unwrap_or(0));
         self.set_forced_age(nbt.int("ForcedAge").unwrap_or(0));
         self.set_age_locked(nbt.byte("AgeLocked").is_some_and(|value| value != 0));

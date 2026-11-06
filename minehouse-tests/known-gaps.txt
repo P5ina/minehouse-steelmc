@@ -17,7 +17,6 @@ minehouse_mob_breeze
 minehouse_mob_camel
 minehouse_mob_camel_husk
 minehouse_mob_cat
-minehouse_mob_cave_spider
 minehouse_mob_cod
 minehouse_mob_creaking
 minehouse_mob_dolphin
@@ -41,7 +40,6 @@ minehouse_mob_husk
 minehouse_mob_illusioner
 minehouse_mob_iron_golem
 minehouse_mob_llama
-minehouse_mob_magma_cube
 minehouse_mob_mule
 minehouse_mob_nautilus
 minehouse_mob_ocelot
@@ -62,10 +60,8 @@ minehouse_mob_shulker
 minehouse_mob_silverfish
 minehouse_mob_skeleton
 minehouse_mob_skeleton_horse
-minehouse_mob_slime
 minehouse_mob_sniffer
 minehouse_mob_snow_golem
-minehouse_mob_spider
 minehouse_mob_stray
 minehouse_mob_strider
 minehouse_mob_sulfur_cube
@@ -89,11 +85,5 @@ minehouse_mob_zombie_nautilus
 minehouse_mob_zombie_villager
 minehouse_mob_zombified_piglin
 
-# mobs: two cows / chickens in love (InLove from summon) make no baby in 300 ticks
-minehouse_mob_cow
-minehouse_mob_chicken
-# mobs: shearing needs the dispenser
-minehouse_mob_sheep
-minehouse_mob_mooshroom
 # mobs: built with a dispenser
 minehouse_mob_copper_golem
