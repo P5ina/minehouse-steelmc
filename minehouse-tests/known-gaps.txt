@@ -32,7 +32,6 @@ minehouse_mob_happy_ghast
 minehouse_mob_hoglin
 minehouse_mob_horse
 minehouse_mob_illusioner
-minehouse_mob_iron_golem
 minehouse_mob_llama
 minehouse_mob_mule
 minehouse_mob_nautilus
