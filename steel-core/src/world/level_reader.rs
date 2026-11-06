@@ -71,6 +71,29 @@ pub trait LevelReader {
         self.raw_brightness(pos, 0) >= MAX_LIGHT_LEVEL
     }
 
+    /// Vanilla `canSeeSkyFromBelowWater`: below sea level, the sky counts as
+    /// seen when the column down from sea level holds only liquids and blocks
+    /// that let light through.
+    fn can_see_sky_from_below_water(&self, pos: BlockPos) -> bool {
+        let sea_level = self.sea_level();
+        if pos.y() >= sea_level {
+            return self.can_see_sky(pos);
+        }
+        let scan_point = BlockPos::new(pos.x(), sea_level, pos.z());
+        if !self.can_see_sky(scan_point) {
+            return false;
+        }
+        let mut cursor = scan_point.below();
+        while cursor.y() > pos.y() {
+            let state = self.get_block_state(cursor);
+            if state.get_light_dampening() > 0 && !state.get_block().config.liquid {
+                return false;
+            }
+            cursor = cursor.below();
+        }
+        true
+    }
+
     /// Returns this dimension's vanilla ambient light factor.
     fn ambient_light(&self) -> f32 {
         0.0

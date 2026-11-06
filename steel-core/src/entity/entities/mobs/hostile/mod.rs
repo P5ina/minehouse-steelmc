@@ -28,3 +28,7 @@ pub use zombie::{GiantEntity, HuskEntity, ZombieEntity, ZombieGroupData};
 /// Hostile vex entity module.
 pub mod vex;
 pub use vex::VexEntity;
+
+/// Hostile guardian and elder guardian entity module.
+pub mod guardian;
+pub use guardian::{ElderGuardianEntity, Guardian, GuardianEntity};
