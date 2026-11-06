@@ -39,6 +39,10 @@ pub use zombie::{GiantEntity, HuskEntity, ZombieEntity, ZombieGroupData};
 pub mod vex;
 pub use vex::VexEntity;
 
+/// Ghast, the floating Nether fireball shooter.
+pub mod ghast;
+pub use ghast::GhastEntity;
+
 /// Hostile guardian and elder guardian entity module.
 pub mod guardian;
 pub use guardian::{ElderGuardianEntity, Guardian, GuardianEntity};

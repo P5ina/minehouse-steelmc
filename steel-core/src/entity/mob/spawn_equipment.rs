@@ -130,6 +130,17 @@ pub(crate) fn populate_default_equipment_enchantments<M: Mob + ?Sized>(
     random: &mut impl Random,
     difficulty: DifficultyInstance,
 ) {
+    enchant_spawned_weapon(mob, random, difficulty);
+    enchant_spawned_armor(mob, random, difficulty);
+}
+
+/// Vanilla `Mob.enchantSpawnedWeapon`; mobs that override it call this for
+/// `super.enchantSpawnedWeapon`.
+pub(crate) fn enchant_spawned_weapon<M: Mob + ?Sized>(
+    mob: &M,
+    random: &mut impl Random,
+    difficulty: DifficultyInstance,
+) {
     enchant_spawned_equipment(
         mob,
         EquipmentSlot::MainHand,
@@ -137,6 +148,15 @@ pub(crate) fn populate_default_equipment_enchantments<M: Mob + ?Sized>(
         WEAPON_ENCHANT_CHANCE,
         difficulty,
     );
+}
+
+/// The armor half of vanilla `Mob.populateDefaultEquipmentEnchantments`,
+/// run after [`enchant_spawned_weapon`] (or a mob's override of it).
+pub(crate) fn enchant_spawned_armor<M: Mob + ?Sized>(
+    mob: &M,
+    random: &mut impl Random,
+    difficulty: DifficultyInstance,
+) {
     for slot in EquipmentSlot::ALL {
         if slot.slot_type() == EquipmentSlotType::HumanoidArmor {
             enchant_spawned_equipment(mob, slot, random, ARMOR_ENCHANT_CHANCE, difficulty);
