@@ -430,8 +430,17 @@ impl FlintWorld for SteelTestWorld {
         alias: &str,
         requested_nbt: &[String],
     ) -> anyhow::Result<Vec<EntityState>> {
-        let entity = self.entity_by_alias(alias)?;
-        Ok(vec![Self::entity_state(entity.as_ref(), requested_nbt)])
+        let uuid = self
+            .entities
+            .get(alias)
+            .ok_or_else(|| anyhow::anyhow!("Unknown entity alias '{alias}'"))?;
+        // A removed entity (died, converted) is an empty match, so `exists: false` can pass.
+        Ok(self
+            .world
+            .get_entity_by_uuid(uuid)
+            .map(|entity| Self::entity_state(entity.as_ref(), requested_nbt))
+            .into_iter()
+            .collect())
     }
     fn find_entity(
         &self,

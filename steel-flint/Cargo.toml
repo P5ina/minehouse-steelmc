@@ -20,7 +20,7 @@ simdnbt.workspace = true
 text_components.workspace = true
 
 # Flint testing framework
-flint-core = { git = "https://github.com/FlintTestMC/flint-core.git", rev = "v1.2.2" }
+flint-core = { git = "https://github.com/P5ina/flint-core.git", rev = "a32e844fc1c19a68c2b64cf7ddd60927849e1c58" }
 
 # Async
 tokio.workspace = true

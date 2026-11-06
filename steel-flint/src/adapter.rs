@@ -274,6 +274,10 @@ pub fn print_failure_urls(
         let flint_core::TestSpecLoadResult::Loaded(spec) = load_result else {
             continue;
         };
+        // Errors (unknown entity, unsupported action) carry no assertion to link.
+        if let Some(reason) = &result.failure_reason {
+            println!("[{}] error at t{}: {reason}", spec.name, result.total_ticks);
+        }
         let failures: Vec<_> = result
             .assertions
             .iter()

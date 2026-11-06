@@ -782,7 +782,7 @@ dependencies = [
 [[package]]
 name = "flint-core"
 version = "1.2.2"
-source = "git+https://github.com/FlintTestMC/flint-core.git?rev=v1.2.2#1bcea1099cde5a90dbbeda65eff0584206efcb90"
+source = "git+https://github.com/P5ina/flint-core.git?rev=a32e844fc1c19a68c2b64cf7ddd60927849e1c58#a32e844fc1c19a68c2b64cf7ddd60927849e1c58"
 dependencies = [
  "anyhow",
  "base64 0.23.1",

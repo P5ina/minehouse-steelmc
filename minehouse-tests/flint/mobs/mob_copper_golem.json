@@ -1,0 +1,425 @@
+{
+  "$schema": "https://raw.githubusercontent.com/FlintTestMC/flint-core/refs/heads/main/flint-content/test_spec_schema.json",
+  "flintVersion": "1.0.0",
+  "name": "minehouse_mob_copper_golem",
+  "description": "A dispenser puts a carved pumpkin on a copper block and a copper golem appears.",
+  "tags": [
+    "minehouse",
+    "mob"
+  ],
+  "minecraftIds": [
+    "minecraft:copper_golem"
+  ],
+  "dependencies": [],
+  "setup": {
+    "cleanup": {
+      "region": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          4,
+          7,
+          4
+        ]
+      ]
+    }
+  },
+  "timeline": [
+    {
+      "at": 0,
+      "do": "fill",
+      "region": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          4,
+          0,
+          4
+        ]
+      ],
+      "with": {
+        "id": "minecraft:stone"
+      }
+    },
+    {
+      "at": 0,
+      "do": "place_each",
+      "blocks": [
+        {
+          "pos": [
+            0,
+            1,
+            0
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            0,
+            2,
+            0
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            0,
+            1,
+            1
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            0,
+            2,
+            1
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            0,
+            1,
+            2
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            0,
+            2,
+            2
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            0,
+            1,
+            3
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            0,
+            2,
+            3
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            0,
+            1,
+            4
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            0,
+            2,
+            4
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            1,
+            1,
+            0
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            1,
+            2,
+            0
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            1,
+            1,
+            4
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            1,
+            2,
+            4
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            2,
+            1,
+            0
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            2,
+            2,
+            0
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            2,
+            1,
+            4
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            2,
+            2,
+            4
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            3,
+            1,
+            0
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            3,
+            2,
+            0
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            3,
+            1,
+            4
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            3,
+            2,
+            4
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            4,
+            1,
+            0
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            4,
+            2,
+            0
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            4,
+            1,
+            1
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            4,
+            2,
+            1
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            4,
+            1,
+            2
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            4,
+            2,
+            2
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            4,
+            1,
+            3
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            4,
+            2,
+            3
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            4,
+            1,
+            4
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            4,
+            2,
+            4
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            2,
+            1,
+            2
+          ],
+          "block": {
+            "id": "minecraft:copper_block"
+          }
+        },
+        {
+          "pos": [
+            2,
+            3,
+            2
+          ],
+          "block": {
+            "id": "minecraft:dispenser",
+            "facing": "down",
+            "triggered": false,
+            "nbt": {
+              "Items": "[{Slot: 0b, count: 1, id: \"minecraft:carved_pumpkin\"}]"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "at": 1,
+      "do": "place",
+      "pos": [
+        2,
+        4,
+        2
+      ],
+      "block": {
+        "id": "minecraft:redstone_block"
+      }
+    },
+    {
+      "at": 2,
+      "do": "assert",
+      "checks": [
+        {
+          "is": "minecraft:copper_golem"
+        }
+      ],
+      "within": 60
+    }
+  ],
+  "breakpoints": []
+}
