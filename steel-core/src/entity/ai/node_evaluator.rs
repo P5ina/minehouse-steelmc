@@ -39,9 +39,8 @@ pub struct NodeNeighbors {
 }
 
 impl NodeNeighbors {
-    /// Vanilla's neighbor array holds 32 nodes; walking yields at most 8 and
-    /// swimming at most 10.
-    const CAPACITY: usize = 10;
+    /// Vanilla's neighbor array size; flying yields up to 26 neighbors.
+    const CAPACITY: usize = 32;
 
     #[must_use]
     pub const fn new() -> Self {

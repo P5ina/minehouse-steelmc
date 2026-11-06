@@ -49,7 +49,7 @@ impl RandomStrollGoal {
         self.interval = interval;
     }
 
-    pub(super) fn can_use_with_position(
+    pub(crate) fn can_use_with_position(
         &mut self,
         mob: &dyn PathfinderMob,
         mut get_position: impl FnMut(&dyn PathfinderMob) -> Option<DVec3>,

@@ -73,6 +73,8 @@ fn sample_player_file(data_version: i32) -> PlayerDataFile {
         respawn_config: None,
         ender_pearls: Vec::new(),
         ender_items: Vec::new(),
+        shoulder_entity_left: vec![10, 0, 0, 0],
+        shoulder_entity_right: Vec::new(),
     }
 }
 
@@ -457,6 +459,8 @@ fn player_file_roundtrip_preserves_domain_world_data() {
     assert_eq!(decoded.enchantment_seed, 1234);
     assert_eq!(decoded.score, 9);
     assert!(decoded.seen_credits);
+    assert_eq!(decoded.shoulder_entity_left, vec![10, 0, 0, 0]);
+    assert_eq!(decoded.shoulder_entity_right, Vec::<u8>::new());
 }
 
 #[test]

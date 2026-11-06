@@ -49,6 +49,7 @@ mod tempt_goal;
 mod try_find_water;
 mod vex_goals;
 mod vindicator_goals;
+mod water_avoiding_random_flying;
 mod water_avoiding_random_stroll;
 mod witch_targets;
 mod zombie_attack;
@@ -64,6 +65,7 @@ pub(crate) use fish_swim::FishSwimGoal;
 pub(crate) use flee_sun::FleeSunGoal;
 pub(crate) use float_goal::FloatGoal;
 pub(crate) use follow_flock_leader::FollowFlockLeaderGoal;
+pub(crate) use follow_mob::FollowMobGoal;
 pub(crate) use follow_parent::FollowParentGoal;
 pub(crate) use follow_player_ridden_entity::FollowPlayerRiddenEntityGoal;
 pub(crate) use hurt_by_target::HurtByTargetGoal;
@@ -79,7 +81,7 @@ pub(crate) use nearest_attackable_target::NearestAttackableTargetGoal;
 pub(crate) use panic_goal::PanicGoal;
 pub(crate) use raider_goals::{HoldGroundAttackGoal, RaiderOpenDoorGoal};
 pub(crate) use random_look_around::RandomLookAroundGoal;
-pub(crate) use random_pos::default_random_pos_towards;
+pub(crate) use random_pos::{default_random_pos_towards, land_random_pos};
 pub(crate) use random_stroll::RandomStrollGoal;
 pub(crate) use random_swimming::RandomSwimmingGoal;
 pub(crate) use ranged_attack::RangedAttackGoal;
@@ -102,6 +104,7 @@ pub(crate) use vex_goals::{VexChargeAttackGoal, VexCopyOwnerTargetGoal, VexRando
 pub(crate) use vindicator_goals::{
     JohnnyFlag, VindicatorBreakDoorGoal, VindicatorJohnnyAttackGoal,
 };
+pub(crate) use water_avoiding_random_flying::random_flying_pos;
 pub(crate) use water_avoiding_random_stroll::WaterAvoidingRandomStrollGoal;
 pub(crate) use witch_targets::{
     CanAttackFlag, HealCooldown, NearestAttackableWitchTargetGoal, NearestHealableRaiderTargetGoal,
