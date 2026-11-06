@@ -581,7 +581,7 @@ fn monster_walk_target_value_prefers_darkness() {
 
     let bright_monster = TestMonster::with_world(Some(overworld));
     assert!(
-        bright_monster.get_walk_target_value_monster(pos) < 0.0,
+        bright_monster.get_walk_target_value_monster(pos, overworld.as_ref()) < 0.0,
         "bright positions should be penalized"
     );
     assert!(
@@ -590,7 +590,7 @@ fn monster_walk_target_value_prefers_darkness() {
     );
     let dark_monster = TestMonster::with_world(Some(nether));
     assert!(
-        dark_monster.get_walk_target_value_monster(pos) > 0.0,
+        dark_monster.get_walk_target_value_monster(pos, nether.as_ref()) > 0.0,
         "dark positions should be preferred"
     );
 }
