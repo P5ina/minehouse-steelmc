@@ -29,7 +29,6 @@ minehouse_mob_nautilus
 minehouse_mob_ocelot
 minehouse_mob_panda
 minehouse_mob_parrot
-minehouse_mob_phantom
 minehouse_mob_pig
 minehouse_mob_piglin
 minehouse_mob_piglin_brute
