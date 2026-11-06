@@ -61,7 +61,10 @@ pub fn convert_entity_chunk(
 
 /// Converts one entity and its passengers. Returns `None` for an entity Steel cannot load;
 /// its passengers are dropped with it, as vanilla drops them with an unloadable vehicle.
-fn convert_entity(entity: &NbtCompound, report: &mut ImportReport) -> Option<PersistentEntity> {
+pub(super) fn convert_entity(
+    entity: &NbtCompound,
+    report: &mut ImportReport,
+) -> Option<PersistentEntity> {
     let id = nbt::string(entity, "id").unwrap_or_default();
     let Some(entity_type) =
         nbt::identifier(&id).filter(|key| REGISTRY.entity_types.by_key(key).is_some())
@@ -142,9 +145,14 @@ fn count_unknown(entity: &NbtCompound, report: &mut ImportReport) {
     }
 }
 
-/// Reads vanilla's UUID int array (most significant int first).
+/// Reads an entity's vanilla UUID.
 fn uuid(entity: &NbtCompound) -> Option<[u8; 16]> {
-    let ints: [i32; 4] = entity.int_array("UUID")?.try_into().ok()?;
+    entity_uuid(entity, "UUID")
+}
+
+/// Reads a vanilla UUID int array (most significant int first).
+pub(super) fn entity_uuid(compound: &NbtCompound, key: &str) -> Option<[u8; 16]> {
+    let ints: [i32; 4] = compound.int_array(key)?.try_into().ok()?;
     let mut bytes = [0u8; 16];
     for (chunk, value) in bytes.as_chunks_mut::<4>().0.iter_mut().zip(ints) {
         chunk.copy_from_slice(&value.to_be_bytes());
