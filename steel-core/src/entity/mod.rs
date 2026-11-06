@@ -900,6 +900,7 @@ pub(crate) use spawn::{
     create_entity_instance, load_entity_recursive_owned, spawn_entity,
 };
 pub(crate) use spawn_placements::SpawnPlacements;
+pub(crate) use spawn_placements::is_valid_empty_spawn_block;
 pub(crate) use spawn_placements::spawn_aabb;
 pub(crate) use spellcaster_illager::{IllagerSpell, SpellcasterIllager, SpellcasterState};
 pub(crate) use storage::{EntityStorage, EntityStorageAddResult};
