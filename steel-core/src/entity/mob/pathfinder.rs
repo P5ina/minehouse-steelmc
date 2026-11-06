@@ -149,12 +149,19 @@ pub trait PathfinderMob: Mob {
         Some(vehicle)
     }
 
-    /// Scores pathfinding positions: animals favor light, monsters darkness.
+    /// Vanilla `getWalkTargetValue(pos)`: scores `pos` against the mob's own level.
     fn get_walk_target_value(&self, pos: BlockPos) -> f32 {
+        self.level()
+            .map_or(0.0, |world| self.get_walk_target_value_in(pos, &*world))
+    }
+
+    /// Vanilla `getWalkTargetValue(pos, level)`: animals favor light, monsters
+    /// darkness. Override this one; spawn checks pass worldgen regions here.
+    fn get_walk_target_value_in(&self, pos: BlockPos, level: &dyn LevelReader) -> f32 {
         if let Some(monster) = self.as_monster() {
-            monster.get_walk_target_value_monster(pos)
+            monster.get_walk_target_value_monster(pos, level)
         } else if let Some(animal) = self.as_animal() {
-            animal.animal_walk_target_value(pos)
+            animal.animal_walk_target_value(pos, level)
         } else {
             0.0
         }
