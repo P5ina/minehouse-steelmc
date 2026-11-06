@@ -91,6 +91,111 @@ pub(crate) fn land_random_pos(
     })
 }
 
+/// Vanilla `HoverRandomPos.getPos`: a land position toward the direction,
+/// lifted a few blocks above the ground it lands on.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "vanilla hover position helper takes these values independently"
+)]
+pub(crate) fn hover_random_pos(
+    mob: &(impl PathfinderMob + ?Sized),
+    horizontal_dist: i32,
+    vertical_dist: i32,
+    x_dir: f64,
+    z_dir: f64,
+    max_xz_radians_difference: f32,
+    hover_max_height: i32,
+    hover_min_height: i32,
+) -> Option<DVec3> {
+    let restrict = mob_restricted(mob, f64::from(horizontal_dist));
+    generate_random_pos(mob, || {
+        let direction = {
+            let mut random = LegacyRandom::from_seed(rand::random());
+            generate_random_direction_within_radians(
+                &mut random,
+                0.0,
+                f64::from(horizontal_dist),
+                vertical_dist,
+                0,
+                x_dir,
+                z_dir,
+                f64::from(max_xz_radians_difference),
+            )
+        }?;
+        let pos =
+            land_random_pos_toward_direction(mob, f64::from(horizontal_dist), restrict, direction)?;
+        let above_solid_amount =
+            rand::random_range(0..=hover_max_height - hover_min_height) + hover_min_height;
+        let world = mob.level()?;
+        let pos = move_up_to_above_solid(pos, above_solid_amount, world.get_max_y(), |pos| {
+            is_solid(mob, pos)
+        });
+        (!is_water(mob, pos) && !has_malus(mob, pos)).then_some(pos)
+    })
+}
+
+/// Vanilla `AirAndWaterRandomPos.getPos`: any open position toward the
+/// direction, `flying_height` blocks above or below the mob on average.
+pub(crate) fn air_and_water_random_pos(
+    mob: &(impl PathfinderMob + ?Sized),
+    horizontal_dist: i32,
+    vertical_dist: i32,
+    flying_height: i32,
+    x_dir: f64,
+    z_dir: f64,
+    max_xz_radians_difference: f64,
+) -> Option<DVec3> {
+    let restrict = mob_restricted(mob, f64::from(horizontal_dist));
+    generate_random_pos(mob, || {
+        let direction = {
+            let mut random = LegacyRandom::from_seed(rand::random());
+            generate_random_direction_within_radians(
+                &mut random,
+                0.0,
+                f64::from(horizontal_dist),
+                vertical_dist,
+                flying_height,
+                x_dir,
+                z_dir,
+                max_xz_radians_difference,
+            )
+        }?;
+        let pos = generate_random_pos_toward_direction(mob, f64::from(horizontal_dist), direction);
+        if is_outside_limits(mob, pos) || is_restricted(restrict, mob, pos) {
+            return None;
+        }
+        let pos = move_up_out_of_solid(mob, pos)?;
+        (!has_malus(mob, pos)).then_some(pos)
+    })
+}
+
+/// Vanilla `RandomPos.moveUpToAboveSolid`.
+fn move_up_to_above_solid(
+    pos: BlockPos,
+    above_solid_amount: i32,
+    max_y: i32,
+    mut is_solid: impl FnMut(BlockPos) -> bool,
+) -> BlockPos {
+    if !is_solid(pos) {
+        return pos;
+    }
+
+    let mut pos = pos.above();
+    while pos.y() <= max_y && is_solid(pos) {
+        pos = pos.above();
+    }
+
+    let first_non_solid_y = pos.y();
+    while pos.y() <= max_y && pos.y() - first_non_solid_y < above_solid_amount {
+        pos = pos.above();
+        if is_solid(pos) {
+            pos = pos.below();
+            break;
+        }
+    }
+    pos
+}
+
 fn generate_random_pos(
     mob: &(impl PathfinderMob + ?Sized),
     mut pos_supplier: impl FnMut() -> Option<BlockPos>,
@@ -334,6 +439,26 @@ mod tests {
         );
 
         assert_eq!(direction, Some(BlockPos::new(-16, -5, -14)));
+    }
+
+    #[test]
+    fn move_up_to_above_solid_hovers_over_the_ground() {
+        // Solid at y 0..=2 and again at y 6.
+        let solid = |pos: BlockPos| pos.y() <= 2 || pos.y() == 6;
+        assert_eq!(
+            move_up_to_above_solid(BlockPos::new(0, 0, 0), 2, 100, solid),
+            BlockPos::new(0, 5, 0)
+        );
+        assert_eq!(
+            move_up_to_above_solid(BlockPos::new(0, 0, 0), 5, 100, solid),
+            BlockPos::new(0, 5, 0),
+            "a ceiling stops the climb below it"
+        );
+        assert_eq!(
+            move_up_to_above_solid(BlockPos::new(0, 4, 0), 3, 100, solid),
+            BlockPos::new(0, 4, 0),
+            "open air is kept"
+        );
     }
 
     #[test]

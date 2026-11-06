@@ -3,11 +3,15 @@ use std::sync::Arc;
 use glam::DVec3;
 use steel_math::fast_floor;
 use steel_registry::blocks::block_state_ext::BlockStateExt as _;
+use steel_registry::blocks::shapes;
 use steel_registry::{vanilla_attributes, vanilla_blocks};
-use steel_utils::{BlockPos, ChunkPos};
+use steel_utils::{BlockPos, ChunkPos, Direction};
+
+use crate::behavior::{BLOCK_BEHAVIORS, BlockCollisionContext};
 
 use super::{Mob, TARGET_REACH_DISTANCE_SQR};
 use crate::entity::ai::brain::memory_types;
+use crate::entity::ai::fly::FlyNodeEvaluator;
 use crate::entity::ai::goal::{Goal, GoalControl};
 use crate::entity::ai::navigation::{
     NavigationKind, NavigationPathRequest, NavigationRecomputeRequest, NavigationTickContext,
@@ -44,10 +48,17 @@ pub(super) fn tick_path_navigation_target<M: Mob + ?Sized>(
                     position.z,
                 )
             }
+            NavigationKind::Flying => mob.position(),
+        };
+        let clip_fluid = match kind {
+            NavigationKind::Flying => ClipFluid::Any,
+            NavigationKind::Ground
+            | NavigationKind::WaterBound { .. }
+            | NavigationKind::Amphibious => ClipFluid::None,
         };
         let can_move_directly_to_next_node = match kind {
             NavigationKind::Ground => false,
-            NavigationKind::WaterBound { .. } => navigation
+            NavigationKind::WaterBound { .. } | NavigationKind::Flying => navigation
                 .path()
                 .and_then(|path| path_move_target(path, bounding_box.width()))
                 .is_some_and(|next| {
@@ -56,6 +67,7 @@ pub(super) fn tick_path_navigation_target<M: Mob + ?Sized>(
                         temp_mob_position,
                         next,
                         bounding_box.height(),
+                        clip_fluid,
                     )
                 }),
             // Vanilla `AmphibiousPathNavigation.canMoveDirectly`.
@@ -70,6 +82,7 @@ pub(super) fn tick_path_navigation_target<M: Mob + ?Sized>(
                                 temp_mob_position,
                                 next,
                                 bounding_box.height(),
+                                clip_fluid,
                             )
                         })
             }
@@ -94,9 +107,10 @@ pub(super) fn tick_path_navigation_target<M: Mob + ?Sized>(
     };
 
     let target_pos = BlockPos::containing(target.x, target.y, target.z);
+    // Water-bound, amphibious and flying navigations aim at the node itself.
     let ground_y = if matches!(
         kind,
-        NavigationKind::WaterBound { .. } | NavigationKind::Amphibious
+        NavigationKind::WaterBound { .. } | NavigationKind::Amphibious | NavigationKind::Flying
     ) || world.get_block_state(target_pos.below()).is_air()
     {
         target.y
@@ -106,14 +120,29 @@ pub(super) fn tick_path_navigation_target<M: Mob + ?Sized>(
     mob.set_wanted_position(DVec3::new(target.x, ground_y, target.z), speed_modifier);
 }
 
-/// Vanilla `PathNavigation.isClearForMovementBetween` without fluids blocking.
-fn is_clear_for_movement_between(world: &World, start: DVec3, stop: DVec3, height: f64) -> bool {
+/// Vanilla `PathNavigation.isClearForMovementBetween`; `fluid` is `ANY` when
+/// fluids block the way, as for flying navigation.
+fn is_clear_for_movement_between(
+    world: &World,
+    start: DVec3,
+    stop: DVec3,
+    height: f64,
+    fluid: ClipFluid,
+) -> bool {
     let to = DVec3::new(stop.x, stop.y + height * 0.5, stop.z);
     // TODO: vanilla clips with the mob's collision context; Steel's clip uses
     // the empty context, which only differs for entity-dependent shapes.
-    world
-        .clip(start, to, ClipBlockShape::Collider, ClipFluid::None)
-        .miss
+    world.clip(start, to, ClipBlockShape::Collider, fluid).miss
+}
+
+/// Vanilla `BlockState.entityCanStandOn`: the block's collision shape has a
+/// full top face. Steel uses the empty collision context here.
+fn entity_can_stand_on(world: &World, pos: BlockPos) -> bool {
+    let state = world.get_block_state(pos);
+    let shape = BLOCK_BEHAVIORS
+        .get_behavior(state.get_block())
+        .get_collision_shape(state, world, pos, BlockCollisionContext::empty());
+    shapes::is_face_full(shape, Direction::Up)
 }
 
 fn ground_navigation_temp_mob_pos<M: Mob + ?Sized>(
@@ -185,8 +214,14 @@ pub trait PathfinderMob: Mob {
     }
 
     fn can_update_path(&self) -> bool {
-        let kind = self.mob_base().navigation().lock().kind();
+        let (kind, can_float) = {
+            let navigation = self.mob_base().navigation().lock();
+            (navigation.kind(), navigation.can_float())
+        };
         match kind {
+            NavigationKind::Flying => {
+                can_float && (self.is_in_water() || self.is_in_lava()) || !self.is_passenger()
+            }
             NavigationKind::Ground => {
                 self.on_ground() || self.is_in_water() || self.is_in_lava() || self.is_passenger()
             }
@@ -272,6 +307,7 @@ pub trait PathfinderMob: Mob {
             NavigationKind::Ground => world.get_block_state(pos.below()).is_solid_render(),
             NavigationKind::WaterBound { .. } => !world.get_block_state(pos).is_solid_render(),
             NavigationKind::Amphibious => !world.get_block_state(pos.below()).is_air(),
+            NavigationKind::Flying => entity_can_stand_on(world.as_ref(), pos),
         }
     }
 
@@ -515,6 +551,16 @@ pub trait PathfinderMob: Mob {
             max_path_length,
             reach_range,
         };
+        if kind == NavigationKind::Flying {
+            let mut evaluator = FlyNodeEvaluator::new(settings);
+            let mut no_collision = |_| false;
+            return self.mob_base().navigation().lock().create_path(
+                &mut evaluator,
+                world.as_ref(),
+                &mut no_collision,
+                request,
+            );
+        }
         if let NavigationKind::WaterBound { allow_breaching } = kind {
             let mut evaluator = SwimNodeEvaluator::new(settings, allow_breaching);
             let mut no_collision = |_| false;

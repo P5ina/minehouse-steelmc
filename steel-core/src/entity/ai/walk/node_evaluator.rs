@@ -7,7 +7,13 @@ pub struct WalkNodeEvaluator {
     /// Vanilla `AmphibiousNodeEvaluator`: set when this evaluator walks and
     /// swims, holding `prefersShallowSwimming`.
     amphibious: Option<bool>,
+    /// Vanilla's overridable `getPathType`; subclasses such as
+    /// `FlyNodeEvaluator` classify single blocks differently.
+    block_path_type: BlockPathTypeFn,
 }
+
+/// Classifies the single block at `x, y, z` for a node evaluator.
+pub type BlockPathTypeFn = fn(&mut PathfindingContext<'_>, i32, i32, i32) -> PathType;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct AcceptedNodeRequest {
@@ -28,10 +34,17 @@ const VANILLA_HORIZONTAL_DIRECTIONS: [Direction; 4] = [
 impl WalkNodeEvaluator {
     #[must_use]
     pub fn new(settings: MobPathSettings) -> Self {
+        Self::with_path_type(settings, WalkPathEvaluator::path_type)
+    }
+
+    /// Creates an evaluator whose per-block `getPathType` is `path_type`.
+    #[must_use]
+    pub fn with_path_type(settings: MobPathSettings, path_type: BlockPathTypeFn) -> Self {
         Self {
             settings,
             nodes: NodeStore::new(),
             amphibious: None,
+            block_path_type: path_type,
         }
     }
 
@@ -47,6 +60,7 @@ impl WalkNodeEvaluator {
             settings,
             nodes: NodeStore::new(),
             amphibious: Some(prefers_shallow_swimming),
+            block_path_type: WalkPathEvaluator::path_type,
         }
     }
 
@@ -78,7 +92,7 @@ impl WalkNodeEvaluator {
                 return PathType::Water;
             }
         }
-        WalkPathEvaluator::path_type(context, x, y, z)
+        (self.block_path_type)(context, x, y, z)
     }
 
     #[must_use]
@@ -526,7 +540,11 @@ impl WalkNodeEvaluator {
         .find(|pos| self.can_start_at(context, *pos))
     }
 
-    fn get_start_node(&mut self, context: &mut PathfindingContext<'_>, pos: BlockPos) -> i32 {
+    pub(crate) fn get_start_node(
+        &mut self,
+        context: &mut PathfindingContext<'_>,
+        pos: BlockPos,
+    ) -> i32 {
         let path_type = self.get_path_type_of_mob(context, pos.x(), pos.y(), pos.z());
         let cost_malus = self.settings.pathfinding_malus(path_type);
         let node = self.nodes.get_node(pos.x(), pos.y(), pos.z());

@@ -93,6 +93,8 @@ pub(crate) const ENTITY_LOAD_MAX_VERTICAL_POSITION: f64 = 2.0E7;
 
 /// The default air drag value for entities.
 pub const DEFAULT_AIR_DRAG: f64 = 0.98;
+/// Vanilla air drag of omnidirectional air movers, `0.91F` widened to double.
+pub const OMNIDIRECTIONAL_AIR_DRAG: f64 = 0.91_f32 as f64;
 
 /// Clamps an entity position using vanilla's load-time world-bound limits.
 pub(crate) fn clamp_loaded_entity_position(pos: DVec3) -> DVec3 {
@@ -876,10 +878,10 @@ pub use inside_block_effects::{
 pub(crate) use item_based_steering::{ItemBasedSteering, ItemSteerable};
 pub use item_frame::ItemFrame;
 pub use living_base::{
-    ActiveItemUseState, ActiveMobEffect, DEATH_DURATION, DEFAULT_SWING_DURATION,
-    HURT_DURATION_TICKS, LivingEntityBase, LivingRotationState, LivingSwingState,
-    LivingTravelInput, MobEffectInstance, MobEffectSyncChange, MobEffectSyncPacket,
-    sync_dirty_mob_effects,
+    ActiveItemUseState, ActiveLocationEnchantment, ActiveMobEffect, DEATH_DURATION,
+    DEFAULT_SWING_DURATION, HURT_DURATION_TICKS, LivingEntityBase, LivingRotationState,
+    LivingSwingState, LivingTravelInput, MobEffectInstance, MobEffectSyncChange,
+    MobEffectSyncPacket, sync_dirty_mob_effects,
 };
 pub use living_entity::LivingEntity;
 pub(crate) use manager::EntityCollisionCandidates;

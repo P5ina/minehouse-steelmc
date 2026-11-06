@@ -7,6 +7,7 @@
 mod chested;
 mod goals;
 mod horse;
+mod llama;
 pub(crate) mod menu;
 mod skeleton_horse;
 mod skeleton_trap;
@@ -59,6 +60,7 @@ use crate::world::World;
 
 pub use chested::{DonkeyEntity, MuleEntity};
 pub use horse::HorseEntity;
+pub use llama::{Llama, LlamaBase, LlamaEntity, TraderLlamaEntity};
 pub use skeleton_horse::SkeletonHorseEntity;
 pub use zombie_horse::ZombieHorseEntity;
 
@@ -559,21 +561,7 @@ pub trait AbstractHorse: Animal + PathfinderMob {
             self.play_sound(sound, 0.4, 1.0);
         }
 
-        let damage = {
-            let attributes = self.attributes().lock();
-            let safe_fall_distance = attributes
-                .get_value(vanilla_attributes::SAFE_FALL_DISTANCE)
-                .unwrap_or(vanilla_attributes::SAFE_FALL_DISTANCE.default_value);
-            let fall_damage_multiplier = attributes
-                .get_value(vanilla_attributes::FALL_DAMAGE_MULTIPLIER)
-                .unwrap_or(vanilla_attributes::FALL_DAMAGE_MULTIPLIER.default_value);
-            LivingEntityBase::calculate_fall_damage(
-                fall_distance,
-                damage_modifier,
-                safe_fall_distance,
-                fall_damage_multiplier,
-            )
-        };
+        let damage = self.calculate_horse_fall_damage(fall_distance, damage_modifier);
         if damage <= 0 {
             return false;
         }
@@ -583,6 +571,23 @@ pub trait AbstractHorse: Animal + PathfinderMob {
         self.propagate_fall_to_passengers(fall_distance, damage_modifier, source);
         self.play_block_fall_sound();
         true
+    }
+
+    /// Vanilla `LivingEntity.calculateFallDamage`.
+    fn calculate_horse_fall_damage(&self, fall_distance: f64, damage_modifier: f32) -> i32 {
+        let attributes = self.attributes().lock();
+        let safe_fall_distance = attributes
+            .get_value(vanilla_attributes::SAFE_FALL_DISTANCE)
+            .unwrap_or(vanilla_attributes::SAFE_FALL_DISTANCE.default_value);
+        let fall_damage_multiplier = attributes
+            .get_value(vanilla_attributes::FALL_DAMAGE_MULTIPLIER)
+            .unwrap_or(vanilla_attributes::FALL_DAMAGE_MULTIPLIER.default_value);
+        LivingEntityBase::calculate_fall_damage(
+            fall_distance,
+            damage_modifier,
+            safe_fall_distance,
+            fall_damage_multiplier,
+        )
     }
 
     /// Vanilla `hurtServer`: a hurt horse sometimes rears.
@@ -713,6 +718,11 @@ pub trait AbstractHorse: Animal + PathfinderMob {
 
     /// Vanilla `doPlayerRide`.
     fn do_player_ride(&self, player: &Player) {
+        self.default_do_player_ride(player);
+    }
+
+    /// The `AbstractHorse.doPlayerRide` body, for overrides that call `super`.
+    fn default_do_player_ride(&self, player: &Player) {
         self.set_eating(false);
         self.clear_standing();
         player.set_rotation(self.rotation());
@@ -801,6 +811,11 @@ pub trait AbstractHorse: Animal + PathfinderMob {
 
     /// Vanilla `followMommy`.
     fn follow_mommy(&self) {
+        self.default_follow_mommy();
+    }
+
+    /// The `AbstractHorse.followMommy` body, for overrides that call `super`.
+    fn default_follow_mommy(&self) {
         if !(self.is_bred() && AgeableMob::is_baby(self) && !self.is_eating()) {
             return;
         }
@@ -1302,6 +1317,11 @@ trait EquineHooks {
         true
     }
 
+    /// Vanilla `PathfinderMob.followLeashSpeed`.
+    fn follow_leash_speed_for(&self) -> f64 {
+        1.0
+    }
+
     fn can_mate_for(&self, partner: &dyn Animal) -> bool;
 
     fn can_fall_in_love_for(&self) -> bool;
@@ -1714,7 +1734,11 @@ macro_rules! impl_equine_entity {
             $($mob_items)*
         }
 
-        impl $crate::entity::PathfinderMob for $entity {}
+        impl $crate::entity::PathfinderMob for $entity {
+            fn follow_leash_speed(&self) -> f64 {
+                self.follow_leash_speed_for()
+            }
+        }
     };
 }
 
