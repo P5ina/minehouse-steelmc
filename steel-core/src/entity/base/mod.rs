@@ -1573,6 +1573,10 @@ impl EntityBase {
     }
 
     /// Applies a vanilla inside-block effect to base fire/freeze state.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "each argument is a distinct per-entity hook the base fire/freeze state cannot read itself"
+    )]
     pub fn apply_inside_block_effect(
         &self,
         effect_type: InsideBlockEffectType,
@@ -1581,6 +1585,7 @@ impl EntityBase {
         fire_ignite_extra_ticks: i32,
         ticks_required_to_freeze: i32,
         remaining_fire_ticks_cap: Option<i32>,
+        scale_ignite_ticks: &dyn Fn(i32) -> i32,
     ) {
         let mut state = self.state.lock();
         match effect_type {
@@ -1600,13 +1605,14 @@ impl EntityBase {
                     fire_immune,
                     fire_ignite_extra_ticks,
                     remaining_fire_ticks_cap,
+                    scale_ignite_ticks(FIRE_IGNITE_TICKS),
                 );
             }
             InsideBlockEffectType::LavaIgnite => {
                 if !fire_immune {
                     Self::ignite_for_ticks_in_state(
                         &mut state.fire_freeze,
-                        LAVA_IGNITE_TICKS,
+                        scale_ignite_ticks(LAVA_IGNITE_TICKS),
                         remaining_fire_ticks_cap,
                     );
                 }
@@ -1623,6 +1629,7 @@ impl EntityBase {
         fire_immune: bool,
         fire_ignite_extra_ticks: i32,
         remaining_fire_ticks_cap: Option<i32>,
+        ignite_ticks: i32,
     ) {
         if fire_immune {
             return;
@@ -1643,11 +1650,7 @@ impl EntityBase {
         }
 
         if fire_freeze.remaining_fire_ticks >= 0 {
-            Self::ignite_for_ticks_in_state(
-                fire_freeze,
-                FIRE_IGNITE_TICKS,
-                remaining_fire_ticks_cap,
-            );
+            Self::ignite_for_ticks_in_state(fire_freeze, ignite_ticks, remaining_fire_ticks_cap);
         }
     }
 
