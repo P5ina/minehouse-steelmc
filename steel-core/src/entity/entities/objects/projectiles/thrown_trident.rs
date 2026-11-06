@@ -145,7 +145,7 @@ impl ThrownTridentEntity {
         self.state.lock().dealt_damage
     }
 
-    /// Vanilla `isAcceptibleReturnOwner`.
+    /// Vanilla `ThrownTrident` return-owner check: a living owner that is not a spectator.
     fn is_acceptable_return_owner(owner: &SharedEntity) -> bool {
         owner.is_alive()
             && owner
