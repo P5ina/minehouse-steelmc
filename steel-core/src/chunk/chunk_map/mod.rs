@@ -925,6 +925,19 @@ impl ChunkMap {
             timings.total_chunks = self.chunks.len();
             timings.tickable_count = tickable_chunks.block.len();
 
+            if runs_normally {
+                // Vanilla `ServerChunkCache.tickSpawningChunk`: every ticking chunk a
+                // non-spectator player is close enough to spawn mobs in counts as inhabited.
+                // Natural spawning itself is not implemented yet.
+                for tickable_chunk in &tickable_chunks.block {
+                    if let Some(chunk) = tickable_chunk.holder.try_full_chunk()
+                        && world.any_player_close_enough_for_spawning(chunk.common().pos())
+                    {
+                        chunk.common().increment_inhabited_time();
+                    }
+                }
+            }
+
             if runs_normally && random_tick_speed > 0 && !tickable_chunks.block.is_empty() {
                 let _span = tracing::trace_span!(
                     "random_chunk_ticks",

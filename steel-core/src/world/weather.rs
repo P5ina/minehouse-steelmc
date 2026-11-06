@@ -261,6 +261,12 @@ impl World {
         environment::sun_angle_degrees(self.dimension_type, level_data.world_clocks())
     }
 
+    /// Vanilla `ServerLevel.getMoonBrightness`: brightness of the current moon phase.
+    pub fn moon_brightness(&self) -> f32 {
+        let level_data = self.level_data.read();
+        environment::moon_phase(self.dimension_type, level_data.world_clocks()).brightness()
+    }
+
     /// Whether the environment currently permits daylight burning.
     pub fn monsters_burn(&self) -> bool {
         let level_data = self.level_data.read();

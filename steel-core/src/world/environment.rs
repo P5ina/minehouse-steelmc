@@ -10,6 +10,7 @@ use super::clock::WorldClockManager;
 const SKY_LIGHT_LEVEL_ATTRIBUTE: &str = "minecraft:gameplay/sky_light_level";
 const SUN_ANGLE_ATTRIBUTE: &str = "minecraft:visual/sun_angle";
 const MONSTERS_BURN_ATTRIBUTE: &str = "minecraft:gameplay/monsters_burn";
+const MOON_PHASE_ATTRIBUTE: &str = "minecraft:visual/moon_phase";
 const DEFAULT_SKY_LIGHT_LEVEL: f32 = 15.0;
 const DEFAULT_SUN_ANGLE: f32 = 0.0;
 const MIN_SKY_LIGHT_LEVEL: f32 = 0.0;
@@ -134,10 +135,21 @@ fn apply_timeline_bool_track(
 /// Boolean tracks hold the segment start until the next keyframe,
 /// ignoring easing, as with vanilla's non-interpolated attribute type.
 fn sample_bool_track(track: &Track, period_ticks: Option<i64>, ticks: i64) -> Option<bool> {
+    sample_step_track(track, period_ticks, ticks, keyframe_bool_value)
+}
+
+/// Samples a non-interpolated track: the value of the segment start holds until the
+/// next keyframe, wrapping around the timeline period.
+fn sample_step_track<T: Copy>(
+    track: &Track,
+    period_ticks: Option<i64>,
+    ticks: i64,
+    value_of: impl Fn(&KeyframeValue) -> Option<T>,
+) -> Option<T> {
     let keyframes = track.keyframes;
     match keyframes.len() {
         0 => return None,
-        1 => return keyframe_bool_value(&keyframes[0].value),
+        1 => return value_of(&keyframes[0].value),
         _ => {}
     }
 
@@ -148,12 +160,13 @@ fn sample_bool_track(track: &Track, period_ticks: Option<i64>, ticks: i64) -> Op
     if let Some(period) = period_ticks
         && sample_ticks < first.ticks
     {
-        return step_bool_segment(
+        return step_segment(
             last.ticks - period,
             &last.value,
             first.ticks,
             &first.value,
             sample_ticks,
+            &value_of,
         );
     }
 
@@ -161,32 +174,41 @@ fn sample_bool_track(track: &Track, period_ticks: Option<i64>, ticks: i64) -> Op
         let from = &segment[0];
         let to = &segment[1];
         if sample_ticks < to.ticks {
-            return step_bool_segment(from.ticks, &from.value, to.ticks, &to.value, sample_ticks);
+            return step_segment(
+                from.ticks,
+                &from.value,
+                to.ticks,
+                &to.value,
+                sample_ticks,
+                &value_of,
+            );
         }
     }
 
     if let Some(period) = period_ticks {
-        return step_bool_segment(
+        return step_segment(
             last.ticks,
             &last.value,
             first.ticks + period,
             &first.value,
             sample_ticks,
+            &value_of,
         );
     }
 
-    keyframe_bool_value(&last.value)
+    value_of(&last.value)
 }
 
-fn step_bool_segment(
+fn step_segment<T: Copy>(
     from_ticks: i64,
     from_value: &KeyframeValue,
     to_ticks: i64,
     to_value: &KeyframeValue,
     sample_ticks: i64,
-) -> Option<bool> {
-    let from = keyframe_bool_value(from_value)?;
-    let to = keyframe_bool_value(to_value)?;
+    value_of: &impl Fn(&KeyframeValue) -> Option<T>,
+) -> Option<T> {
+    let from = value_of(from_value)?;
+    let to = value_of(to_value)?;
     if sample_ticks <= from_ticks {
         return Some(from);
     }
@@ -194,6 +216,85 @@ fn step_bool_segment(
         return Some(to);
     }
     Some(from)
+}
+
+/// Vanilla `MoonPhase`, in `index()` order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MoonPhase {
+    /// Full moon.
+    FullMoon,
+    /// Waning gibbous.
+    WaningGibbous,
+    /// Third quarter.
+    ThirdQuarter,
+    /// Waning crescent.
+    WaningCrescent,
+    /// New moon.
+    NewMoon,
+    /// Waxing crescent.
+    WaxingCrescent,
+    /// First quarter.
+    FirstQuarter,
+    /// Waxing gibbous.
+    WaxingGibbous,
+}
+
+impl MoonPhase {
+    /// Vanilla `DimensionType.MOON_BRIGHTNESS_PER_PHASE`.
+    const BRIGHTNESS: [f32; 8] = [1.0, 0.75, 0.5, 0.25, 0.0, 0.25, 0.5, 0.75];
+
+    fn from_serialized_name(name: &str) -> Option<Self> {
+        Some(match name {
+            "full_moon" => Self::FullMoon,
+            "waning_gibbous" => Self::WaningGibbous,
+            "third_quarter" => Self::ThirdQuarter,
+            "waning_crescent" => Self::WaningCrescent,
+            "new_moon" => Self::NewMoon,
+            "waxing_crescent" => Self::WaxingCrescent,
+            "first_quarter" => Self::FirstQuarter,
+            "waxing_gibbous" => Self::WaxingGibbous,
+            _ => return None,
+        })
+    }
+
+    /// Vanilla moon brightness for this phase, from 0 (new moon) to 1 (full moon).
+    #[must_use]
+    pub const fn brightness(self) -> f32 {
+        Self::BRIGHTNESS[self as usize]
+    }
+}
+
+/// Samples `MOON_PHASE`: full moon by default, cycled by the overworld day timeline.
+#[must_use]
+pub(super) fn moon_phase(
+    dimension_type: DimensionTypeRef,
+    clock_manager: &WorldClockManager,
+) -> MoonPhase {
+    let mut value = MoonPhase::FullMoon;
+    for_each_timeline(dimension_type, |timeline| {
+        let Some(track) = timeline
+            .tracks
+            .iter()
+            .find(|track| track.name == MOON_PHASE_ATTRIBUTE)
+        else {
+            return;
+        };
+        let Some(total_ticks) = clock_manager.total_ticks(timeline.clock) else {
+            return;
+        };
+        if let Some(sample) = sample_step_track(
+            track,
+            timeline.period_ticks.map(i64::from),
+            total_ticks,
+            |keyframe| match keyframe {
+                KeyframeValue::String(name) => MoonPhase::from_serialized_name(name),
+                _ => None,
+            },
+        ) {
+            value = sample;
+        }
+    });
+    value
 }
 
 fn apply_timeline_float_track(
