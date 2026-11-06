@@ -47,8 +47,8 @@ use crate::entity::living_entity::shearing_loot_items_with_rng;
 use crate::entity::{
     AgeableMob, AgeableMobBase, Animal, AnimalBase, DefaultEntityPush, Entity, EntityBase,
     EntityBaseLoad, EntityPose, EntitySpawnReason, EntitySyncedData, LivingEntity,
-    LivingEntityBase, Mob, MobBase, PathfinderMob, RemovalReason, SharedEntity, SpawnGroupData,
-    SpawnRule, next_entity_id,
+    LivingEntityBase, Mob, MobBase, PathfinderMob, RemovalReason, SharedEntity, Shearable,
+    SpawnGroupData, SpawnRule, next_entity_id,
 };
 use crate::physics::MoveResult;
 use crate::player::Player;
@@ -220,60 +220,6 @@ impl MushroomCowEntity {
         self.play_sound(&sound_events::ENTITY_MOOSHROOM_CONVERT, 2.0, 1.0);
     }
 
-    /// Shears the mooshroom, converting it into a normal cow and dropping vanilla loot.
-    pub fn shear(&self, world: &Arc<World>, tool: &ItemStack) {
-        world.play_sound_at(
-            &sound_events::ENTITY_MOOSHROOM_SHEAR,
-            SoundSource::Players,
-            self.position(),
-            1.0,
-            1.0,
-            None,
-        );
-
-        let mut rng = rand::rng();
-        for drop in shearing_loot_items_with_rng(
-            self,
-            &vanilla_loot_tables::SHEARING_MOOSHROOM,
-            tool,
-            &mut rng,
-        ) {
-            self.spawn_shearing_drop(&drop);
-        }
-
-        // TODO: Replace these local transfers with the shared conversion state transfer API.
-        let cow = Arc::new(CowEntity::new(
-            &vanilla_entities::COW,
-            next_entity_id(),
-            self.position(),
-            Arc::downgrade(world),
-        ));
-        cow.set_rotation(self.rotation());
-        if let Some(custom_name) = self.custom_name() {
-            cow.set_custom_name(Some(custom_name));
-        }
-        cow.set_custom_name_visible(self.is_custom_name_visible());
-        cow.set_invulnerable(self.is_invulnerable());
-        if self.is_no_ai() {
-            cow.set_no_ai(true);
-        }
-        cow.set_age(self.get_age());
-        cow.set_age_locked(self.is_age_locked());
-        for effect in self.active_mob_effects() {
-            cow.add_mob_effect(effect);
-        }
-
-        let _ = world.try_add_entity(cow);
-        self.set_removed(RemovalReason::Discarded);
-        world.send_particles(
-            ParticleData::simple(&vanilla_particle_types::EXPLOSION),
-            self.position() + DVec3::Y * (self.bounding_box().height() * 0.5),
-            1,
-            DVec3::ZERO,
-            0.0,
-        );
-    }
-
     fn spawn_shearing_drop(&self, drop: &ItemStack) {
         for _ in 0..drop.count() {
             let _ = self.spawn_at_location(drop.copy_with_count(1), self.bounding_box().height());
@@ -350,7 +296,7 @@ impl MushroomCowEntity {
     }
 
     fn try_interact_shears(&self, player: &Player, hand: InteractionHand) -> InteractionResult {
-        if AgeableMob::is_baby(self) {
+        if !self.ready_for_shearing() {
             return InteractionResult::Pass;
         }
 
@@ -362,7 +308,7 @@ impl MushroomCowEntity {
             let inventory = player.inventory.lock();
             inventory.get_item_in_hand(hand).copy_with_count(1)
         };
-        self.shear(&world, &tool);
+        self.shear(&world, SoundSource::Players, &tool);
         world.game_event_at(
             &vanilla_game_events::SHEAR,
             self.position(),
@@ -426,6 +372,66 @@ impl MushroomCowEntity {
         self.entity_data.set_base_invisible_flag(display.invisible);
         self.entity_data
             .set_base_glowing_flag(self.has_glowing_tag() || display.glowing);
+    }
+}
+
+impl Shearable for MushroomCowEntity {
+    fn ready_for_shearing(&self) -> bool {
+        !AgeableMob::is_baby(self)
+    }
+
+    /// Converts the mooshroom into a normal cow and drops vanilla loot.
+    fn shear(&self, world: &Arc<World>, source: SoundSource, tool: &ItemStack) {
+        world.play_sound_at(
+            &sound_events::ENTITY_MOOSHROOM_SHEAR,
+            source,
+            self.position(),
+            1.0,
+            1.0,
+            None,
+        );
+
+        let mut rng = rand::rng();
+        for drop in shearing_loot_items_with_rng(
+            self,
+            &vanilla_loot_tables::SHEARING_MOOSHROOM,
+            tool,
+            &mut rng,
+        ) {
+            self.spawn_shearing_drop(&drop);
+        }
+
+        // TODO: Replace these local transfers with the shared conversion state transfer API.
+        let cow = Arc::new(CowEntity::new(
+            &vanilla_entities::COW,
+            next_entity_id(),
+            self.position(),
+            Arc::downgrade(world),
+        ));
+        cow.set_rotation(self.rotation());
+        if let Some(custom_name) = self.custom_name() {
+            cow.set_custom_name(Some(custom_name));
+        }
+        cow.set_custom_name_visible(self.is_custom_name_visible());
+        cow.set_invulnerable(self.is_invulnerable());
+        if self.is_no_ai() {
+            cow.set_no_ai(true);
+        }
+        cow.set_age(self.get_age());
+        cow.set_age_locked(self.is_age_locked());
+        for effect in self.active_mob_effects() {
+            cow.add_mob_effect(effect);
+        }
+
+        let _ = world.try_add_entity(cow);
+        self.set_removed(RemovalReason::Discarded);
+        world.send_particles(
+            ParticleData::simple(&vanilla_particle_types::EXPLOSION),
+            self.position() + DVec3::Y * (self.bounding_box().height() * 0.5),
+            1,
+            DVec3::ZERO,
+            0.0,
+        );
     }
 }
 

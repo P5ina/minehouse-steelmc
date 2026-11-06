@@ -1627,6 +1627,11 @@ pub trait Entity: EntityEventSource + ErasedType + Send + Sync + 'static {
         try_as_dyn::<Self, dyn Leashable>(self)
     }
 
+    /// Returns this entity as a `Shearable` when shears can be used on it.
+    fn as_shearable(&self) -> Option<&dyn Shearable> {
+        try_as_dyn::<Self, dyn Shearable>(self)
+    }
+
     /// Returns true for entities that implement vanilla animal behavior.
     fn is_animal(&self) -> bool {
         self.as_animal().is_some()

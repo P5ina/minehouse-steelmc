@@ -544,8 +544,8 @@
         2.5
       ],
       "PersistenceRequired": "1b",
-      "InLove": "600",
-      "Age": "0"
+      "InLove": 600,
+      "Age": 0
     },
     {
       "at": 1,
@@ -558,8 +558,8 @@
         2.5
       ],
       "PersistenceRequired": "1b",
-      "InLove": "600",
-      "Age": "0"
+      "InLove": 600,
+      "Age": 0
     },
     {
       "at": 2,
