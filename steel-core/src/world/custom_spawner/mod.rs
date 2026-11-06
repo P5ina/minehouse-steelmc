@@ -1,6 +1,7 @@
 //! Vanilla `CustomSpawner`: spawners that run once per level tick after the
 //! natural spawner, outside the per-chunk mob caps.
 
+mod patrol;
 mod phantom;
 #[cfg(test)]
 mod tests;
@@ -11,6 +12,7 @@ use steel_registry::dimension_type::DimensionTypeRef;
 use steel_registry::vanilla_dimension_types;
 use steel_registry::vanilla_game_rules::SPAWN_MOBS;
 
+pub(crate) use patrol::PatrolSpawner;
 pub(crate) use phantom::PhantomSpawner;
 
 use crate::world::World;
@@ -26,7 +28,10 @@ pub(crate) trait CustomSpawner: Send {
 /// dimension type stands in for the overworld level key.
 pub(crate) fn custom_spawners_for(dimension_type: DimensionTypeRef) -> Vec<Box<dyn CustomSpawner>> {
     if dimension_type == &vanilla_dimension_types::OVERWORLD {
-        vec![Box::new(PhantomSpawner::default())]
+        vec![
+            Box::new(PhantomSpawner::default()),
+            Box::new(PatrolSpawner::default()),
+        ]
     } else {
         Vec::new()
     }
