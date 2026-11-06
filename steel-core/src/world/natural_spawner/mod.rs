@@ -300,7 +300,7 @@ impl World {
         pos_chunk == chunk_pos || self.can_spawn_entities_in_chunk(pos_chunk)
     }
 
-    /// Vanilla `NaturalSpawner.isValidSpawnPostitionForType`.
+    /// Vanilla `NaturalSpawner.isValidSpawnPositionForType`.
     fn is_valid_spawn_position_for_type(
         self: &Arc<Self>,
         category: MobCategory,
