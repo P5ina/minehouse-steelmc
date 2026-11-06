@@ -12,6 +12,7 @@ use steel_utils::Identifier;
 
 use super::nbt;
 use super::report::ImportReport;
+use super::structure_templates;
 use crate::chunk_saver::{
     PersistentBoundingBox, PersistentJigsawJunction, PersistentJigsawPieceData,
     PersistentPoolElement, PersistentProcessorList, PersistentStructurePiece,
@@ -87,10 +88,23 @@ fn structure_piece(piece: &NbtCompound) -> Result<PersistentStructurePiece, Stri
         return Err(format!("invalid piece orientation {orientation}"));
     }
     let orientation = orientation as i8;
-    match piece_type.as_str() {
-        JIGSAW_PIECE => jigsaw_piece(piece, bounding_box, gen_depth, orientation),
-        other => Err(format!("unsupported structure piece {other}")),
+    if piece_type == JIGSAW_PIECE {
+        return jigsaw_piece(piece, bounding_box, gen_depth, orientation);
     }
+    let (payload, bounding_box) = structure_templates::template_payload(&piece_type, piece)
+        .ok_or_else(|| format!("unsupported structure piece {piece_type}"))??;
+    let piece_type = nbt::identifier(&piece_type).ok_or("malformed piece id")?;
+    Ok(PersistentStructurePiece {
+        piece_type,
+        bounding_box,
+        gen_depth,
+        orientation,
+        payload,
+        // Template pieces have no terrain adaptation data.
+        ground_level_delta: 0,
+        projection: -1,
+        junctions: Vec::new(),
+    })
 }
 
 /// Vanilla `PoolElementStructurePiece(StructurePieceSerializationContext, CompoundTag)`.

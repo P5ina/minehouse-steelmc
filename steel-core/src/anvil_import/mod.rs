@@ -13,7 +13,7 @@
 //!
 //! Chunks that are not `minecraft:full` are skipped; Steel generates them again from the seed.
 //! Structure starts are converted when Steel can represent every piece of them; the others are
-//! dropped and counted in the report. Only jigsaw structures are converted so far.
+//! dropped and counted in the report. Jigsaw and template-backed structures are converted so far.
 //!
 //! Content Steel does not know (blocks, biomes, block entities or entities from mods) cannot be
 //! represented in Steel's typed format. Unknown blocks become air, unknown biomes become
@@ -28,6 +28,7 @@ mod players;
 mod poi;
 pub mod region;
 mod report;
+mod structure_templates;
 mod structures;
 
 #[cfg(test)]

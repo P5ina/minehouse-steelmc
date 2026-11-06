@@ -36,14 +36,16 @@ use steel_registry::template_pool::Projection;
 use steel_registry::vanilla_dimension_types::OVERWORLD;
 use steel_registry::{REGISTRY, vanilla_blocks};
 use steel_utils::{BlockPos, ChunkPos, Identifier};
-use steel_worldgen::structure::StructurePiecePayload;
+use steel_worldgen::structure::{StructurePiecePayload, TemplateMarkerHandling};
 
 use super::*;
 use crate::bootstrap::init_globals;
 use crate::chunk::full_chunk::FullChunkRef;
 use crate::chunk_saver::{
     ChunkStorage, PersistentBoundingBox, PersistentJigsawPieceData, PersistentPoolElement,
-    PersistentProcessorList, PersistentStructurePiecePayload,
+    PersistentProcessorList, PersistentStructurePiece, PersistentStructurePiecePayload,
+    PersistentStructureStart, PersistentTemplatePieceData, PersistentTemplatePlacementAdjustment,
+    PersistentTemplateProcessorList,
 };
 use crate::player::player_data::{PersistentPlayerData, PersistentSlot};
 
@@ -549,13 +551,156 @@ fn assert_imported_items(data: &PersistentPlayerData) {
     );
 }
 
-/// Reads `fixtures/structures/jigsaw.nbt`: the starts of a plains village, an ancient city and
-/// trial chambers, cut unchanged from the `structures.starts` of their origin chunks in a seed 777
-/// world saved by the vanilla 26.3 server.
-fn jigsaw_fixture() -> NbtCompound {
+/// Reads a file of `fixtures/structures`: structure starts cut unchanged from the
+/// `structures.starts` of their origin chunks in a seed 777 world saved by the vanilla 26.3
+/// server, merged into one `starts` compound.
+///
+/// - `jigsaw.nbt`: a plains village, an ancient city and trial chambers.
+/// - `templates.nbt`: a shipwreck, an igloo with a basement, a cold ocean ruin, a ruined portal,
+///   a nether fossil, an end city and a woodland mansion.
+fn structure_fixture(name: &str) -> NbtCompound {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("src/anvil_import/fixtures/structures/jigsaw.nbt");
+        .join("src/anvil_import/fixtures/structures")
+        .join(name);
     level::read_gzip_root(&path).expect("structure fixture should read")
+}
+
+fn jigsaw_fixture() -> NbtCompound {
+    structure_fixture("jigsaw.nbt")
+}
+
+fn template_data(piece: &PersistentStructurePiece) -> &PersistentTemplatePieceData {
+    let PersistentStructurePiecePayload::Template(data) = &piece.payload else {
+        panic!("{} is a template piece", piece.piece_type);
+    };
+    data
+}
+
+#[test]
+fn vanilla_template_starts_are_converted() {
+    init_globals();
+    let mut report = ImportReport::default();
+    let starts = structures::structure_starts(&structure_fixture("templates.nbt"), &mut report);
+    assert!(report.structure_starts_dropped.is_empty(), "{report}");
+    let piece_counts: Vec<_> = starts
+        .iter()
+        .map(|start| (start.structure.path.as_ref().to_owned(), start.pieces.len()))
+        .collect();
+    let expected = [
+        ("shipwreck", 1),
+        ("igloo", 12),
+        ("ocean_ruin_cold", 15),
+        ("ruined_portal", 1),
+        ("nether_fossil", 1),
+        ("end_city", 94),
+        ("mansion", 559),
+    ];
+    assert_eq!(
+        piece_counts,
+        expected.map(|(structure, pieces)| (structure.to_owned(), pieces))
+    );
+    for piece in starts.iter().flat_map(|start| &start.pieces) {
+        assert_eq!((piece.orientation, piece.projection), (2, -1));
+        assert!(piece.junctions.is_empty());
+    }
+
+    assert_small_template_pieces(&starts);
+
+    let end_city = template_data(&starts[5].pieces[0]);
+    assert_eq!(
+        end_city.template_id,
+        Identifier::vanilla_static("end_city/base_floor")
+    );
+    assert_eq!((end_city.block_ignore, end_city.marker_handling), (1, 6));
+
+    let mansion = &starts[6].pieces;
+    let entrance = template_data(&mansion[0]);
+    assert_eq!(
+        entrance.template_id,
+        Identifier::vanilla_static("woodland_mansion/entrance")
+    );
+    assert_eq!((entrance.rotation, entrance.marker_handling), (3, 7));
+    assert!(
+        mansion.iter().any(|piece| template_data(piece).mirror == 2),
+        "mansion rooms keep their LEFT_RIGHT mirror"
+    );
+}
+
+/// Shipwreck, igloo, ocean ruin, ruined portal and nether fossil of `templates.nbt`.
+fn assert_small_template_pieces(starts: &[PersistentStructureStart]) {
+    let shipwreck = &starts[0].pieces[0];
+    assert_eq!(
+        shipwreck.piece_type,
+        Identifier::vanilla_static("shipwreck")
+    );
+    let data = template_data(shipwreck);
+    assert_eq!(
+        data.template_id,
+        Identifier::vanilla_static("shipwreck/upsidedown_fronthalf_degraded")
+    );
+    assert_eq!(data.template_position, [12864, 90, 2208]);
+    assert_eq!((data.rotation, data.rotation_pivot), (2, [4, 0, 15]));
+    assert_eq!((data.block_ignore, data.marker_handling), (2, 2));
+    assert!(matches!(
+        data.placement_adjustment,
+        PersistentTemplatePlacementAdjustment::Shipwreck {
+            is_beached: false,
+            height_adjusted: false
+        }
+    ));
+
+    let igloo = &starts[1].pieces;
+    // Vanilla saved the basement's box moved to the terrain by the placement, at y 33; loading
+    // computes it again from the template position, as vanilla does.
+    assert_eq!(
+        (igloo[0].bounding_box.min_y, igloo[0].bounding_box.max_y),
+        (54, 59)
+    );
+    let bottom = template_data(&igloo[0]);
+    assert_eq!(
+        bottom.template_id,
+        Identifier::vanilla_static("igloo/bottom")
+    );
+    assert_eq!((bottom.rotation_pivot, bottom.post_process), ([3, 6, 7], 0));
+    assert!(matches!(
+        bottom.placement_adjustment,
+        PersistentTemplatePlacementAdjustment::Igloo {
+            template_offset: [0, -3, -2]
+        }
+    ));
+    let top = template_data(igloo.last().expect("igloo has pieces"));
+    assert_eq!(top.template_id, Identifier::vanilla_static("igloo/top"));
+    assert_eq!(
+        (top.post_process, top.liquid_settings, top.block_ignore),
+        (2, 1, 1)
+    );
+
+    let ruin = template_data(&starts[2].pieces[0]);
+    assert_eq!((ruin.late_block_ignore, ruin.marker_handling), (2, 5));
+    assert!(matches!(
+        ruin.processors,
+        PersistentTemplateProcessorList::OceanRuin { biome_temp: 1, integrity } if (integrity - 0.9).abs() < f32::EPSILON
+    ));
+
+    let portal = template_data(&starts[3].pieces[0]);
+    assert_eq!(
+        portal.template_id,
+        Identifier::vanilla_static("ruined_portal/portal_7")
+    );
+    assert_eq!((portal.mirror, portal.block_ignore), (0, 2));
+    assert_eq!((portal.placement_clip, portal.post_process), (2, 3));
+    assert!(matches!(
+        portal.processors,
+        PersistentTemplateProcessorList::RuinedPortal {
+            vertical_placement: 0,
+            cold: false,
+            air_pocket: false,
+            ..
+        }
+    ));
+
+    let fossil = template_data(&starts[4].pieces[0]);
+    assert_eq!((fossil.placement_clip, fossil.post_process), (1, 1));
 }
 
 #[test]
@@ -708,6 +853,12 @@ async fn imported_structure_starts_load_in_steel() {
         panic!("fixture chunk (0, 0) is full");
     };
     persistent.structure_starts = structures::structure_starts(&jigsaw_fixture(), &mut report);
+    persistent
+        .structure_starts
+        .extend(structures::structure_starts(
+            &structure_fixture("templates.nbt"),
+            &mut report,
+        ));
 
     let manager = RegionManager::new(&target);
     manager
@@ -748,7 +899,16 @@ async fn imported_structure_starts_load_in_steel() {
         };
         assert_eq!(data.position, IVec3::new(10176, 67, 1760));
         assert_eq!(village.pieces[0].projection, Some(Projection::Rigid));
-        assert_eq!(starts.len(), 3);
+        let mansion = starts
+            .get(&Identifier::vanilla_static("mansion"))
+            .expect("mansion start should load");
+        assert_eq!(mansion.pieces.len(), 559);
+        assert!(matches!(
+            &mansion.pieces[0].payload,
+            StructurePiecePayload::Template(data)
+                if data.marker_handling == TemplateMarkerHandling::WoodlandMansion
+        ));
+        assert_eq!(starts.len(), 10);
     }
     manager
         .release_chunk(pos)
