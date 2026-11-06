@@ -842,7 +842,12 @@ pub trait LivingEntity: Entity {
     }
 
     /// Reduces damage based on the resistance effect, unless the source bypasses it or effects entirely.
-    fn get_damage_after_magic_absorb(&self, source: &DamageSource, mut damage: f32) -> f32 {
+    fn get_damage_after_magic_absorb(&self, source: &DamageSource, damage: f32) -> f32 {
+        self.default_get_damage_after_magic_absorb(source, damage)
+    }
+
+    /// Vanilla `LivingEntity.getDamageAfterMagicAbsorb`, for overrides that call `super`.
+    fn default_get_damage_after_magic_absorb(&self, source: &DamageSource, mut damage: f32) -> f32 {
         if source.is(&vanilla_damage_type_tags::DamageTypeTag::BYPASSES_EFFECTS) {
             return damage;
         }

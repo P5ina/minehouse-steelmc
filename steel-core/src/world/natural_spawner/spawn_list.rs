@@ -8,6 +8,7 @@ use steel_registry::blocks::block_state_ext::BlockStateExt as _;
 use steel_registry::entity_type::{EntityTypeRef, MobCategory};
 use steel_registry::structure::{StructureSpawnBoundingBox, StructureSpawnerData};
 use steel_registry::{REGISTRY, RegistryExt, vanilla_blocks, vanilla_entities};
+use steel_utils::random::Random;
 use steel_utils::{BlockPos, ChunkPos, Identifier, SectionPos};
 
 use crate::chunk::status::ChunkStatus;
@@ -77,6 +78,18 @@ impl SpawnerEntry {
             random.random_range(self.min_count..=self.max_count)
         }
     }
+
+    /// Vanilla `count().sample(random)` drawn from a Java random.
+    ///
+    /// Biome data writes equal bounds only as a `ConstantInt`, which draws
+    /// nothing; `UniformInt` draws `nextInt(max - min + 1) + min`.
+    pub(crate) fn sample_count_java(&self, random: &mut impl Random) -> i32 {
+        if self.max_count <= self.min_count {
+            self.min_count
+        } else {
+            random.next_i32_bounded(self.max_count - self.min_count + 1) + self.min_count
+        }
+    }
 }
 
 /// Vanilla `WeightedList<SpawnerData>`.
@@ -101,7 +114,25 @@ impl SpawnList {
         if total_weight <= 0 {
             return None;
         }
-        let mut selection = random.random_range(0..total_weight);
+        self.pick(random.random_range(0..total_weight))
+    }
+
+    /// Vanilla `WeightedList.getRandom` drawn from a Java random.
+    pub(crate) fn get_random_java(&self, random: &mut impl Random) -> Option<SpawnerEntry> {
+        let total_weight = self.total_weight();
+        if total_weight <= 0 {
+            return None;
+        }
+        self.pick(random.next_i32_bounded(total_weight))
+    }
+
+    /// Whether the list has no entries.
+    pub(crate) const fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
+    /// The entry whose cumulative weight covers `selection`.
+    fn pick(&self, mut selection: i32) -> Option<SpawnerEntry> {
         for entry in &self.entries {
             let weight = entry.weight.max(0);
             if selection < weight {
@@ -158,6 +189,20 @@ impl World {
             && self.structure_start_contains(&FORTRESS, pos, |start_box, _| start_box)
     }
 
+    /// The biome's spawners for `category`, vanilla `MobSpawnSettings.getMobsToSpawn`.
+    pub(crate) fn biome_mobs_at(&self, category: MobCategory, pos: BlockPos) -> SpawnList {
+        self.biome_at(pos)
+            .and_then(|biome| biome.spawners.get(category.serialized_name()))
+            .map_or_else(SpawnList::default, |spawners| {
+                SpawnList::new(
+                    spawners
+                        .iter()
+                        .filter_map(SpawnerEntry::from_biome)
+                        .collect(),
+                )
+            })
+    }
+
     /// Vanilla `ChunkGenerator.getMobsAt`: the first structure override whose
     /// bounds contain `pos`, otherwise the biome's spawners for the category.
     fn generator_mobs_at(&self, category: MobCategory, pos: BlockPos) -> SpawnList {
@@ -187,16 +232,7 @@ impl World {
             }
         }
 
-        self.biome_at(pos)
-            .and_then(|biome| biome.spawners.get(category.serialized_name()))
-            .map_or_else(SpawnList::default, |spawners| {
-                SpawnList::new(
-                    spawners
-                        .iter()
-                        .filter_map(SpawnerEntry::from_biome)
-                        .collect(),
-                )
-            })
+        self.biome_mobs_at(category, pos)
     }
 
     /// Structure ids referenced by the chunk containing `pos`.

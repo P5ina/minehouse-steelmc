@@ -11,6 +11,7 @@ pub use mobs::hostile::{
     WitherSkeletonEntity, ZombieEntity, ZombieGroupData,
 };
 pub use mobs::passive::*;
+pub use mobs::raiders::WitchEntity;
 pub use objects::display_ui::{BlockDisplayEntity, ItemFrameEntity, LeashFenceKnotEntity};
 pub use objects::effects::{AreaEffectCloudEntity, LightningBoltEntity};
 pub use objects::explosives::{EndCrystalEntity, PrimedTntEntity};

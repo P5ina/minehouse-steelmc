@@ -7,3 +7,4 @@ pub mod hostile;
 pub mod jockeys;
 pub mod neutral;
 pub mod passive;
+pub mod raiders;

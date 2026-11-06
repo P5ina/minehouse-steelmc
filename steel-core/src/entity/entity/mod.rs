@@ -1,8 +1,8 @@
 use std::collections::BTreeSet;
 
 use super::*;
-use crate::entity::entities::LightningBoltEntity;
 use crate::entity::entities::mobs::hostile::cube_mob::AbstractCubeMob;
+use crate::entity::entities::{LightningBoltEntity, Squid};
 use crate::entity::{leash::Leashable, pushing::EntityPush};
 use rand::{RngExt, rng};
 use steel_math::DEGREE_90;
@@ -1666,6 +1666,21 @@ pub trait Entity: EntityEventSource + ErasedType + Send + Sync + 'static {
         try_as_dyn::<Self, dyn Animal>(self)
     }
 
+    /// Returns this entity as a fish when it has vanilla `AbstractFish` behavior.
+    fn as_abstract_fish(&self) -> Option<&dyn AbstractFish> {
+        try_as_dyn::<Self, dyn AbstractFish>(self)
+    }
+
+    /// Returns this entity as a schooling fish (vanilla `AbstractSchoolingFish`).
+    fn as_schooling_fish(&self) -> Option<&dyn AbstractSchoolingFish> {
+        try_as_dyn::<Self, dyn AbstractSchoolingFish>(self)
+    }
+
+    /// Returns this entity as a squid (vanilla `Squid`, including glow squids).
+    fn as_squid(&self) -> Option<&dyn Squid> {
+        try_as_dyn::<Self, dyn Squid>(self)
+    }
+
     /// Returns true for entities that implement vanilla hostile-mob behavior.
     fn is_monster(&self) -> bool {
         self.as_monster().is_some()
@@ -1684,6 +1699,17 @@ pub trait Entity: EntityEventSource + ErasedType + Send + Sync + 'static {
     /// Returns the `Enemy` marker, equivalent to vanilla's `instanceof Enemy`.
     fn as_enemy(&self) -> Option<&dyn Enemy> {
         try_as_dyn::<Self, dyn Enemy>(self)
+    }
+
+    /// Returns the `PatrollingMonster` capability, equivalent to vanilla's
+    /// `instanceof PatrollingMonster`.
+    fn as_patrolling_monster(&self) -> Option<&dyn PatrollingMonster> {
+        try_as_dyn::<Self, dyn PatrollingMonster>(self)
+    }
+
+    /// Returns the `Raider` capability, equivalent to vanilla's `instanceof Raider`.
+    fn as_raider(&self) -> Option<&dyn Raider> {
+        try_as_dyn::<Self, dyn Raider>(self)
     }
 
     /// Returns the `NeutralMob` capability, equivalent to vanilla's `instanceof NeutralMob`.

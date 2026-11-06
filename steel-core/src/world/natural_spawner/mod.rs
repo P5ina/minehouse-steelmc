@@ -1,9 +1,12 @@
 //! Vanilla `NaturalSpawner`: periodic mob spawning around players.
 
+mod chunk_generation;
 mod spawn_list;
 mod spawn_state;
 #[cfg(test)]
 mod tests;
+
+pub(crate) use chunk_generation::{set_decoration_seed, spawn_mobs_for_chunk_generation};
 
 use std::sync::Arc;
 

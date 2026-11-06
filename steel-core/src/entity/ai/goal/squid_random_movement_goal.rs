@@ -2,15 +2,13 @@ use std::f32::consts::TAU;
 
 use glam::DVec3;
 use steel_math::trig;
-use steel_utils::Downcast;
 
 use crate::entity::{
-    Entity, LivingEntity, PathfinderMob, SharedEntity,
+    PathfinderMob, SharedEntity,
     ai::goal::{
         reduced_tick_delay,
         selector::{Goal, GoalControls},
     },
-    entities::SquidEntity,
 };
 
 /// Ticks without action after which the squid stops moving.
@@ -41,7 +39,7 @@ impl Goal for SquidRandomMovementGoal {
     }
 
     fn tick(&mut self, mob: &dyn PathfinderMob, _entity: &SharedEntity) {
-        let Some(squid) = mob.downcast_ref::<SquidEntity>() else {
+        let Some(squid) = mob.as_squid() else {
             tracing::warn!("SquidRandomMovementGoal assigned to non-squid entity");
             return;
         };
