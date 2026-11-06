@@ -1,0 +1,314 @@
+{
+  "$schema": "https://raw.githubusercontent.com/FlintTestMC/flint-core/refs/heads/main/flint-content/test_spec_schema.json",
+  "flintVersion": "1.0.0",
+  "name": "minehouse_dispenser_water_flows_7",
+  "description": "A dispenser pours water into a one-wide channel; it flows 7 blocks.",
+  "tags": [
+    "minehouse",
+    "dispenser",
+    "fluid"
+  ],
+  "minecraftIds": [
+    "minecraft:dispenser",
+    "minecraft:glass",
+    "minecraft:stone"
+  ],
+  "dependencies": [],
+  "setup": {
+    "cleanup": {
+      "region": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          9,
+          3,
+          2
+        ]
+      ]
+    }
+  },
+  "timeline": [
+    {
+      "at": 0,
+      "do": "fill",
+      "region": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          9,
+          0,
+          2
+        ]
+      ],
+      "with": {
+        "id": "minecraft:stone"
+      }
+    },
+    {
+      "at": 0,
+      "do": "place_each",
+      "blocks": [
+        {
+          "pos": [
+            0,
+            1,
+            0
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            0,
+            1,
+            2
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            1,
+            1,
+            0
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            1,
+            1,
+            2
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            2,
+            1,
+            0
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            2,
+            1,
+            2
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            3,
+            1,
+            0
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            3,
+            1,
+            2
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            4,
+            1,
+            0
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            4,
+            1,
+            2
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            5,
+            1,
+            0
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            5,
+            1,
+            2
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            6,
+            1,
+            0
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            6,
+            1,
+            2
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            7,
+            1,
+            0
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            7,
+            1,
+            2
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            8,
+            1,
+            0
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            8,
+            1,
+            2
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            9,
+            1,
+            0
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            9,
+            1,
+            2
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            0,
+            1,
+            1
+          ],
+          "block": {
+            "id": "minecraft:glass"
+          }
+        },
+        {
+          "pos": [
+            1,
+            2,
+            1
+          ],
+          "block": {
+            "id": "minecraft:dispenser",
+            "facing": "down",
+            "triggered": false,
+            "nbt": {
+              "Items": "[{Slot: 0b, count: 1, id: \"minecraft:water_bucket\"}]"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "at": 1,
+      "do": "place",
+      "pos": [
+        2,
+        2,
+        1
+      ],
+      "block": {
+        "id": "minecraft:redstone_block"
+      }
+    },
+    {
+      "at": 100,
+      "do": "assert",
+      "checks": [
+        {
+          "pos": [
+            8,
+            1,
+            1
+          ],
+          "is": {
+            "id": "minecraft:water"
+          }
+        }
+      ]
+    }
+  ],
+  "breakpoints": []
+}

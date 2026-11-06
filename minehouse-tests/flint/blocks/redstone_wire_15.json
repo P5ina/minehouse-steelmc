@@ -1,0 +1,324 @@
+{
+  "$schema": "https://raw.githubusercontent.com/FlintTestMC/flint-core/refs/heads/main/flint-content/test_spec_schema.json",
+  "flintVersion": "1.0.0",
+  "name": "minehouse_redstone_wire_15",
+  "description": "A redstone block powers a 15-long wire line: 15 next to it, 1 at the end.",
+  "tags": [
+    "minehouse",
+    "redstone"
+  ],
+  "minecraftIds": [
+    "minecraft:redstone_wire",
+    "minecraft:stone"
+  ],
+  "dependencies": [],
+  "setup": {
+    "cleanup": {
+      "region": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          16,
+          2,
+          0
+        ]
+      ]
+    }
+  },
+  "timeline": [
+    {
+      "at": 0,
+      "do": "fill",
+      "region": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          16,
+          0,
+          0
+        ]
+      ],
+      "with": {
+        "id": "minecraft:stone"
+      }
+    },
+    {
+      "at": 0,
+      "do": "place_each",
+      "blocks": [
+        {
+          "pos": [
+            1,
+            1,
+            0
+          ],
+          "block": {
+            "id": "minecraft:redstone_wire",
+            "east": "side",
+            "west": "side",
+            "north": "none",
+            "south": "none",
+            "power": 0
+          }
+        },
+        {
+          "pos": [
+            2,
+            1,
+            0
+          ],
+          "block": {
+            "id": "minecraft:redstone_wire",
+            "east": "side",
+            "west": "side",
+            "north": "none",
+            "south": "none",
+            "power": 0
+          }
+        },
+        {
+          "pos": [
+            3,
+            1,
+            0
+          ],
+          "block": {
+            "id": "minecraft:redstone_wire",
+            "east": "side",
+            "west": "side",
+            "north": "none",
+            "south": "none",
+            "power": 0
+          }
+        },
+        {
+          "pos": [
+            4,
+            1,
+            0
+          ],
+          "block": {
+            "id": "minecraft:redstone_wire",
+            "east": "side",
+            "west": "side",
+            "north": "none",
+            "south": "none",
+            "power": 0
+          }
+        },
+        {
+          "pos": [
+            5,
+            1,
+            0
+          ],
+          "block": {
+            "id": "minecraft:redstone_wire",
+            "east": "side",
+            "west": "side",
+            "north": "none",
+            "south": "none",
+            "power": 0
+          }
+        },
+        {
+          "pos": [
+            6,
+            1,
+            0
+          ],
+          "block": {
+            "id": "minecraft:redstone_wire",
+            "east": "side",
+            "west": "side",
+            "north": "none",
+            "south": "none",
+            "power": 0
+          }
+        },
+        {
+          "pos": [
+            7,
+            1,
+            0
+          ],
+          "block": {
+            "id": "minecraft:redstone_wire",
+            "east": "side",
+            "west": "side",
+            "north": "none",
+            "south": "none",
+            "power": 0
+          }
+        },
+        {
+          "pos": [
+            8,
+            1,
+            0
+          ],
+          "block": {
+            "id": "minecraft:redstone_wire",
+            "east": "side",
+            "west": "side",
+            "north": "none",
+            "south": "none",
+            "power": 0
+          }
+        },
+        {
+          "pos": [
+            9,
+            1,
+            0
+          ],
+          "block": {
+            "id": "minecraft:redstone_wire",
+            "east": "side",
+            "west": "side",
+            "north": "none",
+            "south": "none",
+            "power": 0
+          }
+        },
+        {
+          "pos": [
+            10,
+            1,
+            0
+          ],
+          "block": {
+            "id": "minecraft:redstone_wire",
+            "east": "side",
+            "west": "side",
+            "north": "none",
+            "south": "none",
+            "power": 0
+          }
+        },
+        {
+          "pos": [
+            11,
+            1,
+            0
+          ],
+          "block": {
+            "id": "minecraft:redstone_wire",
+            "east": "side",
+            "west": "side",
+            "north": "none",
+            "south": "none",
+            "power": 0
+          }
+        },
+        {
+          "pos": [
+            12,
+            1,
+            0
+          ],
+          "block": {
+            "id": "minecraft:redstone_wire",
+            "east": "side",
+            "west": "side",
+            "north": "none",
+            "south": "none",
+            "power": 0
+          }
+        },
+        {
+          "pos": [
+            13,
+            1,
+            0
+          ],
+          "block": {
+            "id": "minecraft:redstone_wire",
+            "east": "side",
+            "west": "side",
+            "north": "none",
+            "south": "none",
+            "power": 0
+          }
+        },
+        {
+          "pos": [
+            14,
+            1,
+            0
+          ],
+          "block": {
+            "id": "minecraft:redstone_wire",
+            "east": "side",
+            "west": "side",
+            "north": "none",
+            "south": "none",
+            "power": 0
+          }
+        },
+        {
+          "pos": [
+            15,
+            1,
+            0
+          ],
+          "block": {
+            "id": "minecraft:redstone_wire",
+            "east": "side",
+            "west": "side",
+            "north": "none",
+            "south": "none",
+            "power": 0
+          }
+        }
+      ]
+    },
+    {
+      "at": 1,
+      "do": "place",
+      "pos": [
+        0,
+        1,
+        0
+      ],
+      "block": {
+        "id": "minecraft:redstone_block"
+      }
+    },
+    {
+      "at": 20,
+      "do": "assert",
+      "checks": [
+        {
+          "pos": [
+            1,
+            1,
+            0
+          ],
+          "is": {
+            "id": "minecraft:redstone_wire",
+            "power": 15
+          }
+        },
+        {
+          "pos": [
+            15,
+            1,
+            0
+          ],
+          "is": {
+            "id": "minecraft:redstone_wire",
+            "power": 1
+          }
+        }
+      ]
+    }
+  ],
+  "breakpoints": []
+}
