@@ -8,7 +8,6 @@ minehouse_mob_armadillo
 minehouse_mob_axolotl
 minehouse_mob_bee
 minehouse_mob_blaze
-minehouse_mob_bogged
 minehouse_mob_breeze
 minehouse_mob_camel
 minehouse_mob_camel_husk
@@ -35,7 +34,6 @@ minehouse_mob_mule
 minehouse_mob_nautilus
 minehouse_mob_ocelot
 minehouse_mob_panda
-minehouse_mob_parched
 minehouse_mob_parrot
 minehouse_mob_phantom
 minehouse_mob_pig
@@ -47,10 +45,8 @@ minehouse_mob_rabbit
 minehouse_mob_ravager
 minehouse_mob_shulker
 minehouse_mob_silverfish
-minehouse_mob_skeleton
 minehouse_mob_skeleton_horse
 minehouse_mob_sniffer
-minehouse_mob_stray
 minehouse_mob_strider
 minehouse_mob_sulfur_cube
 minehouse_mob_tadpole
@@ -62,7 +58,6 @@ minehouse_mob_vindicator
 minehouse_mob_wandering_trader
 minehouse_mob_warden
 minehouse_mob_wither
-minehouse_mob_wither_skeleton
 minehouse_mob_wolf
 minehouse_mob_zoglin
 minehouse_mob_zombie
