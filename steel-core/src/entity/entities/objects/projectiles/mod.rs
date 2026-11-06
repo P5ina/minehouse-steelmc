@@ -1,5 +1,6 @@
 //! Projectile entity implementations.
 
+mod arrow;
 mod ender_pearl;
 mod eye_of_ender;
 mod firework_rocket;
@@ -9,6 +10,7 @@ mod snowball;
 mod splash_potion;
 mod thrown_egg;
 
+pub use arrow::{ArrowEntity, SpectralArrowEntity};
 pub use ender_pearl::EnderPearlEntity;
 pub use eye_of_ender::EyeOfEnderEntity;
 pub use firework_rocket::FireworkRocketEntity;

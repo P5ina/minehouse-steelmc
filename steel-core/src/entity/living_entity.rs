@@ -2041,6 +2041,11 @@ pub trait LivingEntity: Entity {
         }
 
         self.tick_mob_effects();
+        if let Some(count) = self.living_base().tick_remove_arrow()
+            && let Some(entity_data) = self.living_synced_data()
+        {
+            entity_data.set_arrow_count(count);
+        }
         self.detect_equipment_updates();
 
         if !self.is_removed() {
@@ -2989,6 +2994,19 @@ pub trait LivingEntity: Entity {
         self.living_base().clear_sleeping_pos();
         if let Some(entity_data) = self.living_synced_data() {
             entity_data.clear_sleeping_pos();
+        }
+    }
+
+    /// Vanilla `getArrowCount`.
+    fn arrow_count(&self) -> i32 {
+        self.living_base().arrow_count()
+    }
+
+    /// Vanilla `setArrowCount`.
+    fn set_arrow_count(&self, count: i32) {
+        self.living_base().set_arrow_count(count);
+        if let Some(entity_data) = self.living_synced_data() {
+            entity_data.set_arrow_count(count);
         }
     }
 

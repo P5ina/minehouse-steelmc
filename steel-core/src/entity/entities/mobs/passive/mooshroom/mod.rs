@@ -634,15 +634,11 @@ impl Animal for MushroomCowEntity {
         CowEntity::is_food(item_stack)
     }
 
-    fn animal_walk_target_value(&self, pos: BlockPos) -> f32 {
-        let Some(world) = self.level() else {
-            return 0.0;
-        };
-
-        if world.get_block_state(pos.below()).get_block() == &vanilla_blocks::MYCELIUM {
+    fn animal_walk_target_value(&self, pos: BlockPos, level: &dyn LevelReader) -> f32 {
+        if level.get_block_state(pos.below()).get_block() == &vanilla_blocks::MYCELIUM {
             MYCELIUM_WALK_TARGET_VALUE
         } else {
-            world.pathfinding_cost_from_light_levels(pos)
+            level.pathfinding_cost_from_light_levels(pos)
         }
     }
 }
