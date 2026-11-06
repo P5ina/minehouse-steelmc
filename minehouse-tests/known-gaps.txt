@@ -12,7 +12,6 @@ minehouse_mob_camel
 minehouse_mob_camel_husk
 minehouse_mob_cat
 minehouse_mob_creaking
-minehouse_mob_dolphin
 minehouse_mob_donkey
 minehouse_mob_drowned
 minehouse_mob_ender_dragon

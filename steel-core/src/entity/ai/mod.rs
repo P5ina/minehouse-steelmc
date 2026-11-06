@@ -13,6 +13,7 @@ pub mod node_evaluator;
 pub mod path;
 pub mod pathfinder;
 pub(crate) mod sensing;
+pub(crate) mod smooth_swimming;
 pub mod swim;
 pub(crate) mod targeting;
 pub mod walk;

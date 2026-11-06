@@ -1,11 +1,12 @@
 use glam::DVec3;
 use steel_math::fast_floor;
 use steel_registry::blocks::block_state_ext::BlockStateExt as _;
-use steel_utils::BlockPos;
+use steel_utils::{BlockPos, Identifier};
 
 use super::selector::{Goal, GoalControls};
 use crate::entity::PathfinderMob;
 use crate::fluid::FluidStateExt as _;
+use crate::world::World;
 
 const WATER_SEARCH_HORIZONTAL_RADIUS: f64 = 2.0;
 const WATER_SEARCH_VERTICAL_BELOW: f64 = 2.0;
@@ -60,6 +61,70 @@ impl Goal for TryFindWaterGoal {
                     f64::from(water_pos.x()),
                     f64::from(water_pos.y()),
                     f64::from(water_pos.z()),
+                ),
+                WATER_MOVE_SPEED_MODIFIER,
+            );
+    }
+}
+
+/// Vanilla `TryFindLiquidGoal`: on land, steer toward a nearby block whose
+/// fluid is in `fluid_tag`.
+pub struct TryFindLiquidGoal {
+    fluid_tag: Identifier,
+}
+
+impl TryFindLiquidGoal {
+    #[must_use]
+    pub(crate) const fn new(fluid_tag: Identifier) -> Self {
+        Self { fluid_tag }
+    }
+
+    fn is_tagged_fluid(&self, world: &World, pos: BlockPos) -> bool {
+        world
+            .get_block_state(pos)
+            .get_fluid_state()
+            .fluid_id
+            .has_tag(&self.fluid_tag)
+    }
+}
+
+impl Goal for TryFindLiquidGoal {
+    fn controls(&self) -> GoalControls {
+        GoalControls::EMPTY
+    }
+
+    fn can_use(&mut self, mob: &dyn PathfinderMob) -> bool {
+        if !mob.on_ground() {
+            return false;
+        }
+
+        let Some(world) = mob.level() else {
+            return false;
+        };
+        !self.is_tagged_fluid(&world, mob.block_position())
+    }
+
+    fn start(&mut self, mob: &dyn PathfinderMob) {
+        let Some(world) = mob.level() else {
+            return;
+        };
+
+        let (min, max) = water_search_bounds(mob.position());
+        let Some(fluid_pos) =
+            first_matching_pos_in_closed_box(min, max, |pos| self.is_tagged_fluid(&world, pos))
+        else {
+            return;
+        };
+
+        mob.mob_base()
+            .controls()
+            .lock()
+            .move_control
+            .set_wanted_position(
+                DVec3::new(
+                    f64::from(fluid_pos.x()),
+                    f64::from(fluid_pos.y()),
+                    f64::from(fluid_pos.z()),
                 ),
                 WATER_MOVE_SPEED_MODIFIER,
             );
