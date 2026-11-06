@@ -21,7 +21,7 @@ use crate::entity::{
     SpawnGroupData,
 };
 use crate::physics::{MoveResult, MoverType};
-use crate::world::World;
+use crate::world::{ServerLevelAccessor, World};
 
 /// Vanilla `WaterAnimal.AMBIENT_SOUND_INTERVAL`.
 pub const WATER_ANIMAL_AMBIENT_SOUND_INTERVAL: i32 = 120;
@@ -82,15 +82,11 @@ pub fn handle_water_animal_air_supply<M: LivingEntity + ?Sized>(mob: &M, pre_tic
 }
 
 /// Vanilla `WaterAnimal.checkSpawnObstruction`: only other entities obstruct.
-pub fn water_animal_spawn_unobstructed<M: Mob + ?Sized>(mob: &M, world: &World) -> bool {
-    let aabb = mob.bounding_box();
-    !world.has_entity_in_aabb_matching(&aabb, |entity| {
-        entity.id() != mob.id()
-            && !entity.is_removed()
-            && !entity.is_spectator()
-            && entity.blocks_building()
-            && !entity.is_passenger_of_same_vehicle(mob.as_entity_event_source())
-    })
+pub fn water_animal_spawn_unobstructed<M: Mob + ?Sized>(
+    mob: &M,
+    level: &dyn ServerLevelAccessor,
+) -> bool {
+    level.is_unobstructed_by_entities(mob.as_entity_event_source())
 }
 
 /// Vanilla `WaterAnimal.getBaseExperienceReward`.
