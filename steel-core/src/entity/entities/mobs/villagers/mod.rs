@@ -1,5 +1,6 @@
 //! Villagers (Vanilla `AbstractVillager` and its subclasses).
 
+pub mod trading;
 mod villager;
 pub(crate) mod villager_data;
 
