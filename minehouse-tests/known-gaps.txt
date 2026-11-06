@@ -67,7 +67,6 @@ minehouse_mob_villager
 minehouse_mob_vindicator
 minehouse_mob_wandering_trader
 minehouse_mob_warden
-minehouse_mob_witch
 minehouse_mob_wither
 minehouse_mob_wither_skeleton
 minehouse_mob_wolf

@@ -14,6 +14,7 @@ pub(crate) struct HurtByTargetGoal {
     targeting: TargetingConditions,
     timestamp: i32,
     ignore_damage_types: Vec<DowncastTypeKey>,
+    ignore_damage_selector: Option<fn(&SharedEntity) -> bool>,
     alert_same_type: bool,
     ignore_alert_types: Vec<DowncastTypeKey>,
     alert_matcher: Option<fn(&dyn Entity) -> bool>,
@@ -29,6 +30,7 @@ impl HurtByTargetGoal {
                 .ignore_invisibility_testing(),
             timestamp: 0,
             ignore_damage_types: Vec::new(),
+            ignore_damage_selector: None,
             alert_same_type: false,
             ignore_alert_types: Vec::new(),
             alert_matcher: None,
@@ -41,6 +43,17 @@ impl HurtByTargetGoal {
         types: impl IntoIterator<Item = DowncastTypeKey>,
     ) -> Self {
         self.ignore_damage_types = types.into_iter().collect();
+        self
+    }
+
+    /// Ignores attackers of an abstract vanilla class, such as `Raider.class`, that
+    /// no single type key covers.
+    #[must_use]
+    pub(crate) const fn with_ignored_damage_selector(
+        mut self,
+        selector: fn(&SharedEntity) -> bool,
+    ) -> Self {
+        self.ignore_damage_selector = Some(selector);
         self
     }
 
@@ -139,6 +152,9 @@ impl Goal for HurtByTargetGoal {
         if self
             .ignore_damage_types
             .contains(&hurt_by_mob.downcast_type_key())
+            || self
+                .ignore_damage_selector
+                .is_some_and(|selector| selector(&hurt_by_mob))
         {
             return false;
         }
