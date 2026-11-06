@@ -315,7 +315,7 @@ fn chunk_generation_places_creatures_on_grass() {
     let mut spawned = Vec::new();
     for seed in 0_i64..64 {
         let mut random = LegacyRandom::from_seed(0);
-        // Java random draws barely differ for neighbouring small seeds.
+        // Java random draws barely differ for adjacent small seeds.
         set_decoration_seed(&mut random, seed.wrapping_mul(0x5851_F42D_4C95_7F2D), 0, 0);
         spawn_mobs_for_chunk_generation(
             &region,
