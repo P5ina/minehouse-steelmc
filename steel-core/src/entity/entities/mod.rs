@@ -7,9 +7,9 @@ pub use mobs::ambient::BatEntity;
 pub use mobs::golems::{IronGolemEntity, SnowGolemEntity};
 pub use mobs::hostile::{
     BlazeEntity, BoggedEntity, CaveSpiderEntity, CreeperEntity, EndermiteEntity, GhastEntity,
-    GiantEntity, HuskEntity, MagmaCubeEntity, ParchedEntity, PhantomEntity, SkeletonEntity,
-    SlimeEntity, SpiderEntity, StrayEntity, VexEntity, WitherSkeletonEntity, ZombieEntity,
-    ZombieGroupData,
+    GiantEntity, HuskEntity, MagmaCubeEntity, ParchedEntity, PhantomEntity, SilverfishEntity,
+    SkeletonEntity, SlimeEntity, SpiderEntity, StrayEntity, VexEntity, WitherSkeletonEntity,
+    ZombieEntity, ZombieGroupData,
 };
 pub use mobs::hostile::{ElderGuardianEntity, Guardian, GuardianEntity};
 pub use mobs::neutral::{PolarBearEntity, WolfEntity};
