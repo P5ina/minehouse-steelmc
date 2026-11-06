@@ -38,7 +38,7 @@ use steel_utils::{BlockPos, Identifier};
 
 const PLAYER_MAGIC: [u8; 4] = *b"STLP";
 const GLOBAL_MAGIC: [u8; 4] = *b"STLG";
-const PLAYER_STORAGE_VERSION: u16 = 10;
+const PLAYER_STORAGE_VERSION: u16 = 11;
 const GLOBAL_STORAGE_VERSION: u16 = 1;
 const GLOBAL_PLAYER_DATA_VERSION: i32 = 1;
 
@@ -93,6 +93,8 @@ struct PlayerDataFile {
     respawn_config: Option<RespawnConfigFile>,
     ender_pearls: Vec<EnderPearlFile>,
     ender_items: Vec<SlotFile>,
+    shoulder_entity_left: Vec<u8>,
+    shoulder_entity_right: Vec<u8>,
 }
 
 #[derive(SchemaWrite, SchemaRead)]
@@ -371,6 +373,8 @@ impl PlayerDataFile {
                     item_nbt: item_to_nbt_bytes(&slot.item).unwrap_or_default(),
                 })
                 .collect(),
+            shoulder_entity_left: data.shoulder_entity_left.clone(),
+            shoulder_entity_right: data.shoulder_entity_right.clone(),
         })
     }
 
@@ -458,6 +462,8 @@ impl PlayerDataFile {
             },
             stats: Vec::new(),
             advancements: Vec::new(),
+            shoulder_entity_left: self.shoulder_entity_left,
+            shoulder_entity_right: self.shoulder_entity_right,
         })
     }
 }

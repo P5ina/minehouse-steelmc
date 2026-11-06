@@ -3643,8 +3643,15 @@ pub trait Entity: EntityEventSource + ErasedType + Send + Sync + 'static {
         let Some(entity) = self.as_living_entity() else {
             return DEFAULT_AIR_DRAG;
         };
+        // Vanilla `LivingEntity.getAirDrag`: omnidirectional air movers use
+        // the 0.91 horizontal air friction.
+        let air_drag = if entity.omnidirectional_air_mover() {
+            OMNIDIRECTIONAL_AIR_DRAG
+        } else {
+            DEFAULT_AIR_DRAG
+        };
         compute_modified_friction(
-            DEFAULT_AIR_DRAG,
+            air_drag,
             entity
                 .attributes()
                 .lock()

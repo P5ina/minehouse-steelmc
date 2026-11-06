@@ -6,6 +6,8 @@
 
 pub mod brain;
 pub mod control;
+pub mod fly;
+pub(crate) mod flying_move;
 pub mod goal;
 pub mod gossip;
 pub mod navigation;

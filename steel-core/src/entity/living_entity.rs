@@ -2850,10 +2850,20 @@ pub trait LivingEntity: Entity {
         }
     }
 
+    /// Vanilla `omnidirectionalAirMover`: flying animals such as parrots
+    /// brake vertically as hard as horizontally.
+    fn omnidirectional_air_mover(&self) -> bool {
+        false
+    }
+
     /// Returns the vertical friction used by `travelInAir`.
     fn air_travel_vertical_friction(&self, _horizontal_friction: f32) -> f32 {
-        // TODO: FlyingAnimal uses horizontal friction here once animal types exist.
-        0.98
+        if self.omnidirectional_air_mover() {
+            // Vanilla `airDrag`: the 0.91 air friction with the drag modifier.
+            self.get_air_drag() as f32
+        } else {
+            0.98
+        }
     }
 
     /// Clamps movement while on a climbable block: caps horizontal and

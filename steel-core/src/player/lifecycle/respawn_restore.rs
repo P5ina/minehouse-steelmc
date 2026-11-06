@@ -74,6 +74,8 @@ impl Player {
         }
         *self.advancements.lock() = old_player.advancements.lock().clone();
         *self.seen_credits.lock() = *old_player.seen_credits.lock();
+        self.set_shoulder_entity_left(old_player.shoulder_entity_left());
+        self.set_shoulder_entity_right(old_player.shoulder_entity_right());
         let residence = old_player.residence.lock().clone();
         *self.residence.lock() = residence;
 

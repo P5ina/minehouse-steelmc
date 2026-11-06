@@ -20,7 +20,6 @@ minehouse_mob_hoglin
 minehouse_mob_llama
 minehouse_mob_nautilus
 minehouse_mob_panda
-minehouse_mob_parrot
 minehouse_mob_pig
 minehouse_mob_piglin
 minehouse_mob_piglin_brute
