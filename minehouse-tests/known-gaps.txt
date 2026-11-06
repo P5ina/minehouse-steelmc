@@ -52,7 +52,6 @@ minehouse_mob_sulfur_cube
 minehouse_mob_tadpole
 minehouse_mob_trader_llama
 minehouse_mob_turtle
-minehouse_mob_vex
 minehouse_mob_villager
 minehouse_mob_vindicator
 minehouse_mob_wandering_trader

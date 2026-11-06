@@ -3,3 +3,11 @@
 /// Witch entity module.
 pub mod witch;
 pub use witch::WitchEntity;
+
+/// Vindicator entity module.
+pub mod vindicator;
+pub use vindicator::VindicatorEntity;
+
+/// Evoker entity module.
+pub mod evoker;
+pub use evoker::EvokerEntity;

@@ -448,14 +448,18 @@ mod tests {
     fn unsupported_structure_mob_is_skipped() {
         init_globals();
 
+        // Any entity type still without an implementation, so the test keeps
+        // working as more mobs land.
+        let Some(unsupported) = steel_registry::REGISTRY
+            .entity_types
+            .iter()
+            .map(|(_, entity_type)| entity_type)
+            .find(|&entity_type| !ENTITIES.has_factory(entity_type))
+        else {
+            return;
+        };
         assert!(
-            StructurePiecePlacer::create_mob(
-                &vanilla_entities::EVOKER,
-                DVec3::ZERO,
-                Weak::new(),
-                true,
-            )
-            .is_none()
+            StructurePiecePlacer::create_mob(unsupported, DVec3::ZERO, Weak::new(), true).is_none()
         );
     }
 }

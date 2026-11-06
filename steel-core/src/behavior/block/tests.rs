@@ -47,6 +47,66 @@ fn default_spawn_rule_requires_full_up_support_and_low_light_emission() {
 }
 
 #[test]
+fn registered_spawn_predicates_override_the_default() {
+    init_vanilla_registry();
+    init_behaviors();
+    let level = TestLevel::default();
+    let pos = BlockPos::new(3, 64, 5);
+    let valid = |block: BlockRef, entity_type| {
+        BLOCK_BEHAVIORS.get_behavior(block).is_valid_spawn(
+            block.default_state(),
+            &level,
+            pos,
+            entity_type,
+        )
+    };
+
+    // `Blocks::never`, despite a sturdy top face.
+    for block in [
+        &vanilla_blocks::GLASS,
+        &vanilla_blocks::RED_STAINED_GLASS,
+        &vanilla_blocks::BEDROCK,
+        &vanilla_blocks::BARRIER,
+        &vanilla_blocks::WAXED_OXIDIZED_COPPER_GRATE,
+    ] {
+        assert!(!valid(block, &vanilla_entities::ZOMBIE), "{}", block.key);
+    }
+    // `Blocks::always`, despite redstone lamp and jack o'lantern light.
+    for block in [
+        &vanilla_blocks::MUD,
+        &vanilla_blocks::SOUL_SAND,
+        &vanilla_blocks::JACK_O_LANTERN,
+    ] {
+        assert!(valid(block, &vanilla_entities::ZOMBIE), "{}", block.key);
+    }
+    assert!(valid(
+        &vanilla_blocks::OAK_LEAVES,
+        &vanilla_entities::PARROT
+    ));
+    assert!(valid(
+        &vanilla_blocks::CHERRY_LEAVES,
+        &vanilla_entities::OCELOT
+    ));
+    assert!(!valid(
+        &vanilla_blocks::OAK_LEAVES,
+        &vanilla_entities::ZOMBIE
+    ));
+    assert!(valid(&vanilla_blocks::ICE, &vanilla_entities::POLAR_BEAR));
+    assert!(!valid(
+        &vanilla_blocks::FROSTED_ICE,
+        &vanilla_entities::SKELETON
+    ));
+    assert!(valid(
+        &vanilla_blocks::MAGMA_BLOCK,
+        &vanilla_entities::STRIDER
+    ));
+    assert!(!valid(
+        &vanilla_blocks::MAGMA_BLOCK,
+        &vanilla_entities::ZOMBIE
+    ));
+}
+
+#[test]
 fn clone_item_stack_uses_registered_block_item_association() {
     init_vanilla_registry();
     init_behaviors();
