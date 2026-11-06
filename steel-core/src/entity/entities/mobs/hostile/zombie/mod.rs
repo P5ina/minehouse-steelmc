@@ -30,7 +30,6 @@ use steel_utils::{
     BlockPos, BlockStateId, Downcast as _, DowncastType, DowncastTypeKey, Identifier,
 };
 
-use crate::entity::SpawnRule;
 use crate::entity::ai::goal::{
     BreakDoorGoal, HurtByTargetGoal, LookAtPlayerGoal, NearestAttackableTargetGoal,
     RandomLookAroundGoal, WaterAvoidingRandomStrollGoal, ZombieAttackGoal,
@@ -47,7 +46,7 @@ use crate::entity::spawn::create_entity_instance;
 use crate::entity::{
     DefaultEntityPush, Entity, EntityBase, EntityBaseLoad, EntityMovementEmission, EntityPose,
     EntitySpawnReason, EntitySyncedData, LivingEntity, LivingEntityBase, Mob, MobBase,
-    MobEffectInstance, Monster, PathfinderMob, SharedEntity, SpawnGroupData,
+    MobEffectInstance, Monster, PathfinderMob, SharedEntity, SpawnGroupData, SpawnRule,
     sync_dirty_mob_effects,
 };
 use crate::inventory::equipment::EquipmentSlot;
@@ -202,7 +201,7 @@ fn door_breaking_difficulty(difficulty: Difficulty) -> bool {
 }
 
 /// Vanilla `SpecialDates.isHalloween`: October 31st in the server's time zone.
-fn is_halloween() -> bool {
+pub(super) fn is_halloween() -> bool {
     use chrono::Datelike as _;
     let today = chrono::Local::now();
     today.month() == 10 && today.day() == 31
@@ -955,7 +954,7 @@ unsafe impl DowncastType for ZombieEntity {
 }
 
 impl ZombieEntity {
-    /// Vanilla `SpawnPlacements` predicate: `Monster.checkMonsterSpawnRules`.
+    /// Vanilla `SpawnPlacements`: `Monster.checkMonsterSpawnRules`.
     pub(crate) const SPAWN_RULE: SpawnRule = |entity_type, level, spawn_reason, pos, random| {
         <Self as Monster>::check_monster_spawn_rules(entity_type, level, spawn_reason, pos, random)
     };
@@ -1025,7 +1024,7 @@ unsafe impl DowncastType for HuskEntity {
 }
 
 impl HuskEntity {
-    /// Vanilla `SpawnPlacements` predicate: `Monster.checkSurfaceMonstersSpawnRules`.
+    /// Vanilla `SpawnPlacements`: `Monster.checkSurfaceMonstersSpawnRules`.
     pub(crate) const SPAWN_RULE: SpawnRule = |entity_type, level, spawn_reason, pos, random| {
         <Self as Monster>::check_surface_monsters_spawn_rules(
             entity_type,
@@ -1035,7 +1034,9 @@ impl HuskEntity {
             random,
         )
     };
+}
 
+impl HuskEntity {
     /// Creates a new husk.
     #[must_use]
     pub fn new(entity_type: EntityTypeRef, id: i32, position: DVec3, world: Weak<World>) -> Self {
@@ -1111,7 +1112,7 @@ unsafe impl DowncastType for GiantEntity {
 }
 
 impl GiantEntity {
-    /// Vanilla `SpawnPlacements` predicate: `Monster.checkMonsterSpawnRules`.
+    /// Vanilla `SpawnPlacements`: `Monster.checkMonsterSpawnRules`.
     pub(crate) const SPAWN_RULE: SpawnRule = |entity_type, level, spawn_reason, pos, random| {
         <Self as Monster>::check_monster_spawn_rules(entity_type, level, spawn_reason, pos, random)
     };
