@@ -25,12 +25,13 @@ use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::sync::Weak;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::{env, fs, process};
+use std::{env, fs, process, slice};
 
 use simdnbt::borrow::read_compound;
 use simdnbt::owned::{BaseNbt, NbtCompound};
 use steel_utils::text::DisplayResolutor;
 
+use steel_registry::vanilla_dimension_types::OVERWORLD;
 use steel_registry::{REGISTRY, vanilla_blocks};
 use steel_utils::{BlockPos, ChunkPos, Identifier};
 
@@ -287,6 +288,7 @@ async fn imported_dimension_loads_from_steel_region_files() {
             .expect("test thread pool should build"),
     );
     let dimension = DimensionImport {
+        key: OVERWORLD.key.clone(),
         source: fixture_dir(),
         target: target.clone(),
         min_y: OVERWORLD_MIN_Y,
@@ -342,4 +344,82 @@ async fn imported_dimension_loads_from_steel_region_files() {
         "importing twice must not mix worlds"
     );
     let _ = fs::remove_dir_all(&target);
+}
+
+#[tokio::test]
+async fn vanilla_level_data_loads_as_steel_level_toml() {
+    use steel_registry::{RegistryExt, vanilla_game_rules};
+    use steel_utils::types::Difficulty;
+
+    use crate::level_data::{GameTimeSource, LevelDataManager, WorldGenerationSettings};
+
+    init_globals();
+    let world_dir = test_directory("level");
+    let dimension = DimensionImport {
+        key: OVERWORLD.key.clone(),
+        source: fixture_dir(),
+        target: world_dir.join("region"),
+        min_y: OVERWORLD_MIN_Y,
+        height: OVERWORLD_HEIGHT,
+    };
+    let vanilla_world =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("src/anvil_import/fixtures/level");
+
+    let report = import_level_data(&vanilla_world, slice::from_ref(&dimension))
+        .expect("fixture level data should import");
+    assert_eq!(report.seed, 12345);
+    assert!(report.unknown_game_rules.is_empty(), "{report}");
+    assert!(report.invalid_game_rules.is_empty(), "{report}");
+    assert!(report.unknown_clocks.is_empty(), "{report}");
+
+    let generation = WorldGenerationSettings::from_generator_config(
+        Identifier::vanilla_static("overworld"),
+        &toml::Value::Table(toml::Table::new()),
+        OVERWORLD.key.clone(),
+        OVERWORLD_MIN_Y,
+        OVERWORLD_HEIGHT,
+    );
+    let manager = LevelDataManager::new(
+        Some(&world_dir),
+        0,
+        Difficulty::Hard,
+        generation,
+        GameTimeSource::Primary,
+    )
+    .await
+    .expect("Steel should load the imported level.toml");
+    let data = manager.data();
+    assert_eq!(manager.seed(), 12345, "the saved seed wins over the config");
+    assert_eq!(manager.game_time_handle().ticks(), 864);
+    assert_eq!(data.spawn_pos(), BlockPos::new(96, 145, -32));
+    assert_eq!(
+        data.respawn_data_or_local(&OVERWORLD.key).pos(),
+        BlockPos::new(96, 145, -32)
+    );
+    assert_eq!(data.difficulty, Difficulty::Easy);
+    assert!(data.initialized);
+    assert_eq!(data.weather.rain_time, 87024);
+    assert_eq!(data.weather.thunder_time, 155_929);
+    assert!((data.world_border.size - 59_999_968.0).abs() < f64::EPSILON);
+    assert_eq!(
+        data.game_rules_values
+            .get(&vanilla_game_rules::RANDOM_TICK_SPEED, &REGISTRY.game_rules),
+        3
+    );
+    assert!(
+        data.game_rules_values
+            .get(&vanilla_game_rules::SPAWN_MOBS, &REGISTRY.game_rules)
+    );
+    let overworld_clock = REGISTRY
+        .world_clocks
+        .by_key(&Identifier::vanilla_static("overworld"))
+        .expect("overworld clock is registered");
+    assert_eq!(data.world_clocks.total_ticks(overworld_clock), Some(864));
+
+    let again = import_level_data(&vanilla_world, slice::from_ref(&dimension));
+    assert!(
+        matches!(again, Err(AnvilImportError::LevelDataExists { .. })),
+        "an existing level.toml is never overwritten"
+    );
+    let _ = fs::remove_dir_all(&world_dir);
 }

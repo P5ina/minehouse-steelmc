@@ -21,6 +21,7 @@
 
 mod chunk;
 mod entities;
+mod level;
 mod nbt;
 mod poi;
 pub mod region;
@@ -30,20 +31,20 @@ mod report;
 mod tests;
 
 use std::fs;
-use std::io::{self, Read};
+use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use flate2::read::GzDecoder;
 use tokio::task::spawn_blocking;
 
 use futures::future::try_join_all;
-use steel_utils::ChunkPos;
+use steel_utils::{ChunkPos, Identifier};
 
 use crate::chunk::status::ChunkStatus;
 use crate::chunk_saver::{PersistentChunk, PreparedChunkSave, RegionManager};
 
 pub use chunk::{ChunkConversion, convert_chunk};
+pub use level::{LevelReport, import_level_data};
 pub use region::AnvilRegion;
 pub use report::ImportReport;
 
@@ -72,11 +73,19 @@ pub enum AnvilImportError {
         /// Target region directory.
         path: PathBuf,
     },
+    /// The Steel world already has level data.
+    #[error("{} already exists; import into an empty world", path.display())]
+    LevelDataExists {
+        /// Existing `level.toml`.
+        path: PathBuf,
+    },
 }
 
 /// One vanilla dimension to import into one Steel world.
 #[derive(Debug, Clone)]
 pub struct DimensionImport {
+    /// Dimension id, for example `minecraft:overworld`.
+    pub key: Identifier,
     /// Vanilla dimension directory holding `region/`, `entities/` and `poi/`,
     /// for example `world/dimensions/minecraft/overworld`.
     pub source: PathBuf,
@@ -270,6 +279,7 @@ pub fn vanilla_dimensions(world: &Path, save_path: &Path, domain: &str) -> Vec<D
         .map(|dimension_type| {
             let name = dimension_type.key.path.as_ref();
             DimensionImport {
+                key: dimension_type.key.clone(),
                 source: world.join("dimensions").join("minecraft").join(name),
                 target: save_path
                     .join(domain)
@@ -293,15 +303,7 @@ pub fn read_world_seed(world: &Path) -> Result<i64, AnvilImportError> {
         path: path.clone(),
         reason,
     };
-    let compressed = fs::read(&path).map_err(|source| AnvilImportError::Io {
-        path: path.clone(),
-        source,
-    })?;
-    let mut bytes = Vec::new();
-    GzDecoder::new(&compressed[..])
-        .read_to_end(&mut bytes)
-        .map_err(|error| invalid(error.to_string()))?;
-    let root = nbt::read_root(&bytes).map_err(invalid)?;
+    let root = level::read_gzip_root(&path)?;
     chunk::check_data_version(&root).map_err(invalid)?;
     root.compound("data")
         .and_then(|data| data.long("seed"))
