@@ -8,14 +8,15 @@ use steel_registry::blocks::BlockRef;
 use steel_registry::blocks::block_state_ext::BlockStateExt as _;
 use steel_registry::blocks::properties::Direction;
 use steel_registry::blocks::shapes::SupportType;
+use steel_registry::dimension_type::DimensionTypeRef;
 use steel_registry::fluid::FluidRef;
 use steel_registry::game_events::GameEventRef;
 use steel_registry::sound_event::SoundEventRef;
-use steel_utils::{BlockPos, BlockStateId, types::UpdateFlags};
+use steel_utils::{BlockPos, BlockStateId, types::Difficulty, types::UpdateFlags};
 
 use crate::block_entity::SharedBlockEntity;
 use crate::chunk::heightmap::HeightmapType;
-use crate::chunk::light::MAX_LIGHT_LEVEL;
+use crate::chunk::light::{LightLayer, MAX_LIGHT_LEVEL};
 use crate::world::game_event::GameEventContext;
 
 use super::World;
@@ -121,6 +122,21 @@ pub trait LevelReader {
     fn pathfinding_cost_from_light_levels(&self, pos: BlockPos) -> f32 {
         self.light_level_dependent_magic_value(pos) - 0.5
     }
+}
+
+/// Level state that vanilla spawn predicates read through `ServerLevelAccessor`.
+pub trait ServerLevelAccessor: LevelReader {
+    /// Returns the level difficulty.
+    fn difficulty(&self) -> Difficulty;
+
+    /// Vanilla `getBrightness`: the raw value of one light layer.
+    fn brightness(&self, layer: LightLayer, pos: BlockPos) -> u8;
+
+    /// Returns whether it is thundering in this level.
+    fn is_thundering(&self) -> bool;
+
+    /// Returns this level's dimension type.
+    fn dimension_type(&self) -> DimensionTypeRef;
 }
 
 /// Level access needed by vanilla block `updateShape` logic.
