@@ -1343,6 +1343,17 @@ pub trait Mob: LivingEntity + Leashable {
     /// the target was hurt.
     #[must_use]
     fn do_hurt_target(&self, entity: &SharedEntity, world: &World, target: &SharedEntity) -> bool {
+        self.default_do_hurt_target(entity, world, target)
+    }
+
+    /// Vanilla `Mob.doHurtTarget`, callable from overrides as `super.doHurtTarget`.
+    #[must_use]
+    fn default_do_hurt_target(
+        &self,
+        entity: &SharedEntity,
+        world: &World,
+        target: &SharedEntity,
+    ) -> bool {
         let Some(attacker) = self.as_entity_event_source().as_living_entity() else {
             return false;
         };

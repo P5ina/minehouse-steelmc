@@ -13,3 +13,7 @@ pub use endermite::EndermiteEntity;
 /// Slime and magma cube, the vanilla `AbstractCubeMob` family.
 pub mod cube_mob;
 pub use cube_mob::{MagmaCubeEntity, SlimeEntity};
+
+/// Hostile spider and cave spider entity module.
+pub mod spider;
+pub use spider::{CaveSpiderEntity, SpiderEntity};

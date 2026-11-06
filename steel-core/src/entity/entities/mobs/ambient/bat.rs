@@ -27,7 +27,7 @@ use crate::entity::{
     MobBase, SharedEntity, SpawnRule,
 };
 use crate::physics::MoveResult;
-use crate::world::{LevelReader, World, is_redstone_conductor};
+use crate::world::{ServerLevelAccessor, World, is_redstone_conductor};
 
 const FLAG_RESTING: i8 = 1;
 const BAT_RESTING_TARGETING_RANGE: f64 = 4.0;
@@ -76,7 +76,7 @@ impl BatEntity {
     /// Bats spawn below the world surface in dark places on `bats_spawnable_on` blocks.
     pub(crate) fn check_bat_spawn_rules(
         entity_type: EntityTypeRef,
-        level: &dyn LevelReader,
+        level: &dyn ServerLevelAccessor,
         spawn_reason: EntitySpawnReason,
         pos: BlockPos,
         random: &mut dyn Rng,

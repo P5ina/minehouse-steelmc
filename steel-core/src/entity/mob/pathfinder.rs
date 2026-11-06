@@ -147,6 +147,17 @@ pub trait PathfinderMob: Mob {
         let game_time = world.game_time();
         let recompute_request = {
             let mut navigation = self.mob_base().navigation().lock();
+            if navigation.is_wall_climber() && navigation.is_done() {
+                // Vanilla `WallClimberNavigation.tick`: with no path left, steer
+                // straight at the remembered target instead of ticking the path.
+                let wanted = navigation
+                    .tick_wall_climber_without_path(self.position(), self.bounding_box().width());
+                drop(navigation);
+                if let Some((target, speed_modifier)) = wanted {
+                    self.set_wanted_position(target, speed_modifier);
+                }
+                return;
+            }
             navigation.tick();
             navigation.take_delayed_recompute_request(game_time, self.can_update_path())
         };
@@ -185,6 +196,10 @@ pub trait PathfinderMob: Mob {
             return pathfinder.create_path_to(target, reach_range);
         }
 
+        self.mob_base()
+            .navigation()
+            .lock()
+            .record_climber_path_to_position(target);
         let world = self.level()?;
         if !world.has_full_chunk(ChunkPos::from_block_pos(target)) {
             return None;
@@ -222,6 +237,10 @@ pub trait PathfinderMob: Mob {
         }
 
         let target_pos = BlockPos::containing(target.x, target.y, target.z);
+        self.mob_base()
+            .navigation()
+            .lock()
+            .record_climber_path_to_position(target_pos);
         let Some(world) = self.level() else {
             self.mob_base().navigation().lock().stop();
             return false;
@@ -249,6 +268,33 @@ pub trait PathfinderMob: Mob {
 
         let path = self.create_path_to_targets(&world, &targets, reach_range);
         self.move_to_path(path, speed_modifier)
+    }
+
+    /// Vanilla `PathNavigation.moveTo(Entity, double)`.
+    ///
+    /// Ground navigation paths to the entity's block with reach 1. A wall climber
+    /// (`WallClimberNavigation.moveTo`) paths with reach 0 and, when no path is
+    /// found, still succeeds by steering straight at the entity.
+    fn move_to_entity(&self, target: &dyn Entity, speed_modifier: f64) -> bool {
+        if let Some(vehicle) = self.controlled_pathfinder_vehicle()
+            && let Some(pathfinder) = vehicle.as_pathfinder_mob()
+        {
+            return pathfinder.move_to_entity(target, speed_modifier);
+        }
+
+        if !self.mob_base().navigation().lock().is_wall_climber() {
+            return self.move_to_pos(target.position(), speed_modifier);
+        }
+
+        let target_pos = target.block_position();
+        if let Some(path) = self.create_path_to(target_pos, 0) {
+            return self.move_to_path(Some(path), speed_modifier);
+        }
+        self.mob_base()
+            .navigation()
+            .lock()
+            .move_climber_directly_to(target_pos, speed_modifier);
+        true
     }
 
     fn move_to_path(&self, path: Option<Path>, speed_modifier: f64) -> bool {

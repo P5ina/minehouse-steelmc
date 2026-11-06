@@ -8,6 +8,7 @@ use steel_registry::data_components::vanilla_components::{CUSTOM_DATA, CUSTOM_NA
 use steel_registry::entity_data::EntityPose;
 use steel_registry::entity_type::EntityTypeRef;
 use steel_registry::item_stack::ItemStack;
+use steel_registry::mob_effect::MobEffectRef;
 use steel_registry::{REGISTRY, RegistryExt};
 use steel_utils::nbt::{NbtNumeric, merge_nbt_compounds, nbt_collection_values};
 use steel_utils::{BlockPos, Identifier, UuidExt, WorldAabb, axis::Axis, types::Difficulty};
@@ -461,6 +462,8 @@ fn entity_y_offset(
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum SpawnGroupData {
     AgeableMob(AgeableMobGroupData),
+    /// Vanilla `Spider.SpiderEffectsGroupData`: the infinite effect a spider spawns with.
+    SpiderEffects(Option<MobEffectRef>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
