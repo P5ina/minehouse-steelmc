@@ -30,7 +30,7 @@
 //! - **Homogeneous section optimization** (single block type = no bit array)
 //! - **zstd compression** per-chunk for good compression ratios
 
-mod bit_pack;
+pub(crate) mod bit_pack;
 mod format;
 mod ram_only;
 mod region_manager;
