@@ -9,6 +9,7 @@ pub use mobs::hostile::{
     CaveSpiderEntity, CreeperEntity, EndermiteEntity, GiantEntity, HuskEntity, MagmaCubeEntity,
     SlimeEntity, SpiderEntity, ZombieEntity, ZombieGroupData,
 };
+pub use mobs::hostile::{ElderGuardianEntity, Guardian, GuardianEntity};
 pub use mobs::passive::*;
 pub use mobs::raiders::WitchEntity;
 pub use objects::display_ui::{BlockDisplayEntity, ItemFrameEntity, LeashFenceKnotEntity};

@@ -21,3 +21,7 @@ pub use spider::{CaveSpiderEntity, SpiderEntity};
 /// Hostile zombie, husk and giant entity module.
 pub mod zombie;
 pub use zombie::{GiantEntity, HuskEntity, ZombieEntity, ZombieGroupData};
+
+/// Hostile guardian and elder guardian entity module.
+pub mod guardian;
+pub use guardian::{ElderGuardianEntity, Guardian, GuardianEntity};

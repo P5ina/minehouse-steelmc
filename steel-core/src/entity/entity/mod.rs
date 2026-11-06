@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 
 use super::*;
 use crate::entity::entities::mobs::hostile::cube_mob::AbstractCubeMob;
-use crate::entity::entities::{LightningBoltEntity, Squid};
+use crate::entity::entities::{Guardian, LightningBoltEntity, Squid};
 use crate::entity::{leash::Leashable, pushing::EntityPush};
 use rand::{RngExt, rng};
 use steel_math::DEGREE_90;
@@ -1679,6 +1679,11 @@ pub trait Entity: EntityEventSource + ErasedType + Send + Sync + 'static {
     /// Returns this entity as a squid (vanilla `Squid`, including glow squids).
     fn as_squid(&self) -> Option<&dyn Squid> {
         try_as_dyn::<Self, dyn Squid>(self)
+    }
+
+    /// Returns this entity as a guardian (vanilla `Guardian`, including elder guardians).
+    fn as_guardian(&self) -> Option<&dyn Guardian> {
+        try_as_dyn::<Self, dyn Guardian>(self)
     }
 
     /// Returns true for entities that implement vanilla hostile-mob behavior.
