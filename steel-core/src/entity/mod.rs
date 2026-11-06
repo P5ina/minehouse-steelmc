@@ -778,9 +778,11 @@ mod mob;
 pub mod mob_effect;
 mod monster;
 mod movement_sync;
+mod neutral_mob;
 mod potion_contents;
 pub mod projectile;
 pub(crate) mod pushing;
+mod ranged_attack_mob;
 mod reference;
 mod registry;
 pub(crate) mod selector;
@@ -846,6 +848,7 @@ pub use movement_sync::{
     EntityRotationSyncState, EntityVelocitySyncState, POSITION_SYNC_THRESHOLD,
     PackedEntityRotation, ServerEntityMovementSyncState, ServerEntityMovementSyncUpdate,
 };
+pub(crate) use neutral_mob::{NeutralMob, NeutralMobState};
 pub(crate) use potion_contents::apply_potion_contents;
 pub use projectile::{
     AbstractThrownPotion, EntityHitResult, Projectile, ProjectileBase, ProjectileDeflection,
@@ -854,6 +857,7 @@ pub use projectile::{
     compute_margin, get_hit_result_on_view_vector, spawn_throwable_item_projectile,
 };
 pub use pushing::{DefaultEntityPush, EntityPushSnapshot};
+pub(crate) use ranged_attack_mob::RangedAttackMob;
 pub use reference::EntityReference;
 pub(crate) use registry::SpawnRule;
 pub use registry::{ENTITIES, EntityLoadRequest, EntityRegistry, init_entities};

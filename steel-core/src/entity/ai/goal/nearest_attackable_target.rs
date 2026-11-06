@@ -9,6 +9,10 @@ use crate::world::World;
 
 const DEFAULT_RANDOM_INTERVAL: i32 = 10;
 
+/// A target filter that also sees the searching mob, for vanilla selectors that are
+/// method references on the mob (such as `this::isAngryAt`).
+pub(crate) type MobTargetSelector = fn(&dyn PathfinderMob, &dyn LivingEntity, &World) -> bool;
+
 enum TargetSearch {
     Players,
     Entities,
@@ -19,6 +23,7 @@ pub(crate) struct NearestAttackableTargetGoal {
     random_interval: i32,
     target: Option<SharedEntity>,
     target_conditions: TargetingConditions,
+    mob_selector: Option<MobTargetSelector>,
     search: TargetSearch,
 }
 
@@ -103,8 +108,26 @@ impl NearestAttackableTargetGoal {
             random_interval: reduced_tick_delay(random_interval),
             target: None,
             target_conditions: TargetingConditions::for_combat().selector(selector),
+            mob_selector: None,
             search,
         }
+    }
+
+    /// Adds a filter that can read the searching mob's own state.
+    #[must_use]
+    pub(crate) const fn with_mob_selector(mut self, mob_selector: MobTargetSelector) -> Self {
+        self.mob_selector = Some(mob_selector);
+        self
+    }
+
+    fn passes_mob_selector(
+        &self,
+        mob: &dyn PathfinderMob,
+        target: &dyn LivingEntity,
+        world: &World,
+    ) -> bool {
+        self.mob_selector
+            .is_none_or(|selector| selector(mob, target, world))
     }
 
     fn find_target(&mut self, mob: &dyn PathfinderMob) {
@@ -123,14 +146,16 @@ impl NearestAttackableTargetGoal {
             TargetSearch::Players => level
                 .nearest_player(origin, follow, |player| {
                     target_conditions.test(level, Some(mob), player)
+                        && self.passes_mob_selector(mob, player, level)
                 })
                 .map(|player| -> SharedEntity { player }),
             TargetSearch::Entities => {
                 let search_box = mob.bounding_box().inflate_xyz(follow, follow, follow);
                 level.nearest_entity_in_aabb_matching(&search_box, origin, |entity| {
-                    entity
-                        .as_living_entity()
-                        .is_some_and(|target| target_conditions.test(level, Some(mob), target))
+                    entity.as_living_entity().is_some_and(|target| {
+                        target_conditions.test(level, Some(mob), target)
+                            && self.passes_mob_selector(mob, target, level)
+                    })
                 })
             }
         };

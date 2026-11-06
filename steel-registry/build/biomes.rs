@@ -656,6 +656,13 @@ pub(crate) fn build() -> TokenStream {
         let temperature_modifier = generate_temperature_modifier(&biome.temperature_modifier);
         let effects = generate_biome_effects(&biome.effects);
         let creature_spawn_probability = biome.creature_spawn_probability;
+        let snow_golem_melts = if let Some(Value::Bool(melts)) =
+            biome.attributes.get("minecraft:gameplay/snow_golem_melts")
+        {
+            quote! { Some(#melts) }
+        } else {
+            quote! { None }
+        };
         let spawners =
             generate_hashmap_string(&biome.spawners, |v| generate_vec(v, generate_spawner_data));
         let spawn_costs = generate_hashmap_resource(&biome.spawn_costs, generate_spawn_cost);
@@ -673,6 +680,7 @@ pub(crate) fn build() -> TokenStream {
                 temperature_modifier: #temperature_modifier,
                 effects: #effects,
                 creature_spawn_probability: #creature_spawn_probability,
+                snow_golem_melts: #snow_golem_melts,
                 spawners: #spawners,
                 spawn_costs: #spawn_costs,
                 carvers: #carvers,

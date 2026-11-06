@@ -74,8 +74,8 @@ use steel_registry::sound_event::SoundEventRef;
 use steel_registry::vanilla_block_tags::BlockTag;
 use steel_registry::vanilla_entity_data::PlayerEntityData;
 use steel_registry::vanilla_game_rules::{
-    DROWNING_DAMAGE, FALL_DAMAGE, FIRE_DAMAGE, FREEZE_DAMAGE, IMMEDIATE_RESPAWN, KEEP_INVENTORY,
-    SHOW_DEATH_MESSAGES,
+    DROWNING_DAMAGE, FALL_DAMAGE, FIRE_DAMAGE, FORGIVE_DEAD_PLAYERS, FREEZE_DAMAGE,
+    IMMEDIATE_RESPAWN, KEEP_INVENTORY, SHOW_DEATH_MESSAGES,
 };
 use steel_registry::{
     level_events, sound_events, vanilla_attributes, vanilla_custom_stats, vanilla_damage_type_tags,
@@ -148,6 +148,7 @@ use steel_registry::items::ItemRef;
 use steel_registry::stat::vanilla_stat_types;
 use steel_utils::{
     BlockPos, BlockStateId, ChunkPos, DowncastType, DowncastTypeKey, Identifier, UuidExt as _,
+    WorldAabb,
 };
 
 use crate::inventory::container::Container;
@@ -344,6 +345,27 @@ impl PlayerResidenceState {
 }
 
 impl Player {
+    /// Vanilla `ServerPlayer.tellNeutralMobsThatIDied`.
+    fn tell_neutral_mobs_that_i_died(&self, world: &World) {
+        let pos = self.block_position();
+        let search_box = WorldAabb::new(
+            f64::from(pos.x()),
+            f64::from(pos.y()),
+            f64::from(pos.z()),
+            f64::from(pos.x() + 1),
+            f64::from(pos.y() + 1),
+            f64::from(pos.z() + 1),
+        )
+        .inflate_xyz(32.0, 10.0, 32.0);
+        for entity in world.get_entities_in_aabb_matching(&search_box, |entity| {
+            !entity.is_spectator() && entity.as_neutral_mob().is_some()
+        }) {
+            if let Some(neutral) = entity.as_neutral_mob() {
+                neutral.player_died(world, self);
+            }
+        }
+    }
+
     const USING_ITEM_FLAG: i8 = 1;
     const OFF_HAND_ACTIVE_ITEM_FLAG: i8 = 1 << 1;
 
@@ -979,6 +1001,11 @@ impl Player {
                 content: death_message,
                 overlay: false,
             });
+        }
+
+        // TODO: remove entities on shoulder
+        if world.get_game_rule(&FORGIVE_DEAD_PLAYERS) {
+            self.tell_neutral_mobs_that_i_died(&world);
         }
 
         if !world.get_game_rule(&KEEP_INVENTORY) && self.game_mode() != GameType::Spectator {
