@@ -83,6 +83,13 @@ pub trait LivingEntity: Entity {
     fn base_tick_living_entity(&self) {
         self.advance_living_rotation_for_base_tick();
         self.living_base().tick_swing_state();
+        // Vanilla `LivingEntity.baseTick`: `EnchantmentHelper.tickEffects`
+        // before `Entity.baseTick`.
+        if let Some(world) = self.level()
+            && let Some(living) = self.as_living_entity()
+        {
+            enchantment_helper::tick_effects(&world, living);
+        }
         self.entity_base_tick();
         self.tick_living_environmental_damage();
         self.living_base().decrement_hurt_time();

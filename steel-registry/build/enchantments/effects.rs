@@ -5,10 +5,11 @@ use super::{
     EntityPredicateJson, EntityTargetJson, EntityTypePredicateJson,
     EntityTypeSpecificPredicateJson, EntityVehiclePredicateJson, GameType, Ident, Identifier,
     ItemHolderSetJson, LevelBasedValueJson, LevelBasedValueTypedJson, LocationEffectJson,
-    MobEffectSelectionJson, MovementAffectedByJson, RequirementsJson, Span,
+    MobEffectSelectionJson, MovementAffectedByJson, MovementPredicateJson,
+    ParticlePositionSourceJson, ParticleVelocitySourceJson, RequirementsJson, Span,
     TargetedConditionalEntityEffectJson, TargetedConditionalValueEffectJson, ToShoutySnakeCase,
-    TokenStream, ValueEffectJson, damage_type_ref_token, generate_sound_event_ref,
-    identifier_token, quote,
+    TokenStream, ValueEffectJson, damage_type_ref_token, generate_float_provider,
+    generate_sound_event_ref, identifier_token, quote,
 };
 
 pub(super) fn attribute_ref_token(attribute: &Identifier) -> TokenStream {
@@ -233,6 +234,66 @@ pub(super) fn entity_type_specific_predicate_token(
     }
 }
 
+fn particle_position_source_token(source: &ParticlePositionSourceJson) -> TokenStream {
+    let source_type = if source.in_bounding_box {
+        quote! { ParticlePositionSourceType::InBoundingBox }
+    } else {
+        quote! { ParticlePositionSourceType::EntityPosition }
+    };
+    let offset = source.offset;
+    let scale = source.scale;
+    quote! {
+        ParticlePositionSource {
+            source_type: #source_type,
+            offset: #offset,
+            scale: #scale,
+        }
+    }
+}
+
+fn particle_velocity_source_token(source: &ParticleVelocitySourceJson) -> TokenStream {
+    let movement_scale = source.movement_scale;
+    let base = generate_float_provider(source.base);
+    quote! {
+        ParticleVelocitySource {
+            movement_scale: #movement_scale,
+            base: #base,
+        }
+    }
+}
+
+fn double_bounds_token([min, max]: [Option<f64>; 2]) -> TokenStream {
+    let bound =
+        |value: Option<f64>| value.map_or_else(|| quote! { None }, |value| quote! { Some(#value) });
+    let min = bound(min);
+    let max = bound(max);
+    quote! { EnchantmentDoubleBounds { min: #min, max: #max } }
+}
+
+fn movement_predicate_token(predicate: Option<&MovementPredicateJson>) -> TokenStream {
+    let Some(predicate) = predicate else {
+        return quote! { None };
+    };
+    let x = double_bounds_token(predicate.x);
+    let y = double_bounds_token(predicate.y);
+    let z = double_bounds_token(predicate.z);
+    let speed = double_bounds_token(predicate.speed);
+    let horizontal_speed = double_bounds_token(predicate.horizontal_speed);
+    let vertical_speed = double_bounds_token(predicate.vertical_speed);
+    let fall_distance = double_bounds_token(predicate.fall_distance);
+    quote! {
+        Some(&EntityMovementPredicate {
+            x: #x,
+            y: #y,
+            z: #z,
+            speed: #speed,
+            horizontal_speed: #horizontal_speed,
+            vertical_speed: #vertical_speed,
+            fall_distance: #fall_distance,
+        })
+    }
+}
+
 fn movement_affected_by_token(predicate: &MovementAffectedByJson) -> TokenStream {
     match predicate {
         MovementAffectedByJson::Any => quote! { MovementAffectedByPredicate::Any },
@@ -254,7 +315,11 @@ pub(super) fn entity_predicate_token(predicate: &EntityPredicateJson) -> TokenSt
     let entity_type = entity_type_predicate_token(&predicate.entity_type);
     let vehicle = entity_vehicle_predicate_token(&predicate.vehicle);
     let flags = entity_flags_predicate_token(&predicate.flags);
+    let movement = movement_predicate_token(predicate.movement.as_deref());
     let movement_affected_by = movement_affected_by_token(&predicate.movement_affected_by);
+    let periodic_tick = predicate
+        .periodic_tick
+        .map_or_else(|| quote! { None }, |period| quote! { Some(#period) });
     let type_specific = entity_type_specific_predicate_token(&predicate.type_specific);
     let unsupported = predicate.unsupported;
     quote! {
@@ -262,7 +327,9 @@ pub(super) fn entity_predicate_token(predicate: &EntityPredicateJson) -> TokenSt
             entity_type: #entity_type,
             vehicle: #vehicle,
             flags: #flags,
+            movement: #movement,
             movement_affected_by: #movement_affected_by,
+            periodic_tick: #periodic_tick,
             type_specific: #type_specific,
             unsupported: #unsupported,
         }
@@ -373,11 +440,43 @@ pub(super) fn generate_entity_effect(
             pitch,
         } => {
             let sounds = sounds.iter().map(generate_sound_event_ref);
+            let volume = generate_float_provider(*volume);
+            let pitch = generate_float_provider(*pitch);
             quote! {
                 EnchantmentEntityEffect::PlaySound {
                     sounds: &[#(#sounds),*],
                     volume: #volume,
                     pitch: #pitch,
+                }
+            }
+        }
+        EntityEffectJson::SpawnParticles {
+            particle,
+            horizontal_position,
+            vertical_position,
+            horizontal_velocity,
+            vertical_velocity,
+            speed,
+        } => {
+            assert_eq!(
+                particle.namespace.as_ref(),
+                "minecraft",
+                "vanilla enchantment particles must use the minecraft namespace: {particle}"
+            );
+            let particle = Ident::new(&particle.path.to_shouty_snake_case(), Span::call_site());
+            let horizontal_position = particle_position_source_token(horizontal_position);
+            let vertical_position = particle_position_source_token(vertical_position);
+            let horizontal_velocity = particle_velocity_source_token(horizontal_velocity);
+            let vertical_velocity = particle_velocity_source_token(vertical_velocity);
+            let speed = generate_float_provider(*speed);
+            quote! {
+                EnchantmentEntityEffect::SpawnParticles {
+                    particle: &vanilla_particle_types::#particle,
+                    horizontal_position: #horizontal_position,
+                    vertical_position: #vertical_position,
+                    horizontal_velocity: #horizontal_velocity,
+                    vertical_velocity: #vertical_velocity,
+                    speed: #speed,
                 }
             }
         }

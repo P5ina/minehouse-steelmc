@@ -75,7 +75,10 @@ pub(crate) fn stop_location_based_effects_in_slot(entity: &dyn LivingEntity, slo
 
 /// The enchantments of the item in `slot` that apply in that slot, as
 /// vanilla's `runIterationOnItem(stack, slot, owner, ...)` visits them.
-fn slot_enchantments(entity: &dyn LivingEntity, slot: EquipmentSlot) -> Vec<(EnchantmentRef, i32)> {
+pub(super) fn slot_enchantments(
+    entity: &dyn LivingEntity,
+    slot: EquipmentSlot,
+) -> Vec<(EnchantmentRef, i32)> {
     let mut enchantments = Vec::new();
     entity.with_equipment_slot(slot, &mut |stack: &ItemStack| {
         if stack.is_empty() {
@@ -221,15 +224,7 @@ fn on_changed_block(
         }
         // Vanilla `EnchantmentEntityEffect.onChangedBlock` applies every time.
         EnchantmentLocationBasedEffect::Entity(effect) => {
-            let mut item_ref = None;
-            entity.with_equipment_slot(slot, &mut |stack: &ItemStack| {
-                item_ref = Some(stack.item);
-            });
-            if apply_location_entity_effect(world, effect, entity, slot, level)
-                && let Some(item_ref) = item_ref
-            {
-                entity.on_equipped_item_broken(item_ref, slot);
-            }
+            apply_equipped_entity_effect(world, effect, entity, slot, level);
         }
     }
 }
@@ -276,6 +271,27 @@ fn attribute_modifier(
         id: modifier_id(effect, slot),
         amount: f64::from(effect.amount.calculate(level)),
         operation: effect.operation,
+    }
+}
+
+/// Applies an entity effect with the enchanted item in `slot` as vanilla's
+/// `EnchantedItemInUse(stack, slot, owner)`, whose break callback is
+/// `owner.onEquippedItemBroken`.
+pub(super) fn apply_equipped_entity_effect(
+    world: &Arc<World>,
+    effect: &EnchantmentEntityEffect,
+    entity: &dyn LivingEntity,
+    slot: EquipmentSlot,
+    level: i32,
+) {
+    let mut item_ref = None;
+    entity.with_equipment_slot(slot, &mut |stack: &ItemStack| {
+        item_ref = Some(stack.item);
+    });
+    if apply_location_entity_effect(world, effect, entity, slot, level)
+        && let Some(item_ref) = item_ref
+    {
+        entity.on_equipped_item_broken(item_ref, slot);
     }
 }
 

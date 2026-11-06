@@ -1,5 +1,6 @@
 mod item_in_use;
 mod location;
+mod tick;
 
 use std::sync::Arc;
 
@@ -31,6 +32,8 @@ pub(crate) use location::{
     run_location_changed_effects, run_location_changed_effects_in_slot,
     stop_location_based_effects, stop_location_based_effects_in_slot,
 };
+
+pub(crate) use tick::tick_effects;
 
 pub(crate) use selection::{EnchantmentInstance, get_enchantment_cost, select_enchantment};
 
@@ -724,11 +727,12 @@ fn entity_effect_is_supported(effect: &EnchantmentEntityEffect) -> bool {
             .all(|effect| entity_effect_is_supported(effect)),
         EnchantmentEntityEffect::ApplyExhaustion { .. }
         | EnchantmentEntityEffect::ApplyImpulse { .. }
-        | EnchantmentEntityEffect::PlaySound { .. }
         | EnchantmentEntityEffect::Unsupported { .. } => false,
         EnchantmentEntityEffect::ChangeItemDamage { .. }
         | EnchantmentEntityEffect::DamageEntity { .. }
         | EnchantmentEntityEffect::Ignite { .. }
+        | EnchantmentEntityEffect::PlaySound { .. }
+        | EnchantmentEntityEffect::SpawnParticles { .. }
         | EnchantmentEntityEffect::ReplaceDisk { .. } => true,
         EnchantmentEntityEffect::ApplyMobEffect { to_apply, .. } => {
             matches!(to_apply, MobEffectSelection::Single(_))
@@ -817,10 +821,17 @@ fn apply_supported_entity_effect(
             }
             false
         }
+        EnchantmentEntityEffect::PlaySound { .. } => {
+            tick::play_sound(world, effect, level, entity, entity.position());
+            false
+        }
+        EnchantmentEntityEffect::SpawnParticles { .. } => {
+            tick::spawn_particles(world, effect, entity, entity.position());
+            false
+        }
         EnchantmentEntityEffect::ApplyMobEffect { .. }
         | EnchantmentEntityEffect::ApplyExhaustion { .. }
         | EnchantmentEntityEffect::ApplyImpulse { .. }
-        | EnchantmentEntityEffect::PlaySound { .. }
         | EnchantmentEntityEffect::Unsupported { .. } => false,
     }
 }
@@ -846,6 +857,7 @@ fn post_piercing_entity_effect_is_supported(effect: &EnchantmentEntityEffect) ->
         EnchantmentEntityEffect::ChangeItemDamage { .. }
         | EnchantmentEntityEffect::ApplyExhaustion { .. }
         | EnchantmentEntityEffect::Ignite { .. }
+        | EnchantmentEntityEffect::SpawnParticles { .. }
         | EnchantmentEntityEffect::ReplaceDisk { .. } => true,
         EnchantmentEntityEffect::PlaySound { sounds, .. } => !sounds.is_empty(),
         EnchantmentEntityEffect::ApplyImpulse { direction, .. } => {
@@ -901,13 +913,12 @@ fn apply_supported_post_piercing_entity_effect(
             user.apply_post_impulse_grace_time(10);
             false
         }
-        EnchantmentEntityEffect::PlaySound {
-            sounds,
-            volume,
-            pitch,
-        } => {
-            let index = (level - 1).clamp(0, sounds.len() as i32 - 1) as usize;
-            user.play_sound(sounds[index], *volume, *pitch);
+        EnchantmentEntityEffect::PlaySound { .. } => {
+            tick::play_sound(world, effect, level, user, user.position());
+            false
+        }
+        EnchantmentEntityEffect::SpawnParticles { .. } => {
+            tick::spawn_particles(world, effect, user, user.position());
             false
         }
         EnchantmentEntityEffect::ReplaceDisk { .. } => {
@@ -1131,6 +1142,8 @@ fn entity_predicate_matches_type(
     if predicate.unsupported
         || !matches!(predicate.vehicle, EntityVehiclePredicate::Any)
         || predicate.flags.has_constraints()
+        || predicate.movement.is_some()
+        || predicate.periodic_tick.is_some()
         || !matches!(
             predicate.movement_affected_by,
             MovementAffectedByPredicate::Any
@@ -1185,6 +1198,15 @@ fn entity_predicate_matches_entity(
         EntityVehiclePredicate::Unsupported => return None,
     }
 
+    // Vanilla `MovementPredicate.matches(Entity, ...)`: known movement in
+    // blocks per second.
+    if let Some(movement) = &predicate.movement {
+        let velocity = entity.known_movement() * 20.0;
+        if !movement.matches(velocity.x, velocity.y, velocity.z, entity.fall_distance()) {
+            return Some(false);
+        }
+    }
+
     match &predicate.movement_affected_by {
         MovementAffectedByPredicate::Any => {}
         MovementAffectedByPredicate::Blocks(blocks) => {
@@ -1197,6 +1219,11 @@ fn entity_predicate_matches_entity(
 
     if predicate.flags.unsupported {
         return None;
+    }
+    if let Some(period) = predicate.periodic_tick
+        && entity.tick_count() % period != 0
+    {
+        return Some(false);
     }
     if let Some(expected) = predicate.flags.is_on_ground
         && entity.on_ground() != expected
