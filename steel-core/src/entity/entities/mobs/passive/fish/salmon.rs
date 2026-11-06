@@ -11,9 +11,11 @@ use steel_registry::{sound_events, vanilla_attributes};
 use steel_utils::locks::SyncMutex;
 use steel_utils::{BlockPos, BlockStateId, DowncastType, DowncastTypeKey};
 
+use crate::entity::SpawnRule;
 use crate::entity::ai::goal::FollowFlockLeaderGoal;
 use crate::entity::damage::DamageSource;
 use crate::entity::entity::EntityEventSource as _;
+use crate::entity::fish::check_surface_water_animal_spawn_rules;
 use crate::entity::{
     AbstractFish, AbstractSchoolingFish, DefaultEntityPush, Entity, EntityBase, EntityBaseLoad,
     EntityPose, EntitySpawnReason, EntitySyncedData, LivingEntity, LivingEntityBase, Mob, MobBase,
@@ -25,7 +27,7 @@ use crate::physics::MoveResult;
 use crate::world::{ServerLevelAccessor, World};
 
 /// Vanilla salmon: a schooling fish in three sizes.
-#[entity_behavior(class = "Salmon")]
+#[entity_behavior(class = "Salmon", spawn_rule)]
 pub struct SalmonEntity {
     base: EntityBase,
     entity_type: EntityTypeRef,
@@ -107,6 +109,9 @@ unsafe impl DowncastType for SalmonEntity {
 }
 
 impl SalmonEntity {
+    /// Vanilla `SpawnPlacements` predicate: `WaterAnimal.checkSurfaceWaterAnimalSpawnRules`.
+    pub(crate) const SPAWN_RULE: SpawnRule = check_surface_water_animal_spawn_rules;
+
     /// Creates a new salmon.
     #[must_use]
     pub fn new(entity_type: EntityTypeRef, id: i32, position: DVec3, world: Weak<World>) -> Self {

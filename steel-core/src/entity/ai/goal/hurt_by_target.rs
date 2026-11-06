@@ -82,7 +82,16 @@ impl HurtByTargetGoal {
         self
     }
 
-    fn alert_others(&self, mob: &dyn PathfinderMob, hurt_by_mob: &SharedEntity) {
+    /// Picks which mobs [`alert_others`](Self::alert_others) alerts without
+    /// alerting on every start, for goals that alert on their own terms.
+    #[must_use]
+    pub(crate) const fn with_alert_matcher(mut self, matcher: fn(&dyn Entity) -> bool) -> Self {
+        self.alert_matcher = Some(matcher);
+        self
+    }
+
+    /// Vanilla `HurtByTargetGoal.alertOthers`.
+    pub(crate) fn alert_others(&self, mob: &dyn PathfinderMob, hurt_by_mob: &SharedEntity) {
         let Some(world) = mob.level() else {
             return;
         };

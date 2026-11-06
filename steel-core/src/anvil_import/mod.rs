@@ -23,6 +23,7 @@ mod chunk;
 mod entities;
 mod level;
 mod nbt;
+mod players;
 mod poi;
 pub mod region;
 mod report;
@@ -45,6 +46,7 @@ use crate::chunk_saver::{PersistentChunk, PreparedChunkSave, RegionManager};
 
 pub use chunk::{ChunkConversion, convert_chunk};
 pub use level::{LevelReport, import_level_data};
+pub use players::{PlayerReport, import_players};
 pub use region::AnvilRegion;
 pub use report::ImportReport;
 
@@ -78,6 +80,14 @@ pub enum AnvilImportError {
     LevelDataExists {
         /// Existing `level.toml`.
         path: PathBuf,
+    },
+    /// A player already has Steel data in the target domain.
+    #[error("player {uuid} already has data in domain {domain}; import into an empty world")]
+    PlayerDataExists {
+        /// Player UUID.
+        uuid: uuid::Uuid,
+        /// Target domain.
+        domain: String,
     },
 }
 

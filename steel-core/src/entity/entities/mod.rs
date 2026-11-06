@@ -7,10 +7,12 @@ pub use mobs::ambient::BatEntity;
 pub use mobs::golems::{IronGolemEntity, SnowGolemEntity};
 pub use mobs::hostile::{
     BlazeEntity, BoggedEntity, CaveSpiderEntity, CreeperEntity, EndermiteEntity, GhastEntity,
-    GiantEntity, HuskEntity, MagmaCubeEntity, ParchedEntity, SkeletonEntity, SlimeEntity,
-    SpiderEntity, StrayEntity, VexEntity, WitherSkeletonEntity, ZombieEntity, ZombieGroupData,
+    GiantEntity, HuskEntity, MagmaCubeEntity, ParchedEntity, PhantomEntity, SkeletonEntity,
+    SlimeEntity, SpiderEntity, StrayEntity, VexEntity, WitherSkeletonEntity, ZombieEntity,
+    ZombieGroupData,
 };
 pub use mobs::hostile::{ElderGuardianEntity, Guardian, GuardianEntity};
+pub use mobs::neutral::PolarBearEntity;
 pub use mobs::passive::*;
 pub use mobs::raiders::{EvokerEntity, PillagerEntity, VindicatorEntity, WitchEntity};
 pub use objects::display_ui::{BlockDisplayEntity, ItemFrameEntity, LeashFenceKnotEntity};
