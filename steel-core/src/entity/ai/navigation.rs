@@ -71,6 +71,10 @@ pub struct PathNavigation {
     can_walk_over_fences: bool,
     avoid_sun: bool,
     can_path_to_targets_below_surface: bool,
+    /// Vanilla `WallClimberNavigation`: this navigation belongs to a wall climber.
+    wall_climber: bool,
+    /// Vanilla `WallClimberNavigation.pathToPosition`.
+    climber_path_to_position: Option<BlockPos>,
 }
 
 impl PathNavigation {
@@ -102,6 +106,70 @@ impl PathNavigation {
             can_walk_over_fences: false,
             avoid_sun: false,
             can_path_to_targets_below_surface: false,
+            wall_climber: false,
+            climber_path_to_position: None,
+        }
+    }
+
+    /// Returns whether this is a vanilla `WallClimberNavigation`.
+    #[must_use]
+    pub const fn is_wall_climber(&self) -> bool {
+        self.wall_climber
+    }
+
+    /// Turns this navigation into a vanilla `WallClimberNavigation`.
+    pub const fn set_wall_climber(&mut self, wall_climber: bool) {
+        self.wall_climber = wall_climber;
+    }
+
+    /// Returns the wall climber's remembered `pathToPosition`.
+    #[must_use]
+    pub const fn climber_path_to_position(&self) -> Option<BlockPos> {
+        self.climber_path_to_position
+    }
+
+    /// Records the position a wall climber asked a path to.
+    ///
+    /// Vanilla `WallClimberNavigation.createPath` stores the requested position before
+    /// pathfinding, whether or not a path is found. Ordinary navigations ignore it.
+    pub const fn record_climber_path_to_position(&mut self, pos: BlockPos) {
+        if self.wall_climber {
+            self.climber_path_to_position = Some(pos);
+        }
+    }
+
+    /// Vanilla `WallClimberNavigation.moveTo(Entity, double)` when no path was found:
+    /// remembers the target and speed so `tick` steers straight at it.
+    pub const fn move_climber_directly_to(&mut self, pos: BlockPos, speed_modifier: f64) {
+        self.climber_path_to_position = Some(pos);
+        self.speed_modifier = speed_modifier;
+    }
+
+    /// Vanilla `WallClimberNavigation.tick` once the path is done.
+    ///
+    /// Returns the wanted position and speed for the move control, or clears the
+    /// remembered position when the mob has reached it.
+    pub fn tick_wall_climber_without_path(
+        &mut self,
+        mob_position: DVec3,
+        mob_bb_width: f64,
+    ) -> Option<(DVec3, f64)> {
+        let target = self.climber_path_to_position?;
+        let reached_column = mob_position.y > f64::from(target.y())
+            && BlockPos::new(target.x(), fast_floor(mob_position.y), target.z())
+                .closer_to_center_than(mob_position, mob_bb_width);
+        if !target.closer_to_center_than(mob_position, mob_bb_width) && !reached_column {
+            Some((
+                DVec3::new(
+                    f64::from(target.x()),
+                    f64::from(target.y()),
+                    f64::from(target.z()),
+                ),
+                self.speed_modifier,
+            ))
+        } else {
+            self.climber_path_to_position = None;
+            None
         }
     }
 
@@ -860,6 +928,32 @@ mod tests {
     ) -> bool {
         let level = empty_level();
         navigation.move_to(&level, path, speed_modifier, mob_position)
+    }
+
+    #[test]
+    fn wall_climber_steers_at_remembered_target_until_reached() {
+        let mut navigation = PathNavigation::new();
+        navigation.record_climber_path_to_position(BlockPos::new(3, 70, 3));
+        assert_eq!(
+            navigation.climber_path_to_position(),
+            None,
+            "ordinary navigation ignores climber targets"
+        );
+
+        navigation.set_wall_climber(true);
+        navigation.move_climber_directly_to(BlockPos::new(3, 70, 3), 1.25);
+        assert_eq!(
+            navigation.tick_wall_climber_without_path(DVec3::new(0.5, 64.0, 0.5), 1.4),
+            Some((DVec3::new(3.0, 70.0, 3.0), 1.25)),
+            "far from the target the climber steers at its block corner"
+        );
+
+        // Above the target, standing in its column, counts as reached.
+        assert_eq!(
+            navigation.tick_wall_climber_without_path(DVec3::new(3.5, 72.2, 3.5), 1.4),
+            None
+        );
+        assert_eq!(navigation.climber_path_to_position(), None);
     }
 
     #[test]

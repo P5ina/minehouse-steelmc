@@ -9,3 +9,7 @@ pub use creeper::CreeperEntity;
 /// Hostile endermite entity module.
 pub mod endermite;
 pub use endermite::EndermiteEntity;
+
+/// Hostile spider and cave spider entity module.
+pub mod spider;
+pub use spider::{CaveSpiderEntity, SpiderEntity};
