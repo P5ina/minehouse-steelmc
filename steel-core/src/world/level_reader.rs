@@ -4,6 +4,7 @@
 //! `canSurvive` should depend on the world-reading surface, not on the concrete
 //! `World` type. `World` and `WorldGenRegion` both implement this trait.
 
+use steel_registry::biome::BiomeRef;
 use steel_registry::blocks::BlockRef;
 use steel_registry::blocks::block_state_ext::BlockStateExt as _;
 use steel_registry::blocks::properties::Direction;
@@ -181,6 +182,15 @@ pub trait ServerLevelAccessor: LevelReader {
     #[expect(unused_variables, reason = "default level surfaces hold no entities")]
     fn is_unobstructed_by_entities(&self, entity: &dyn Entity) -> bool {
         true
+    }
+
+    /// Vanilla `LevelReader.getBiome(pos)`, for spawn predicates that read the biome.
+    ///
+    /// Level surfaces without biome access report `None`, and callers fall back
+    /// to their biome-independent rule.
+    #[expect(unused_variables, reason = "default level surfaces have no biomes")]
+    fn biome(&self, pos: BlockPos) -> Option<BiomeRef> {
+        None
     }
 }
 

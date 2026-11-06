@@ -17,10 +17,12 @@ use steel_utils::locks::SyncMutex;
 use steel_utils::types::GameType;
 use steel_utils::{BlockPos, BlockStateId, Downcast as _, DowncastType, DowncastTypeKey};
 
+use crate::entity::SpawnRule;
 use crate::entity::ai::goal::{Goal, GoalControls};
 use crate::entity::ai::targeting::TargetingConditions;
 use crate::entity::damage::DamageSource;
 use crate::entity::entity::EntityEventSource as _;
+use crate::entity::fish::check_surface_water_animal_spawn_rules;
 use crate::entity::{
     AbstractFish, DefaultEntityPush, Entity, EntityBase, EntityBaseLoad, EntityPose,
     EntitySyncedData, LivingEntity, LivingEntityBase, Mob, MobBase, MobEffectInstance,
@@ -47,7 +49,7 @@ struct PuffTimers {
 }
 
 /// Vanilla pufferfish: puffs up near scary mobs and stings what it touches.
-#[entity_behavior(class = "Pufferfish")]
+#[entity_behavior(class = "Pufferfish", spawn_rule)]
 pub struct PufferfishEntity {
     base: EntityBase,
     entity_type: EntityTypeRef,
@@ -91,6 +93,9 @@ const fn puff_scale(state: i32) -> f32 {
 }
 
 impl PufferfishEntity {
+    /// Vanilla `SpawnPlacements` predicate: `WaterAnimal.checkSurfaceWaterAnimalSpawnRules`.
+    pub(crate) const SPAWN_RULE: SpawnRule = check_surface_water_animal_spawn_rules;
+
     /// Creates a new pufferfish.
     #[must_use]
     pub fn new(entity_type: EntityTypeRef, id: i32, position: DVec3, world: Weak<World>) -> Self {

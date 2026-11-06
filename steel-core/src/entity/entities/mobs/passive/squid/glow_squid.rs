@@ -1,17 +1,21 @@
 use std::sync::{Arc, Weak};
 
 use glam::DVec3;
+use rand::Rng;
 use simdnbt::{borrow, owned};
 use steel_macros::entity_behavior;
 use steel_registry::{
+    blocks::block_state_ext::BlockStateExt as _,
     entity_data::{EntityPose, ParticleData},
     entity_type::{EntityDimensions, EntityTypeRef},
     sound_event::SoundEventRef,
-    sound_events,
+    sound_events, vanilla_blocks,
     vanilla_entity_data::GlowSquidEntityData,
     vanilla_particle_types,
 };
-use steel_utils::{DowncastType, DowncastTypeKey, locks::SyncMutex, types::InteractionHand};
+use steel_utils::{
+    BlockPos, DowncastType, DowncastTypeKey, locks::SyncMutex, types::InteractionHand,
+};
 
 use super::{
     SQUID_AMBIENT_SOUND_INTERVAL, SQUID_BABY_DIMENSIONS, SQUID_GRAVITY, SQUID_SOUND_VOLUME, Squid,
@@ -22,18 +26,35 @@ use crate::{
     entity::{
         AgeableMob, AgeableMobBase, Entity, EntityBase, EntityBaseLoad, EntityMovementEmission,
         EntitySpawnReason, EntitySyncedData, LivingEntity, LivingEntityBase, Mob, MobBase,
-        PathfinderMob, SharedEntity, SpawnGroupData, damage::DamageSource,
+        PathfinderMob, SharedEntity, SpawnGroupData, SpawnRule, damage::DamageSource,
     },
     physics::{MoveResult, MoverType},
     player::Player,
-    world::World,
+    world::{ServerLevelAccessor, World},
 };
+
+/// Vanilla `GlowSquid.checkGlowSquidSpawnRules`: deep (33 or more blocks
+/// below sea level), in complete darkness and inside a water block.
+fn check_glow_squid_spawn_rules(
+    _entity_type: EntityTypeRef,
+    level: &dyn ServerLevelAccessor,
+    _spawn_reason: EntitySpawnReason,
+    pos: BlockPos,
+    _random: &mut dyn Rng,
+) -> bool {
+    pos.y() <= level.sea_level() - GLOW_SQUID_MIN_SPAWN_DEPTH
+        && level.raw_brightness(pos, 0) == 0
+        && level.get_block_state(pos).get_block() == &vanilla_blocks::WATER
+}
+
+/// How far below sea level glow squids spawn at the least.
+const GLOW_SQUID_MIN_SPAWN_DEPTH: i32 = 33;
 
 /// Vanilla `GlowSquid`: ticks dark for 100 ticks after a mob hurts it.
 const DARK_TICKS_AFTER_HURT: i32 = 100;
 
 /// Vanilla glow squid: a squid with glowing ink that dims when hurt.
-#[entity_behavior(class = "GlowSquid")]
+#[entity_behavior(class = "GlowSquid", spawn_rule)]
 pub struct GlowSquidEntity {
     base: EntityBase,
     entity_type: EntityTypeRef,
@@ -50,6 +71,9 @@ unsafe impl DowncastType for GlowSquidEntity {
 }
 
 impl GlowSquidEntity {
+    /// Vanilla `SpawnPlacements` predicate: `GlowSquid.checkGlowSquidSpawnRules`.
+    pub(crate) const SPAWN_RULE: SpawnRule = check_glow_squid_spawn_rules;
+
     /// Creates a new glow squid.
     #[must_use]
     pub fn new(entity_type: EntityTypeRef, id: i32, position: DVec3, world: Weak<World>) -> Self {
