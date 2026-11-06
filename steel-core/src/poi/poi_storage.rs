@@ -6,7 +6,8 @@
 //! load/unload and spatial queries.
 
 use rustc_hash::FxHashMap;
-use steel_registry::{REGISTRY, RegistryExt};
+use steel_registry::vanilla_poi_type_tags::PoiTag;
+use steel_registry::{REGISTRY, RegistryExt, TaggedRegistryExt as _};
 use steel_utils::{BlockPos, BlockStateId, ChunkPos, PackedSectionBlockPos, SectionPos};
 
 use super::poi_instance::PointOfInterest;
@@ -61,6 +62,9 @@ const fn resolve_pos(pos: BlockPos) -> (ChunkPos, i32, PackedSectionBlockPos) {
     let packed = PackedSectionBlockPos::from_block_pos(pos);
     (chunk_pos, section_pos.y(), packed)
 }
+
+/// Vanilla `PoiManager.MAX_VILLAGE_DISTANCE`, in sections.
+pub const MAX_VILLAGE_DISTANCE: i32 = 6;
 
 fn max_tickets_for(type_id: usize) -> u32 {
     REGISTRY
@@ -460,6 +464,53 @@ impl PointOfInterestStorage {
         }
     }
 
+    /// Vanilla `PoiManager.sectionsToVillage`: the section distance to the nearest
+    /// section holding an occupied village POI, or 7 when none is within
+    /// [`MAX_VILLAGE_DISTANCE`] sections.
+    ///
+    /// Vanilla keeps these levels in `PoiManager.DistanceTracker`, a 26-neighbour
+    /// fixed point over sections whose sources are the village centers, which
+    /// settles to this Chebyshev distance capped at 7. Steel computes it on
+    /// demand from the loaded columns. Vanilla never re-checks a section when
+    /// its column unloads, so a village it saw before can still count there.
+    #[must_use]
+    pub fn sections_to_village(&self, section: SectionPos) -> i32 {
+        let mut nearest = MAX_VILLAGE_DISTANCE + 1;
+        for dx in -MAX_VILLAGE_DISTANCE..=MAX_VILLAGE_DISTANCE {
+            for dz in -MAX_VILLAGE_DISTANCE..=MAX_VILLAGE_DISTANCE {
+                let horizontal = dx.abs().max(dz.abs());
+                if horizontal >= nearest {
+                    continue;
+                }
+                let chunk_pos = ChunkPos::new(section.x() + dx, section.z() + dz);
+                let Some(column) = self.columns.get(&chunk_pos) else {
+                    continue;
+                };
+                for (&section_y, set) in column {
+                    let distance = horizontal.max((section_y - section.y()).abs());
+                    if distance < nearest && Self::is_village_center(set) {
+                        nearest = distance;
+                    }
+                }
+            }
+        }
+        nearest
+    }
+
+    /// Vanilla `PoiManager.isVillageCenter`: the section has an occupied POI
+    /// whose type is in `#minecraft:village`.
+    fn is_village_center(set: &PointOfInterestSet) -> bool {
+        set.iter().any(|(_, poi)| {
+            REGISTRY
+                .poi_types
+                .by_id(poi.poi_type_id)
+                .is_some_and(|poi_type| {
+                    poi.is_occupied(poi_type.ticket_count)
+                        && REGISTRY.poi_types.is_in_tag(poi_type, &PoiTag::VILLAGE)
+                })
+        })
+    }
+
     /// Removes all POI data for a chunk column. Called during chunk unload.
     pub fn remove_chunk(&mut self, chunk_pos: ChunkPos) {
         self.columns.remove(&chunk_pos);
@@ -469,8 +520,8 @@ impl PointOfInterestStorage {
 #[cfg(test)]
 mod tests {
     use super::{OccupationStatus, PointOfInterestStorage};
-    use steel_registry::init_vanilla_registry;
-    use steel_utils::BlockPos;
+    use steel_registry::{RegistryEntry as _, init_vanilla_registry, vanilla_poi_types};
+    use steel_utils::{BlockPos, SectionPos};
 
     fn sorted_positions(mut positions: Vec<(BlockPos, usize)>) -> Vec<BlockPos> {
         positions.sort_by_key(|(pos, _)| (pos.x(), pos.y(), pos.z()));
@@ -496,6 +547,40 @@ mod tests {
         assert_eq!(
             positions,
             vec![BlockPos::new(0, -64, 0), BlockPos::new(0, 320, 0)]
+        );
+    }
+
+    #[test]
+    fn sections_to_village_is_the_section_distance_to_an_occupied_village_poi() {
+        init_vanilla_registry();
+        let meeting = vanilla_poi_types::MEETING
+            .try_id()
+            .expect("vanilla meeting POI type should be registered");
+        let nether_portal = vanilla_poi_types::NETHER_PORTAL
+            .try_id()
+            .expect("vanilla nether portal POI type should be registered");
+        let bell = BlockPos::new(8, 70, 8);
+        let mut storage = PointOfInterestStorage::new();
+        storage.add(bell, meeting, vanilla_poi_types::MEETING.ticket_count);
+        let at = |sx, sy, sz| SectionPos::new(sx, sy, sz);
+        let bell_section = SectionPos::from_block_pos(bell);
+
+        // A bell nobody has claimed is not a village center.
+        assert_eq!(storage.sections_to_village(bell_section), 7);
+
+        assert!(storage.reserve_ticket(bell));
+        assert_eq!(storage.sections_to_village(bell_section), 0);
+        assert_eq!(storage.sections_to_village(at(3, 4, -2)), 3);
+        assert_eq!(storage.sections_to_village(at(-6, 10, 6)), 6);
+        assert_eq!(storage.sections_to_village(at(7, 4, 0)), 7);
+        assert_eq!(storage.sections_to_village(at(0, -3, 0)), 7);
+
+        // An occupied POI outside `#minecraft:village` does not count.
+        let portal = BlockPos::new(200, 70, 8);
+        storage.add(portal, nether_portal, 0);
+        assert_eq!(
+            storage.sections_to_village(SectionPos::from_block_pos(portal)),
+            7
         );
     }
 }
