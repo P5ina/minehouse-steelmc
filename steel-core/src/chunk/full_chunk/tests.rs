@@ -543,7 +543,7 @@ fn insertion_rejects_an_entity_owned_by_another_chunk() {
     let chunk = FullChunkRef::from_full_context(&chunk_owner);
     let local_pos = BlockPos::new(0, 2, 0);
     let foreign_pos = BlockPos::new(16, 2, 0);
-    let chest = vanilla_blocks::CHEST.default_state();
+    let chest = vanilla_blocks::COPPER_CHEST.default_state();
     assert!(
         chunk
             .set_block_state(local_pos, chest, UpdateFlags::UPDATE_NONE)
@@ -569,7 +569,7 @@ fn insertion_below_world_does_not_alias_the_bottom_section() {
     let chunk = FullChunkRef::from_full_context(&chunk_owner);
     let bottom_section_pos = BlockPos::new(0, 15, 0);
     let below_world_pos = BlockPos::new(0, -1, 0);
-    let chest = vanilla_blocks::CHEST.default_state();
+    let chest = vanilla_blocks::COPPER_CHEST.default_state();
     assert!(
         chunk
             .set_block_state(bottom_section_pos, chest, UpdateFlags::UPDATE_NONE)
@@ -601,7 +601,7 @@ fn stale_no_entity_promotion_cannot_consume_a_replacement_marker() {
     );
     chunk.set_pending_block_entity(pos);
 
-    let chest = vanilla_blocks::CHEST.default_state();
+    let chest = vanilla_blocks::COPPER_CHEST.default_state();
     assert_eq!(
         chunk.set_block_state(pos, chest, UpdateFlags::UPDATE_NONE),
         Some(moving_piston)

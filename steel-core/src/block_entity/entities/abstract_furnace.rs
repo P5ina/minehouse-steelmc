@@ -210,7 +210,7 @@ impl FurnaceContainer {
 
                     if is_lit {
                         self.cooking_timer += 1;
-                        if self.cooking_timer == self.cooking_total_time {
+                        if self.cooking_timer >= self.cooking_total_time {
                             self.cooking_timer = 0;
                             self.cooking_total_time =
                                 self.kind.cooking_time(recipe.data().cooking_time);
@@ -352,6 +352,7 @@ impl AbstractFurnaceBlockEntity {
 
     fn load_additional(&self, nbt: &BorrowedNbtCompound<'_>) {
         let nbt: NbtCompoundView<'_, '_> = nbt.into();
+        // TODO: Load `speed_multiplier` once fuel comes from the `cooking_fuel` component.
         let mut furnace = self.container.lock();
         furnace.items.fill(ItemStack::empty());
         if let Some(items) = nbt.list("Items").and_then(|list| list.compounds()) {
@@ -366,10 +367,10 @@ impl AbstractFurnaceBlockEntity {
                 }
             }
         }
-        furnace.cooking_timer = i32::from(nbt.short("cooking_time_spent").unwrap_or(0));
-        furnace.cooking_total_time = i32::from(nbt.short("cooking_total_time").unwrap_or(0));
-        furnace.lit_time_remaining = i32::from(nbt.short("lit_time_remaining").unwrap_or(0));
-        furnace.lit_total_time = i32::from(nbt.short("lit_total_time").unwrap_or(0));
+        furnace.cooking_timer = read_int(&nbt, "cooking_time_spent");
+        furnace.cooking_total_time = read_int(&nbt, "cooking_total_time");
+        furnace.lit_time_remaining = read_int(&nbt, "lit_time_remaining");
+        furnace.lit_total_time = read_int(&nbt, "lit_total_time");
         furnace.recipes_used.clear();
         if let Some(recipes) = nbt.compound("RecipesUsed") {
             for (key, value) in recipes.iter() {
@@ -385,10 +386,10 @@ impl AbstractFurnaceBlockEntity {
 
     fn save_additional(&self, nbt: &mut NbtCompound) {
         let furnace = self.container.lock();
-        nbt.insert("cooking_time_spent", furnace.cooking_timer as i16);
-        nbt.insert("cooking_total_time", furnace.cooking_total_time as i16);
-        nbt.insert("lit_time_remaining", furnace.lit_time_remaining as i16);
-        nbt.insert("lit_total_time", furnace.lit_total_time as i16);
+        nbt.insert("cooking_time_spent", furnace.cooking_timer);
+        nbt.insert("cooking_total_time", furnace.cooking_total_time);
+        nbt.insert("lit_time_remaining", furnace.lit_time_remaining);
+        nbt.insert("lit_total_time", furnace.lit_total_time);
 
         let mut items = Vec::new();
         for (slot, stack) in furnace.items.iter().enumerate() {
@@ -530,6 +531,13 @@ furnace_block_entity!(
     SMOKER,
     Smoker
 );
+
+/// Reads a saved timer; Vanilla 26.3 stores ints, older saves used shorts.
+fn read_int(nbt: &NbtCompoundView<'_, '_>, key: &str) -> i32 {
+    nbt.int(key)
+        .or_else(|| nbt.short(key).map(i32::from))
+        .unwrap_or(0)
+}
 
 #[cfg(test)]
 mod tests {

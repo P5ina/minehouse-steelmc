@@ -1551,7 +1551,7 @@ mod tests {
                 .set_block_state_for_generation(
                     ChunkStatus::Empty,
                     chest_pos,
-                    vanilla_blocks::CHEST.default_state(),
+                    vanilla_blocks::COPPER_CHEST.default_state(),
                     UpdateFlags::UPDATE_NONE,
                 )
                 .is_some()
