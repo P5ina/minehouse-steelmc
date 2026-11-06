@@ -21,6 +21,58 @@ pub enum MobCategory {
 }
 
 impl MobCategory {
+    /// Every category in vanilla declaration order.
+    pub const VALUES: [Self; 8] = [
+        Self::Monster,
+        Self::Creature,
+        Self::Ambient,
+        Self::Axolotls,
+        Self::UndergroundWaterCreature,
+        Self::WaterCreature,
+        Self::WaterAmbient,
+        Self::Misc,
+    ];
+
+    /// Vanilla `getSerializedName`, also the key of biome spawner lists.
+    #[must_use]
+    pub const fn serialized_name(self) -> &'static str {
+        match self {
+            Self::Monster => "monster",
+            Self::Creature => "creature",
+            Self::Ambient => "ambient",
+            Self::Axolotls => "axolotls",
+            Self::UndergroundWaterCreature => "underground_water_creature",
+            Self::WaterCreature => "water_creature",
+            Self::WaterAmbient => "water_ambient",
+            Self::Misc => "misc",
+        }
+    }
+
+    /// Vanilla `getMaxInstancesPerChunk`: the mob cap per 17×17 chunk area.
+    #[must_use]
+    pub const fn max_instances_per_chunk(self) -> i32 {
+        match self {
+            Self::Monster => 70,
+            Self::Creature => 10,
+            Self::Ambient => 15,
+            Self::Axolotls | Self::UndergroundWaterCreature | Self::WaterCreature => 5,
+            Self::WaterAmbient => 20,
+            Self::Misc => -1,
+        }
+    }
+
+    /// Vanilla `isFriendly`: whether the category spawns when monsters are disabled.
+    #[must_use]
+    pub const fn is_friendly(self) -> bool {
+        !matches!(self, Self::Monster)
+    }
+
+    /// Vanilla `isPersistent`: whether natural spawning runs only every 400 ticks.
+    #[must_use]
+    pub const fn is_persistent(self) -> bool {
+        matches!(self, Self::Creature | Self::Misc)
+    }
+
     #[must_use]
     pub const fn despawn_distance(self) -> i32 {
         match self {

@@ -355,8 +355,24 @@ pub trait Mob: LivingEntity + Leashable {
     fn set_mob_flags(&self, flags: i8);
 
     /// Returns whether the entity-specific spawn predicate accepts this spawn.
+    ///
+    /// Vanilla `Mob.checkSpawnRules` is `true`; `PathfinderMob` overrides it to
+    /// require a non-negative walk target value at the mob's block position.
     fn check_spawn_rules(&self, _world: &Arc<World>, _reason: EntitySpawnReason) -> bool {
-        true
+        self.as_pathfinder_mob()
+            .is_none_or(|pathfinder| pathfinder.get_walk_target_value(self.block_position()) >= 0.0)
+    }
+
+    /// Vanilla `Mob.getMaxSpawnClusterSize`: natural spawning stops the whole
+    /// cluster once this many mobs spawned from one start position.
+    fn max_spawn_cluster_size(&self) -> i32 {
+        4
+    }
+
+    /// Vanilla `Mob.isMaxGroupSizeReached`: natural spawning ends the current
+    /// group early when this returns true.
+    fn is_max_group_size_reached(&self, _group_size: i32) -> bool {
+        false
     }
 
     /// Sets the vanilla baby state. Vanilla `Mob.setBaby` is a no-op; ageable

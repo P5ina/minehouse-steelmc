@@ -26,6 +26,9 @@ const fn player_simulation_ticket(simulation_distance: u8) -> ChunkTicket {
     )
 }
 
+/// Vanilla `NaturalSpawner.SPAWN_DISTANCE_CHUNK`.
+pub(crate) const NATURAL_SPAWN_CHUNK_DISTANCE: i32 = 8;
+
 /// Owns player positions and the logical coverage of Vanilla's player tickets.
 ///
 /// Steel materializes the coverage immediately; generation admission remains
@@ -53,6 +56,22 @@ impl PlayerTicketTracker {
             view_distance,
             simulation_distance,
         }
+    }
+
+    /// Vanilla `DistanceManager.getNaturalSpawnChunkCount`: chunks within
+    /// [`NATURAL_SPAWN_CHUNK_DISTANCE`] (Chebyshev) of any occupied player center.
+    #[must_use]
+    pub(crate) fn natural_spawn_chunk_count(&self) -> usize {
+        const RADIUS: i32 = NATURAL_SPAWN_CHUNK_DISTANCE;
+        let mut chunks = FxHashSet::default();
+        for center in self.players_by_pos.keys() {
+            for dx in -RADIUS..=RADIUS {
+                for dz in -RADIUS..=RADIUS {
+                    chunks.insert(ChunkPos::new(center.0.x + dx, center.0.y + dz));
+                }
+            }
+        }
+        chunks.len()
     }
 
     /// Adds a player, moving an existing UUID from its previous position.
