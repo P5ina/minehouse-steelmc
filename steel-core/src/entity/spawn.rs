@@ -1,4 +1,4 @@
-use std::{collections::BTreeSet, io::Cursor, sync::Arc};
+use std::{collections::BTreeSet, io::Cursor, ptr, sync::Arc};
 
 use glam::DVec3;
 use simdnbt::borrow::{BaseNbtCompound, NbtCompound as BorrowedNbtCompoundView, read_compound};
@@ -10,6 +10,7 @@ use steel_registry::entity_type::EntityTypeRef;
 use steel_registry::entity_variant::HorseVariant;
 use steel_registry::item_stack::ItemStack;
 use steel_registry::mob_effect::MobEffectRef;
+use steel_registry::wolf_variant::WolfVariantRef;
 use steel_registry::{REGISTRY, RegistryExt};
 use steel_utils::nbt::{NbtNumeric, merge_nbt_compounds, nbt_collection_values};
 use steel_utils::{BlockPos, Identifier, UuidExt, WorldAabb, axis::Axis, types::Difficulty};
@@ -473,6 +474,32 @@ pub enum SpawnGroupData {
     Horse(AgeableMobGroupData, HorseVariant),
     /// Vanilla `AbstractSchoolingFish.SchoolSpawnGroupData`.
     School(SchoolSpawnGroupData),
+    /// Vanilla `Wolf.WolfPackData`: the variant every wolf of a pack shares.
+    WolfPack(WolfPackData),
+}
+
+/// Vanilla `Wolf.WolfPackData`, an `AgeableMobGroupData` that never spawns
+/// babies and carries the pack's variant.
+#[derive(Debug, Clone, Copy)]
+pub struct WolfPackData {
+    pub ageable: AgeableMobGroupData,
+    pub variant: WolfVariantRef,
+}
+
+impl WolfPackData {
+    #[must_use]
+    pub const fn new(variant: WolfVariantRef) -> Self {
+        Self {
+            ageable: AgeableMobGroupData::with_should_spawn_baby(false),
+            variant,
+        }
+    }
+}
+
+impl PartialEq for WolfPackData {
+    fn eq(&self, other: &Self) -> bool {
+        self.ageable == other.ageable && ptr::eq(self.variant, other.variant)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

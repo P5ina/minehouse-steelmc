@@ -603,8 +603,15 @@ pub trait Entity: EntityEventSource + ErasedType + Send + Sync + 'static {
             .is_some_and(EntitySyncedData::is_shift_key_down)
     }
 
-    /// Returns whether this entity is allied to `other`.
-    fn is_allied_to(&self, _other: &dyn Entity) -> bool {
+    /// Returns whether this entity is allied to `other`: vanilla
+    /// `Entity.isAlliedTo`, where either side may count the other as an ally.
+    fn is_allied_to(&self, other: &dyn Entity) -> bool {
+        self.considers_entity_as_ally(other)
+            || other.considers_entity_as_ally(self.as_entity_event_source())
+    }
+
+    /// Vanilla `considersEntityAsAlly`, such as a tame animal and its owner.
+    fn considers_entity_as_ally(&self, _other: &dyn Entity) -> bool {
         false
     }
 
@@ -614,7 +621,20 @@ pub trait Entity: EntityEventSource + ErasedType + Send + Sync + 'static {
     }
 
     /// Returns whether this entity is a tameable animal owned by `owner`.
-    fn is_tame_owned_by(&self, _owner: &dyn LivingEntity) -> bool {
+    fn is_tame_owned_by(&self, owner: &dyn LivingEntity) -> bool {
+        self.as_tamable_animal().is_some_and(|tamable| {
+            tamable.is_tame() && tamable.is_owned_by(owner.as_entity_event_source())
+        })
+    }
+
+    /// Vanilla `Llama.getStrength` for llamas and trader llamas, `None` for
+    /// everything else.
+    fn llama_strength(&self) -> Option<i32> {
+        None
+    }
+
+    /// Vanilla `target instanceof AbstractHorse horse && horse.isTamed()`.
+    fn is_tamed_horse(&self) -> bool {
         false
     }
 
@@ -1722,6 +1742,12 @@ pub trait Entity: EntityEventSource + ErasedType + Send + Sync + 'static {
     /// `instanceof SpellcasterIllager`.
     fn as_spellcaster_illager(&self) -> Option<&dyn SpellcasterIllager> {
         try_as_dyn::<Self, dyn SpellcasterIllager>(self)
+    }
+
+    /// Returns the `TamableAnimal` capability, equivalent to vanilla's
+    /// `instanceof TamableAnimal`.
+    fn as_tamable_animal(&self) -> Option<&dyn TamableAnimal> {
+        try_as_dyn::<Self, dyn TamableAnimal>(self)
     }
 
     /// Returns the `NeutralMob` capability, equivalent to vanilla's `instanceof NeutralMob`.

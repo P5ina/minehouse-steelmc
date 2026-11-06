@@ -11,6 +11,7 @@ use crate::entity::ai::brain::Memories;
 use crate::entity::consume_effect::apply_consume_effect;
 use crate::entity::damage::RecentDamageSource;
 use crate::entity::pushing::EntityPush;
+use steel_registry::damage_type::DamageType;
 
 const BED_SLEEP_POSITION_OFFSET: f64 = 0.125;
 /// Vanilla `DATA_LIVING_ENTITY_FLAGS` bit 1: using an item.
@@ -531,6 +532,15 @@ pub trait LivingEntity: Entity {
     /// [`RecentDamageSource`] retention semantics.
     fn last_damage_source(&self) -> Option<RecentDamageSource> {
         self.base().damage_history().last_damage_source()
+    }
+
+    /// The damage type of vanilla `getLastDamageSource(timeout)`, for callers
+    /// whose timeout is longer than [`Self::last_damage_source`]'s 40 ticks.
+    fn last_damage_type_within(&self, timeout: i64) -> Option<&'static DamageType> {
+        let world = self.level()?;
+        self.base()
+            .damage_history()
+            .last_damage_type_within(world.game_time(), timeout)
     }
 
     /// Records a successful hit using the victim's own level clock.
@@ -1067,6 +1077,11 @@ pub trait LivingEntity: Entity {
 
     /// Processes vanilla living death side effects.
     fn die(&self, source: &DamageSource) {
+        self.default_die(source);
+    }
+
+    /// Runs the base `LivingEntity.die` body, for overrides that call `super.die`.
+    fn default_die(&self, source: &DamageSource) {
         if self.is_removed() {
             return;
         }

@@ -184,6 +184,21 @@ impl NearestAttackableTargetGoal {
     pub(super) const fn has_target(&self) -> bool {
         self.target.is_some()
     }
+
+    /// Vanilla `NonTameRandomTargetGoal.canContinueToUse`: re-tests only the
+    /// target conditions against the found target.
+    pub(super) fn target_still_matches(&self, mob: &dyn PathfinderMob) -> bool {
+        let (Some(world), Some(target)) = (mob.level(), self.target.as_ref()) else {
+            return false;
+        };
+        let target_conditions = self
+            .target_conditions
+            .clone()
+            .range(self.target_goal.follow_distance(mob));
+        target
+            .as_living_entity()
+            .is_some_and(|target| target_conditions.test(world.as_ref(), Some(mob), target))
+    }
 }
 
 impl Goal for NearestAttackableTargetGoal {
