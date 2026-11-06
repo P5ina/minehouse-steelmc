@@ -28,7 +28,7 @@ mod open_door;
 mod panic_goal;
 mod raider_goals;
 mod random_look_around;
-mod random_pos;
+pub(crate) mod random_pos;
 mod random_stroll;
 mod random_swimming;
 mod ranged_attack;

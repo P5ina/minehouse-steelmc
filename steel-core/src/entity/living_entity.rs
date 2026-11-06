@@ -880,6 +880,12 @@ pub trait LivingEntity: Entity {
 
     /// Applies damage after vanilla reductions.
     fn actually_hurt(&self, world: &World, source: &DamageSource, amount: f32) {
+        self.default_actually_hurt(world, source, amount);
+    }
+
+    /// Runs the base `LivingEntity.actuallyHurt` body, for overrides that
+    /// call `super.actuallyHurt`.
+    fn default_actually_hurt(&self, world: &World, source: &DamageSource, amount: f32) {
         if self.is_invulnerable_to(world, source) {
             return;
         }

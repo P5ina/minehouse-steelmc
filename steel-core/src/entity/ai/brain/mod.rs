@@ -9,6 +9,7 @@
 
 pub mod activity;
 pub mod behavior;
+pub mod behaviors;
 pub mod memory;
 pub mod memory_types;
 pub mod nearest_visible;

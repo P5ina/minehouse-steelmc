@@ -334,16 +334,16 @@ pub enum SnifferState {
     Rising = 6,
 }
 
-/// Armadillo entity state.
+/// Armadillo entity state (vanilla `Armadillo.ArmadilloState`; the
+/// discriminant is the network id).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 #[repr(u8)]
 pub enum ArmadilloState {
     #[default]
     Idle = 0,
-    RollingUp = 1,
-    Rolled = 2,
+    Rolling = 1,
+    Scared = 2,
     Unrolling = 3,
-    Scared = 4,
 }
 
 /// Type-erased entity data for network encoding.
