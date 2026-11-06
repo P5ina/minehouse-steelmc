@@ -653,6 +653,12 @@ pub trait Entity: EntityEventSource + ErasedType + Send + Sync + 'static {
         !self.is_removed() && self.is_pickable()
     }
 
+    /// Vanilla `Entity.projectileReceivesSideEffectsOnHit`: whether a
+    /// projectile that failed to hurt this entity still bounces off it.
+    fn projectile_receives_side_effects_on_hit(&self, _was_hurt: bool) -> bool {
+        true
+    }
+
     /// Returns this entity's Vanilla projectile deflection behavior.
     fn deflection(&self, _projectile: &dyn Projectile) -> ProjectileDeflection {
         if REGISTRY
@@ -3561,11 +3567,21 @@ pub trait Entity: EntityEventSource + ErasedType + Send + Sync + 'static {
     /// Moves the entity with collision detection.
     ///
     /// Updates position, `on_ground`, velocity (on collision), and returns collision info.
+    fn move_entity(self: Arc<Self>, mover_type: MoverType, delta: DVec3) -> Option<MoveResult> {
+        self.default_move_entity(mover_type, delta)
+    }
+
+    /// The base `Entity.move`; overrides of [`Entity::move_entity`] call this
+    /// for vanilla `super.move(...)`.
     #[expect(
         clippy::too_many_lines,
         reason = "keeps vanilla movement phases in order"
     )]
-    fn move_entity(self: Arc<Self>, mover_type: MoverType, delta: DVec3) -> Option<MoveResult> {
+    fn default_move_entity(
+        self: Arc<Self>,
+        mover_type: MoverType,
+        delta: DVec3,
+    ) -> Option<MoveResult> {
         let world = self.level()?;
         if self.no_physics() {
             return self.move_without_physics(delta);
