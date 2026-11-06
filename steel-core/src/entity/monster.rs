@@ -88,11 +88,8 @@ pub trait Monster: PathfinderMob + Enemy {
     }
 
     /// Favors darker positions for pathfinding.
-    fn get_walk_target_value_monster(&self, pos: BlockPos) -> f32 {
-        let Some(world) = self.level() else {
-            return 0.0;
-        };
-        -world.pathfinding_cost_from_light_levels(pos)
+    fn get_walk_target_value_monster(&self, pos: BlockPos, level: &dyn LevelReader) -> f32 {
+        -level.pathfinding_cost_from_light_levels(pos)
     }
 
     fn is_preventing_player_rest(&self, _level: &World, _player: &Player) -> bool {
