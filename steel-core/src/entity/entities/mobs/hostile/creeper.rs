@@ -30,7 +30,7 @@ use crate::entity::entity::EntityEventSource as _;
 use crate::entity::{
     DefaultEntityPush, Entity, EntityBase, EntityBaseLoad, EntityMovementEmission, EntityPose,
     EntitySyncedData, LivingEntity, LivingEntityBase, Mob, MobBase, Monster, PathfinderMob,
-    RemovalReason, SharedEntity, next_entity_id, sync_dirty_mob_effects,
+    RemovalReason, SharedEntity, SpawnRule, next_entity_id, sync_dirty_mob_effects,
 };
 use crate::physics::MoveResult;
 use crate::player::Player;
@@ -61,7 +61,7 @@ struct SwellState {
 }
 
 /// A hostile creeper entity.
-#[entity_behavior(class = "Creeper")]
+#[entity_behavior(class = "Creeper", spawn_rule)]
 pub struct CreeperEntity {
     base: EntityBase,
     entity_type: EntityTypeRef,
@@ -81,6 +81,11 @@ fn is_entity_type(target: &dyn LivingEntity, entity_type: EntityTypeRef) -> bool
 }
 
 impl CreeperEntity {
+    /// Vanilla `SpawnPlacements` predicate: `Monster.checkMonsterSpawnRules`.
+    pub(crate) const SPAWN_RULE: SpawnRule = |entity_type, level, spawn_reason, pos, random| {
+        <Self as Monster>::check_monster_spawn_rules(entity_type, level, spawn_reason, pos, random)
+    };
+
     /// Creates a new creeper entity instance.
     #[must_use]
     pub fn new(entity_type: EntityTypeRef, id: i32, position: DVec3, world: Weak<World>) -> Self {

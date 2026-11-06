@@ -59,6 +59,6 @@ pub(crate) use tempt_goal::TemptGoal;
 pub(crate) use water_avoiding_random_stroll::WaterAvoidingRandomStrollGoal;
 pub(crate) use zombie_attack::ZombieAttackGoal;
 
-pub(super) const fn reduced_tick_delay(ticks: i32) -> i32 {
+pub(crate) const fn reduced_tick_delay(ticks: i32) -> i32 {
     (ticks + 1) / 2
 }

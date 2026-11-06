@@ -366,6 +366,9 @@ pub trait Mob: LivingEntity + Leashable {
         let Some(ageable) = self.as_ageable_mob() else {
             return;
         };
+        if !ageable.can_be_a_baby() {
+            return;
+        }
         let age = if baby {
             ageable.get_baby_start_age()
         } else {
@@ -1566,6 +1569,29 @@ pub trait Mob: LivingEntity + Leashable {
         self.mob_base().controls().lock().jump_control.jump();
     }
 
+    /// Turns the body toward `entity` by at most `y_max` / `x_max` degrees, as
+    /// vanilla `Mob.lookAt(Entity, float, float)` does without the look control.
+    fn mob_look_at(&self, entity: &dyn Entity, y_max: f32, x_max: f32) {
+        let position = self.position();
+        let target = entity.position();
+        let xd = target.x - position.x;
+        let zd = target.z - position.z;
+        let yd = if let Some(living) = entity.as_living_entity() {
+            living.get_eye_y() - self.get_eye_y()
+        } else {
+            let bounding_box = entity.bounding_box();
+            f64::midpoint(bounding_box.min_y(), bounding_box.max_y()) - self.get_eye_y()
+        };
+        let sd = xd.hypot(zd);
+        let y_rot_d = zd.atan2(xd) as f32 * RAD_TO_DEG - DEGREE_90;
+        let x_rot_d = -(yd.atan2(sd) as f32 * RAD_TO_DEG);
+        let (y_rot, x_rot) = self.rotation();
+        self.set_rotation((
+            look_rotlerp(y_rot, y_rot_d, y_max),
+            look_rotlerp(x_rot, x_rot_d, x_max),
+        ));
+    }
+
     /// Mirrors vanilla `Mob.setSpeed`: update cached speed and forward AI input.
     fn set_mob_speed(&self, speed: f32) {
         self.set_speed(speed);
@@ -2009,7 +2035,13 @@ fn home_radius_sqr(radius: i32) -> f64 {
     radius * radius
 }
 
-fn rotlerp(a: f32, b: f32, max: f32) -> f32 {
+/// Vanilla `Mob.rotlerp`: unlike the move control's, it does not wrap the result.
+fn look_rotlerp(a: f32, b: f32, max: f32) -> f32 {
+    a + wrap_degrees(b - a).clamp(-max, max)
+}
+
+/// Vanilla `MoveControl.rotlerp`.
+pub(crate) fn rotlerp(a: f32, b: f32, max: f32) -> f32 {
     let mut diff = wrap_degrees(b - a);
     if diff > max {
         diff = max;

@@ -1,6 +1,7 @@
 use std::sync::{Arc, Weak};
 
 use glam::DVec3;
+use std::convert::Infallible;
 use steel_protocol::packets::game::SoundSource;
 use steel_registry::entity_type::EntityTypeRef;
 use steel_registry::sound_events;
@@ -9,8 +10,8 @@ use steel_registry::{
     vanilla_entities, vanilla_game_rules,
 };
 use steel_utils::locks::SyncMutex;
-use steel_utils::random::legacy_random::LegacyRandom;
-use steel_utils::random::{Random, RandomSource};
+
+use rand::{RngExt as _, TryRng};
 use steel_utils::types::{Difficulty, GameType, UpdateFlags};
 use steel_utils::{BlockPos, BlockStateId, ChunkPos};
 use steel_worldgen::density_functions::overworld::OverworldNoiseSettings;
@@ -21,6 +22,7 @@ use crate::chunk::light::MAX_LIGHT_LEVEL;
 use crate::entity::damage::DamageSource;
 use crate::entity::entities::PigEntity;
 use crate::entity::mob::{Mob, MobBase};
+use crate::entity::{ENTITIES, init_entities};
 use crate::entity::{
     Entity, EntityBase, EntitySpawnReason, LivingEntity, LivingEntityBase, Monster, PathfinderMob,
     RemovalReason, SharedEntity, entities::mobs::hostile::EndermiteEntity, next_entity_id,
@@ -32,8 +34,30 @@ use crate::test_support::{
 use crate::world::{LevelReader, World};
 
 const INITIAL_TEST_HEALTH: f32 = 20.0;
-const LOW_SKY_LIGHT_ROLL_SEED: u64 = 5_120;
-const HIGH_SKY_LIGHT_ROLL_SEED: u64 = 14_880;
+/// Rolls zero for every bounded range.
+const LOW_ROLL: u64 = 0;
+/// Rolls near the top of every bounded range without rejection resampling.
+const HIGH_ROLL: u64 = 0xF000_0000_F000_0000;
+
+/// Returns the same raw value for every draw.
+struct FixedRng(u64);
+
+impl TryRng for FixedRng {
+    type Error = Infallible;
+
+    fn try_next_u32(&mut self) -> Result<u32, Self::Error> {
+        Ok(self.0 as u32)
+    }
+
+    fn try_next_u64(&mut self) -> Result<u64, Self::Error> {
+        Ok(self.0)
+    }
+
+    fn try_fill_bytes(&mut self, bytes: &mut [u8]) -> Result<(), Self::Error> {
+        bytes.fill(self.0 as u8);
+        Ok(())
+    }
+}
 
 struct TestMonster {
     base: EntityBase,
@@ -203,9 +227,9 @@ fn monster_is_dark_enough_to_spawn_rejects_bright_overworld() {
     let pos = BlockPos::new(8, 65, 8);
 
     // Full sky light cannot pass the overworld's 0..7 brightness test.
-    let mut low_roll = RandomSource::Legacy(LegacyRandom::from_seed(LOW_SKY_LIGHT_ROLL_SEED));
+    let mut low_roll = FixedRng(LOW_ROLL);
     assert!(
-        low_roll.next_i32_bounded(SKY_LIGHT_SPAWN_ROLL_BOUND) < i32::from(MAX_LIGHT_LEVEL),
+        low_roll.random_range(0..SKY_LIGHT_SPAWN_ROLL_BOUND) < i32::from(MAX_LIGHT_LEVEL),
         "test seed must roll under the sky-light value"
     );
     assert!(!TestMonster::is_dark_enough_to_spawn(
@@ -214,9 +238,9 @@ fn monster_is_dark_enough_to_spawn_rejects_bright_overworld() {
         &mut low_roll
     ));
 
-    let mut high_roll = RandomSource::Legacy(LegacyRandom::from_seed(HIGH_SKY_LIGHT_ROLL_SEED));
+    let mut high_roll = FixedRng(HIGH_ROLL);
     assert!(
-        high_roll.next_i32_bounded(SKY_LIGHT_SPAWN_ROLL_BOUND) >= i32::from(MAX_LIGHT_LEVEL),
+        high_roll.random_range(0..SKY_LIGHT_SPAWN_ROLL_BOUND) >= i32::from(MAX_LIGHT_LEVEL),
         "test seed must roll at or above the sky-light value"
     );
     assert!(!TestMonster::is_dark_enough_to_spawn(
@@ -237,7 +261,7 @@ fn monster_is_dark_enough_to_spawn_accepts_dark_nether() {
     let pos = BlockPos::new(8, 65, 8);
 
     // Fresh nether chunks are dark enough for every light-test roll.
-    let mut random = RandomSource::Legacy(LegacyRandom::from_seed(LOW_SKY_LIGHT_ROLL_SEED));
+    let mut random = FixedRng(LOW_ROLL);
     assert!(TestMonster::is_dark_enough_to_spawn(
         world,
         pos,
@@ -344,7 +368,7 @@ fn monster_spawn_rules_combine_light_and_surface_checks() {
             ),
             "{name}: stone spawn surface should place"
         );
-        let mut random = RandomSource::Legacy(LegacyRandom::from_seed(0));
+        let mut random = FixedRng(LOW_ROLL);
 
         assert_eq!(
             TestMonster::check_monster_spawn_rules(
@@ -425,7 +449,7 @@ fn monster_surface_spawn_rules_require_sky_visibility_or_spawner() {
         &vanilla_dimension_types::THE_NETHER,
     );
     let nether = &nether_fixture.world;
-    let mut random = RandomSource::Legacy(LegacyRandom::from_seed(0));
+    let mut random = FixedRng(LOW_ROLL);
 
     // The nether never sees the sky, so even a valid dark surface fails.
     insert_ready_full_chunk(nether, ChunkPos::new(0, 0));
@@ -479,7 +503,7 @@ fn monster_spawn_rules_refuse_hostile_types_on_peaceful_difficulty() {
         vanilla_blocks::STONE.default_state(),
         UpdateFlags::UPDATE_ALL,
     ));
-    let mut random = RandomSource::Legacy(LegacyRandom::from_seed(0));
+    let mut random = FixedRng(LOW_ROLL);
 
     // Spawners bypass light and surface checks, isolating the difficulty gate.
     assert!(TestMonster::check_monster_spawn_rules(
@@ -777,4 +801,48 @@ fn monster_downcasts_from_shared_entity() {
         3,
         "the endermite constructor assigns its own reward"
     );
+}
+
+#[test]
+fn creeper_registers_the_monster_spawn_rule() {
+    init_vanilla_registry();
+    init_behaviors();
+    init_entities();
+    let rule = ENTITIES
+        .spawn_rule(&vanilla_entities::CREEPER)
+        .expect("creeper registers a spawn rule");
+    let overworld_fixture = fresh_test_world("creeper_spawn_rule_overworld");
+    let overworld = &overworld_fixture.world;
+    let nether_fixture = fresh_test_world_with_dimension_type(
+        "monster",
+        "creeper_spawn_rule_nether",
+        &vanilla_dimension_types::THE_NETHER,
+    );
+    let nether = &nether_fixture.world;
+    let pos = BlockPos::new(8, 65, 8);
+    for world in [overworld, nether] {
+        insert_ready_full_chunk(world, ChunkPos::new(0, 0));
+        assert!(world.set_block(
+            pos.below(),
+            vanilla_blocks::STONE.default_state(),
+            UpdateFlags::UPDATE_ALL,
+        ));
+    }
+
+    // Full sky light rejects the natural spawn; the dark nether accepts it.
+    let mut random = FixedRng(LOW_ROLL);
+    assert!(!rule(
+        &vanilla_entities::CREEPER,
+        overworld.as_ref(),
+        EntitySpawnReason::Natural,
+        pos,
+        &mut random,
+    ));
+    assert!(rule(
+        &vanilla_entities::CREEPER,
+        nether.as_ref(),
+        EntitySpawnReason::Natural,
+        pos,
+        &mut random,
+    ));
 }

@@ -5,8 +5,8 @@ pub mod objects;
 
 pub use mobs::ambient::BatEntity;
 pub use mobs::hostile::{
-    CaveSpiderEntity, CreeperEntity, EndermiteEntity, GiantEntity, HuskEntity, SpiderEntity,
-    ZombieEntity, ZombieGroupData,
+    CaveSpiderEntity, CreeperEntity, EndermiteEntity, GiantEntity, HuskEntity, MagmaCubeEntity,
+    SlimeEntity, SpiderEntity, ZombieEntity, ZombieGroupData,
 };
 pub use mobs::passive::*;
 pub use objects::display_ui::{BlockDisplayEntity, ItemFrameEntity, LeashFenceKnotEntity};

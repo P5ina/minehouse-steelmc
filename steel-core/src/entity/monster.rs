@@ -1,5 +1,6 @@
 //! Shared hostile-mob markers, behavior, and spawn rules.
 
+use rand::{Rng, RngExt as _};
 use steel_math::fast_floor;
 use steel_protocol::packets::game::SoundSource;
 use steel_registry::dimension_type::MonsterSpawnLightLevel;
@@ -8,7 +9,6 @@ use steel_registry::sound_event::SoundEventRef;
 use steel_registry::sound_events;
 use steel_registry::vanilla_game_rules::MOB_DROPS;
 use steel_utils::BlockPos;
-use steel_utils::random::Random;
 use steel_utils::types::Difficulty;
 
 use crate::chunk::light::{LightLayer, MAX_LIGHT_LEVEL};
@@ -17,7 +17,7 @@ use crate::entity::mob::LIGHT_MAGIC_VALUE_BRIGHTNESS_GATE;
 use crate::entity::{EntitySpawnReason, Mob, PathfinderMob, SharedEntity};
 use crate::physics::MoveResult;
 use crate::player::Player;
-use crate::world::{LevelReader, World};
+use crate::world::{LevelReader, ServerLevelAccessor, World};
 
 pub const DEFAULT_XP_REWARD: i32 = 5;
 
@@ -108,21 +108,25 @@ pub trait Monster: PathfinderMob + Enemy {
         world.get_game_rule(&MOB_DROPS)
     }
 
-    /// Checks dimension light limits using the caller's seeded RNG.
-    fn is_dark_enough_to_spawn(level: &World, pos: BlockPos, random: &mut impl Random) -> bool
+    /// Vanilla `Monster.isDarkEnoughToSpawn`: checks dimension light limits.
+    fn is_dark_enough_to_spawn(
+        level: &dyn ServerLevelAccessor,
+        pos: BlockPos,
+        random: &mut dyn Rng,
+    ) -> bool
     where
         Self: Sized,
     {
-        if i32::from(level.light_value_at(LightLayer::Sky, pos))
-            > random.next_i32_bounded(SKY_LIGHT_SPAWN_ROLL_BOUND)
+        if i32::from(level.brightness(LightLayer::Sky, pos))
+            > random.random_range(0..SKY_LIGHT_SPAWN_ROLL_BOUND)
         {
             return false;
         }
 
-        let dimension_type = &level.dimension_type;
+        let dimension_type = level.dimension_type();
         let block_light_limit = dimension_type.monster_spawn_block_light_limit;
         if block_light_limit < i32::from(MAX_LIGHT_LEVEL)
-            && i32::from(level.light_value_at(LightLayer::Block, pos)) > block_light_limit
+            && i32::from(level.brightness(LightLayer::Block, pos)) > block_light_limit
         {
             return false;
         }
@@ -137,13 +141,13 @@ pub trait Monster: PathfinderMob + Enemy {
             <= sample_monster_spawn_light_test(&dimension_type.monster_spawn_light_level, random)
     }
 
-    /// Checks difficulty, light, and the spawn surface.
+    /// Vanilla `Monster.checkMonsterSpawnRules`: difficulty, light, and the spawn surface.
     fn check_monster_spawn_rules(
         entity_type: EntityTypeRef,
-        level: &World,
+        level: &dyn ServerLevelAccessor,
         spawn_reason: EntitySpawnReason,
         pos: BlockPos,
-        random: &mut impl Random,
+        random: &mut dyn Rng,
     ) -> bool
     where
         Self: Sized,
@@ -154,10 +158,10 @@ pub trait Monster: PathfinderMob + Enemy {
             && <Self as Mob>::check_mob_spawn_rules(entity_type, level, spawn_reason, pos)
     }
 
-    /// Checks difficulty and the spawn surface without a light requirement.
+    /// Vanilla `Monster.checkAnyLightMonsterSpawnRules`: difficulty and the spawn surface.
     fn check_any_light_monster_spawn_rules(
         entity_type: EntityTypeRef,
-        level: &World,
+        level: &dyn ServerLevelAccessor,
         spawn_reason: EntitySpawnReason,
         pos: BlockPos,
     ) -> bool
@@ -168,13 +172,13 @@ pub trait Monster: PathfinderMob + Enemy {
             && <Self as Mob>::check_mob_spawn_rules(entity_type, level, spawn_reason, pos)
     }
 
-    /// Adds sky visibility to monster spawn rules, except for spawners.
+    /// Vanilla `Monster.checkSurfaceMonstersSpawnRules`: adds sky visibility, except for spawners.
     fn check_surface_monsters_spawn_rules(
         entity_type: EntityTypeRef,
-        level: &World,
+        level: &dyn ServerLevelAccessor,
         spawn_reason: EntitySpawnReason,
         pos: BlockPos,
-        random: &mut impl Random,
+        random: &mut dyn Rng,
     ) -> bool
     where
         Self: Sized,
@@ -186,16 +190,16 @@ pub trait Monster: PathfinderMob + Enemy {
 
 /// Applies vanilla's `EntityType.canSpawn` difficulty gate here until Steel
 /// has a creation/spawner gate that rejects hostile types on Peaceful.
-fn is_spawn_allowed_on_difficulty(entity_type: EntityTypeRef, level: &World) -> bool {
+fn is_spawn_allowed_on_difficulty(
+    entity_type: EntityTypeRef,
+    level: &dyn ServerLevelAccessor,
+) -> bool {
     entity_type.allowed_in_peaceful || level.difficulty() != Difficulty::Peaceful
 }
 
 /// Samples the dimension's spawn-light provider. Vanilla uses uniform
 /// providers; unknown distributions currently return their minimum.
-fn sample_monster_spawn_light_test(
-    level: &MonsterSpawnLightLevel,
-    random: &mut impl Random,
-) -> i32 {
+fn sample_monster_spawn_light_test(level: &MonsterSpawnLightLevel, random: &mut dyn Rng) -> i32 {
     match level {
         MonsterSpawnLightLevel::Simple(level) => *level,
         MonsterSpawnLightLevel::Complex {
@@ -204,7 +208,7 @@ fn sample_monster_spawn_light_test(
             max_inclusive,
         } => {
             if *distribution_type == "minecraft:uniform" {
-                random.next_i32_between(*min_inclusive, *max_inclusive)
+                random.random_range(*min_inclusive..=*max_inclusive)
             } else {
                 *min_inclusive
             }

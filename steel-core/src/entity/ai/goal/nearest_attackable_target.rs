@@ -71,6 +71,26 @@ impl NearestAttackableTargetGoal {
         )
     }
 
+    /// Like [`Self::new_for_players_with_interval`], with a selector that also
+    /// receives the targeting mob.
+    #[must_use]
+    pub(crate) fn new_for_players_from_mob(
+        random_interval: i32,
+        must_see: bool,
+        must_reach: bool,
+        selector: impl Fn(&dyn LivingEntity, &dyn LivingEntity, &World) -> bool + Send + Sync + 'static,
+    ) -> Self {
+        let mut goal = Self::new_with_options(
+            random_interval,
+            must_see,
+            must_reach,
+            |_, _| true,
+            TargetSearch::Players,
+        );
+        goal.target_conditions = goal.target_conditions.targeter_selector(selector);
+        goal
+    }
+
     fn new_with_options(
         random_interval: i32,
         must_see: bool,
