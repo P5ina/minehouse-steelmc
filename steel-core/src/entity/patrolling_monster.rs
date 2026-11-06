@@ -7,17 +7,22 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use simdnbt::borrow::NbtCompound as BorrowedNbtCompoundView;
 use simdnbt::owned::{NbtCompound, NbtTag};
+use steel_registry::entity_type::EntityTypeRef;
 use steel_utils::BlockPos;
 use steel_utils::locks::SyncMutex;
 
+use crate::chunk::light::LightLayer;
 use crate::entity::{EntitySpawnReason, Monster, ominous_banner_instance};
 use crate::inventory::prelude::EquipmentSlot;
+use crate::world::ServerLevelAccessor;
 
 const TAG_PATROL_TARGET: &str = "patrol_target";
 const TAG_PATROL_LEADER: &str = "PatrolLeader";
 const TAG_PATROLLING: &str = "Patrolling";
 /// Vanilla `finalizeSpawn`: chance for a naturally spawned patroller to lead.
 const PATROL_LEADER_CHANCE: f32 = 0.06;
+/// Vanilla `checkPatrollingMonsterSpawnRules` block light limit.
+const PATROL_SPAWN_MAX_BLOCK_LIGHT: u8 = 8;
 /// Vanilla `removeWhenFarAway`: a patrolling monster only despawns beyond 128 blocks.
 const PATROLLING_DESPAWN_DISTANCE_SQR: f64 = 16384.0;
 /// Vanilla `findPatrolTarget` picks a point up to 500 blocks away on each axis.
@@ -51,6 +56,26 @@ impl Default for PatrollingMonsterState {
 
 /// Vanilla `PatrollingMonster`.
 pub trait PatrollingMonster: Monster {
+    /// Vanilla `PatrollingMonster.checkPatrollingMonsterSpawnRules`: no spawning
+    /// in block light above 8, otherwise `checkAnyLightMonsterSpawnRules`.
+    fn check_patrolling_monster_spawn_rules(
+        entity_type: EntityTypeRef,
+        level: &dyn ServerLevelAccessor,
+        spawn_reason: EntitySpawnReason,
+        pos: BlockPos,
+    ) -> bool
+    where
+        Self: Sized,
+    {
+        level.brightness(LightLayer::Block, pos) <= PATROL_SPAWN_MAX_BLOCK_LIGHT
+            && <Self as Monster>::check_any_light_monster_spawn_rules(
+                entity_type,
+                level,
+                spawn_reason,
+                pos,
+            )
+    }
+
     fn patrolling_monster_state(&self) -> &PatrollingMonsterState;
 
     /// Vanilla `canBeLeader`.

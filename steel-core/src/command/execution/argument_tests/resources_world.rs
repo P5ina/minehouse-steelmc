@@ -1,4 +1,5 @@
 use super::*;
+use crate::entity::ENTITIES;
 
 #[test]
 fn biome_or_tag_argument_resolves_registry_entries_and_tags() {
@@ -354,7 +355,22 @@ fn summonable_entity_argument_suggests_only_registered_factories() {
         .map(Suggestion::text)
         .collect::<Vec<_>>();
 
-    assert_eq!(suggestions, ["minecraft:pig"]);
+    // Every suggestion has a registered factory (pigs do; more `pi…` mobs
+    // join the list as they are implemented), and unregistered ones never show.
+    assert!(suggestions.contains(&"minecraft:pig"));
+    for suggestion in &suggestions {
+        let Some((_, entity_type)) = steel_registry::REGISTRY
+            .entity_types
+            .iter()
+            .find(|(_, entity_type)| entity_type.key.to_string() == *suggestion)
+        else {
+            panic!("suggested {suggestion} is not an entity type");
+        };
+        assert!(
+            ENTITIES.has_factory(entity_type),
+            "{suggestion} has no factory"
+        );
+    }
 }
 
 #[test]
