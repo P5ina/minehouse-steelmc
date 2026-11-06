@@ -1779,6 +1779,12 @@ pub trait LivingEntity: Entity {
         false
     }
 
+    /// Vanilla `getLiquidCollisionShape`: the shape a source liquid offers
+    /// this entity to stand on (empty by default; striders use the lower half).
+    fn liquid_collision_shape(&self) -> VoxelShape {
+        VoxelShape::EMPTY
+    }
+
     /// Checks if the entity is currently using an item.
     fn is_using_item(&self) -> bool {
         self.living_base().is_using_item()

@@ -3940,6 +3940,18 @@ pub trait Entity: EntityEventSource + ErasedType + Send + Sync + 'static {
         pos: BlockPos,
         world: &Arc<World>,
     ) {
+        self.default_check_fall_damage(vertical_movement, on_ground, on_state, pos, world);
+    }
+
+    /// The base `Entity.checkFallDamage` body, for overrides that call `super`.
+    fn default_check_fall_damage(
+        self: Arc<Self>,
+        vertical_movement: f64,
+        on_ground: bool,
+        on_state: BlockStateId,
+        pos: BlockPos,
+        world: &Arc<World>,
+    ) {
         // Vanilla `LivingEntity.checkFallDamage` refreshes its fluid interaction
         // when the cached state is not already water. Steel refreshes contact
         // during movement, so the last interaction result is the vanilla check.

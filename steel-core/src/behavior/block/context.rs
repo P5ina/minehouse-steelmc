@@ -216,6 +216,19 @@ pub struct BlockCollisionContext {
     is_falling_block: bool,
     descending: bool,
     placement: bool,
+    liquid_stand: Option<LiquidStand>,
+}
+
+/// A living entity that can stand on source liquids (vanilla
+/// `LivingEntity.getLiquidCollisionShape` and `canStandOnFluid`).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct LiquidStand {
+    /// The shape the entity stands on (vanilla `getLiquidCollisionShape`).
+    pub shape: VoxelShape,
+    /// Whether it can stand on lava sources.
+    pub on_lava: bool,
+    /// Whether it can stand on water sources.
+    pub on_water: bool,
 }
 
 impl BlockCollisionContext {
@@ -229,6 +242,7 @@ impl BlockCollisionContext {
             is_falling_block: false,
             descending: false,
             placement: false,
+            liquid_stand: None,
         }
     }
 
@@ -242,6 +256,7 @@ impl BlockCollisionContext {
             is_falling_block: false,
             descending,
             placement: false,
+            liquid_stand: None,
         }
     }
 
@@ -258,6 +273,7 @@ impl BlockCollisionContext {
             is_falling_block: false,
             descending,
             placement: true,
+            liquid_stand: None,
         }
     }
 
@@ -280,6 +296,7 @@ impl BlockCollisionContext {
             is_falling_block: false,
             descending: false,
             placement: false,
+            liquid_stand: None,
         }
     }
 
@@ -302,6 +319,19 @@ impl BlockCollisionContext {
     pub const fn with_falling_block(mut self, is_falling_block: bool) -> Self {
         self.is_falling_block = is_falling_block;
         self
+    }
+
+    /// Returns a copy that lets a living entity stand on source liquids.
+    #[must_use]
+    pub const fn with_liquid_stand(mut self, liquid_stand: Option<LiquidStand>) -> Self {
+        self.liquid_stand = liquid_stand;
+        self
+    }
+
+    /// Returns how the source entity stands on liquids, if it can.
+    #[must_use]
+    pub const fn liquid_stand(self) -> Option<LiquidStand> {
+        self.liquid_stand
     }
 
     /// Returns accumulated vanilla fall distance for context-sensitive block collision.

@@ -808,6 +808,7 @@ fn physics_state_uses_current_base_bounding_box() {
         descending: true,
         can_walk_on_powder_snow: true,
         is_falling_block: false,
+        liquid_stand: None,
     });
     let block_collision_context = physics_state.block_collision_context();
 

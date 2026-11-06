@@ -1,3 +1,6 @@
+use steel_registry::vanilla_fluid_tags::FluidTag;
+use steel_registry::vanilla_fluids;
+
 use super::{BlockPos, FluidState, Mob, PathType, PathfindingMalus, WorldAabb, fast_floor};
 
 #[derive(Debug, Clone)]
@@ -18,6 +21,21 @@ pub struct MobPathSettings {
     can_open_doors: bool,
     can_float: bool,
     can_walk_over_fences: bool,
+}
+
+/// Vanilla `canStandOnFluid` as a plain predicate. Only the strider (lava)
+/// overrides it, so the mob's answers for lava and water sources pick it.
+fn mob_fluid_standing<M: Mob + ?Sized>(mob: &M) -> fn(FluidState) -> bool {
+    let on_lava = mob.can_stand_on_fluid(FluidState::source(&vanilla_fluids::LAVA));
+    let on_water = mob.can_stand_on_fluid(FluidState::source(&vanilla_fluids::WATER));
+    match (on_lava, on_water) {
+        (false, false) => |_| false,
+        (true, false) => |fluid| fluid.fluid_id.has_tag(&FluidTag::LAVA),
+        (false, true) => |fluid| fluid.fluid_id.has_tag(&FluidTag::WATER),
+        (true, true) => |fluid| {
+            fluid.fluid_id.has_tag(&FluidTag::LAVA) || fluid.fluid_id.has_tag(&FluidTag::WATER)
+        },
+    }
 }
 
 impl MobPathSettings {
@@ -44,7 +62,7 @@ impl MobPathSettings {
             bounding_box,
             on_ground: mob.on_ground(),
             in_water: mob.is_in_water(),
-            can_stand_on_fluid: |_| false,
+            can_stand_on_fluid: mob_fluid_standing(mob),
             max_up_step: mob.max_up_step(),
             max_fall_distance: mob.max_fall_distance(),
             malus,
