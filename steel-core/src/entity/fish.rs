@@ -3,11 +3,16 @@
 use std::sync::{Arc, Weak};
 
 use glam::DVec3;
+use rand::Rng;
 use simdnbt::borrow::NbtCompound as BorrowedNbtCompoundView;
 use simdnbt::owned::NbtCompound;
 use steel_math::RAD_TO_DEG;
+use steel_registry::blocks::block_state_ext::BlockStateExt as _;
+use steel_registry::entity_type::EntityTypeRef;
 use steel_registry::sound_event::SoundEventRef;
-use steel_registry::{vanilla_attributes, vanilla_damage_types};
+use steel_registry::vanilla_fluid_tags::FluidTag;
+use steel_registry::{vanilla_attributes, vanilla_blocks, vanilla_damage_types};
+use steel_utils::BlockPos;
 use steel_utils::locks::SyncMutex;
 
 use crate::entity::ai::control::MoveControlOperation;
@@ -32,6 +37,40 @@ const FISH_MOVE_CONTROL_MAX_TURN: f32 = 90.0;
 const MAX_AIR_SUPPLY: i32 = 300;
 const SCHOOL_SEARCH_RADIUS: f64 = 8.0;
 const SCHOOL_LEADER_RANGE_SQR: f64 = 121.0;
+/// How far below sea level surface water creatures still spawn.
+const SURFACE_SPAWN_DEPTH: i32 = 13;
+
+/// Vanilla `WaterAnimal.checkSurfaceWaterAnimalSpawnRules`: at most 13 blocks
+/// below sea level, with water below and a water block above.
+pub(crate) fn check_surface_water_animal_spawn_rules(
+    _entity_type: EntityTypeRef,
+    level: &dyn ServerLevelAccessor,
+    _spawn_reason: EntitySpawnReason,
+    pos: BlockPos,
+    _random: &mut dyn Rng,
+) -> bool {
+    let sea_level = level.sea_level();
+    pos.y() >= sea_level - SURFACE_SPAWN_DEPTH
+        && pos.y() <= sea_level
+        && level
+            .get_block_state(pos.below())
+            .get_fluid_state()
+            .fluid_id
+            .has_tag(&FluidTag::WATER)
+        && level.get_block_state(pos.above()).get_block() == &vanilla_blocks::WATER
+}
+
+/// Vanilla `AgeableWaterCreature.checkSurfaceAgeableWaterCreatureSpawnRules`,
+/// the same check as [`check_surface_water_animal_spawn_rules`].
+pub(crate) fn check_surface_ageable_water_creature_spawn_rules(
+    entity_type: EntityTypeRef,
+    level: &dyn ServerLevelAccessor,
+    spawn_reason: EntitySpawnReason,
+    pos: BlockPos,
+    random: &mut dyn Rng,
+) -> bool {
+    check_surface_water_animal_spawn_rules(entity_type, level, spawn_reason, pos, random)
+}
 
 /// Configures a vanilla `WaterAnimal`: water costs nothing to path through.
 pub fn init_water_animal(mob_base: &MobBase) {

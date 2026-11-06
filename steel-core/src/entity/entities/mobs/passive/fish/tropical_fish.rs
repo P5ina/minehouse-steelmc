@@ -1,19 +1,25 @@
 use std::sync::{Arc, Weak};
 
 use glam::DVec3;
+use rand::Rng;
 use simdnbt::borrow::NbtCompound as BorrowedNbtCompoundView;
 use simdnbt::owned::NbtCompound;
 use steel_macros::entity_behavior;
+use steel_registry::blocks::block_state_ext::BlockStateExt as _;
 use steel_registry::entity_type::{EntityDimensions, EntityTypeRef};
 use steel_registry::sound_event::SoundEventRef;
+use steel_registry::vanilla_biome_tags::BiomeTag;
 use steel_registry::vanilla_entity_data::TropicalFishEntityData;
-use steel_registry::{DyeColor, sound_events, vanilla_attributes};
+use steel_registry::vanilla_fluid_tags::FluidTag;
+use steel_registry::{DyeColor, sound_events, vanilla_attributes, vanilla_blocks};
 use steel_utils::locks::SyncMutex;
 use steel_utils::{BlockPos, BlockStateId, DowncastType, DowncastTypeKey};
 
+use crate::entity::SpawnRule;
 use crate::entity::ai::goal::FollowFlockLeaderGoal;
 use crate::entity::damage::DamageSource;
 use crate::entity::entity::EntityEventSource as _;
+use crate::entity::fish::check_surface_water_animal_spawn_rules;
 use crate::entity::{
     AbstractFish, AbstractSchoolingFish, DefaultEntityPush, Entity, EntityBase, EntityBaseLoad,
     EntityPose, EntitySpawnReason, EntitySyncedData, LivingEntity, LivingEntityBase, Mob, MobBase,
@@ -23,6 +29,32 @@ use crate::entity::{
 };
 use crate::physics::MoveResult;
 use crate::world::{ServerLevelAccessor, World};
+
+/// Vanilla `TropicalFish.checkTropicalFishSpawnRules`: water below and a water
+/// block above, near the surface unless the biome lets them spawn at any height.
+fn check_tropical_fish_spawn_rules(
+    entity_type: EntityTypeRef,
+    level: &dyn ServerLevelAccessor,
+    spawn_reason: EntitySpawnReason,
+    pos: BlockPos,
+    random: &mut dyn Rng,
+) -> bool {
+    level
+        .get_block_state(pos.below())
+        .get_fluid_state()
+        .fluid_id
+        .has_tag(&FluidTag::WATER)
+        && level.get_block_state(pos.above()).get_block() == &vanilla_blocks::WATER
+        && (level.biome(pos).is_some_and(|biome| {
+            biome.has_tag(&BiomeTag::ALLOWS_TROPICAL_FISH_SPAWNS_AT_ANY_HEIGHT)
+        }) || check_surface_water_animal_spawn_rules(
+            entity_type,
+            level,
+            spawn_reason,
+            pos,
+            random,
+        ))
+}
 
 /// Vanilla `TropicalFish.Base`: the body model.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -195,7 +227,7 @@ pub const COMMON_TROPICAL_FISH_VARIANTS: [TropicalFishVariant; 22] = {
 };
 
 /// Vanilla tropical fish: a schooling fish with a packed pattern and colors.
-#[entity_behavior(class = "TropicalFish")]
+#[entity_behavior(class = "TropicalFish", spawn_rule)]
 pub struct TropicalFishEntity {
     base: EntityBase,
     entity_type: EntityTypeRef,
@@ -211,6 +243,9 @@ unsafe impl DowncastType for TropicalFishEntity {
 }
 
 impl TropicalFishEntity {
+    /// Vanilla `SpawnPlacements` predicate: `TropicalFish.checkTropicalFishSpawnRules`.
+    pub(crate) const SPAWN_RULE: SpawnRule = check_tropical_fish_spawn_rules;
+
     /// Creates a new tropical fish.
     #[must_use]
     pub fn new(entity_type: EntityTypeRef, id: i32, position: DVec3, world: Weak<World>) -> Self {

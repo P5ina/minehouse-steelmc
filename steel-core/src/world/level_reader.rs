@@ -184,9 +184,10 @@ pub trait ServerLevelAccessor: LevelReader {
         true
     }
 
-    /// Vanilla `LevelReader.getBiome(pos)`: the zoomed biome at a block.
+    /// Vanilla `LevelReader.getBiome(pos)`, for spawn predicates that read the biome.
     ///
-    /// Level surfaces without biomes, such as test levels, report none.
+    /// Level surfaces without biome access report `None`, and callers fall back
+    /// to their biome-independent rule.
     #[expect(unused_variables, reason = "default level surfaces have no biomes")]
     fn biome(&self, pos: BlockPos) -> Option<BiomeRef> {
         None

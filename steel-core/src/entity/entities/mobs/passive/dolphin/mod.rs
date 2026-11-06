@@ -6,12 +6,10 @@ mod goals;
 use std::sync::{Arc, Weak};
 
 use glam::DVec3;
-use rand::Rng;
 use simdnbt::borrow::NbtCompound as BorrowedNbtCompoundView;
 use simdnbt::owned::NbtCompound;
 use steel_macros::entity_behavior;
 use steel_protocol::packets::game::CTakeItemEntity;
-use steel_registry::blocks::block_state_ext::BlockStateExt as _;
 use steel_registry::entity_type::{
     EntityAttachmentPoint, EntityAttachments, EntityDimensions, EntityTypeRef,
 };
@@ -20,7 +18,7 @@ use steel_registry::sound_event::SoundEventRef;
 use steel_registry::vanilla_entity_data::DolphinEntityData;
 use steel_registry::vanilla_fluid_tags::FluidTag;
 use steel_registry::vanilla_item_tags::ItemTag;
-use steel_registry::{sound_events, vanilla_blocks, vanilla_damage_types};
+use steel_registry::{sound_events, vanilla_damage_types};
 use steel_utils::locks::SyncMutex;
 use steel_utils::types::InteractionHand;
 use steel_utils::{BlockPos, ChunkPos, DowncastType, DowncastTypeKey};
@@ -43,7 +41,8 @@ use crate::entity::damage::DamageSource;
 use crate::entity::entities::objects::items::ItemEntity;
 use crate::entity::entity::EntityEventSource as _;
 use crate::entity::fish::{
-    init_water_animal, water_animal_experience_reward, water_animal_spawn_unobstructed,
+    check_surface_ageable_water_creature_spawn_rules, init_water_animal,
+    water_animal_experience_reward, water_animal_spawn_unobstructed,
 };
 use crate::entity::{
     AgeableMob, AgeableMobBase, AgeableMobGroupData, DefaultEntityPush, Entity, EntityBase,
@@ -73,10 +72,6 @@ const DOLPHIN_LAND_FLOP_JUMP: f64 = 0.5;
 const DOLPHIN_IDLE_SINK: f64 = -0.005;
 const DOLPHIN_WATER_DRAG: f64 = 0.9;
 const DOLPHIN_NEXT_POS_DISTANCE: f64 = 12.0;
-/// Vanilla `AgeableWaterCreature.checkSurfaceAgeableWaterCreatureSpawnRules`
-/// depth below sea level.
-const SURFACE_SPAWN_DEPTH: i32 = 13;
-
 /// Vanilla `SmoothSwimmingMoveControl(this, 85, 10, 0.02F, 0.1F, true)`.
 const DOLPHIN_MOVE_CONTROL: SmoothSwimmingMoveControl = SmoothSwimmingMoveControl {
     max_turn_x: 85,
@@ -87,26 +82,6 @@ const DOLPHIN_MOVE_CONTROL: SmoothSwimmingMoveControl = SmoothSwimmingMoveContro
 };
 /// Vanilla `SmoothSwimmingLookControl(this, 10)`.
 const DOLPHIN_LOOK_MAX_Y_ROT_FROM_CENTER: i32 = 10;
-
-/// Vanilla `AgeableWaterCreature.checkSurfaceAgeableWaterCreatureSpawnRules`:
-/// near the surface, in water with more water below and above.
-pub(crate) fn check_surface_ageable_water_creature_spawn_rules(
-    _entity_type: EntityTypeRef,
-    level: &dyn ServerLevelAccessor,
-    _spawn_reason: EntitySpawnReason,
-    pos: BlockPos,
-    _random: &mut dyn Rng,
-) -> bool {
-    let sea_level = level.sea_level();
-    pos.y() >= sea_level - SURFACE_SPAWN_DEPTH
-        && pos.y() <= sea_level
-        && level
-            .get_block_state(pos.below())
-            .get_fluid_state()
-            .fluid_id
-            .has_tag(&FluidTag::WATER)
-        && level.get_block_state(pos.above()).get_block() == &vanilla_blocks::WATER
-}
 
 /// Vanilla dolphin.
 #[entity_behavior(class = "Dolphin", spawn_rule)]

@@ -39,6 +39,7 @@ use super::*;
 use crate::bootstrap::init_globals;
 use crate::chunk::full_chunk::FullChunkRef;
 use crate::chunk_saver::ChunkStorage;
+use crate::player::player_data::{PersistentPlayerData, PersistentSlot};
 
 const OVERWORLD_MIN_Y: i32 = -64;
 const OVERWORLD_HEIGHT: i32 = 384;
@@ -422,4 +423,122 @@ async fn vanilla_level_data_loads_as_steel_level_toml() {
         "an existing level.toml is never overwritten"
     );
     let _ = fs::remove_dir_all(&world_dir);
+}
+
+#[tokio::test]
+async fn vanilla_players_load_from_steel_player_storage() {
+    use steel_registry::stat::vanilla_stat_types;
+
+    use crate::player::player_data_storage::PlayerDataStorage;
+
+    init_globals();
+    let save_path = test_directory("players");
+    let vanilla_world =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("src/anvil_import/fixtures/level");
+    let uuid = uuid::Uuid::parse_str("36532b5e-c442-3dbb-a24c-c7e55d0f979a")
+        .expect("fixture player UUID is valid");
+
+    let report = import_players(&vanilla_world, &save_path, "minecraft")
+        .await
+        .expect("fixture players should import");
+    assert_eq!(report.players, 1, "{report}");
+    assert!(report.failed_players.is_empty(), "{report}");
+    assert!(report.unknown_items.is_empty(), "{report}");
+    assert!(report.unknown_stats.is_empty(), "{report}");
+    assert!(report.unknown_advancements.is_empty(), "{report}");
+    assert_eq!(report.dropped_effects.get("minecraft:speed"), Some(&1));
+
+    let storage = PlayerDataStorage::on_disk(save_path.clone())
+        .await
+        .expect("storage should open");
+    let data = storage
+        .load_domain("minecraft", uuid)
+        .await
+        .expect("player data should load")
+        .expect("imported player should exist");
+    assert_eq!(data.pos, [8.5, 120.0, 8.5]);
+    assert_eq!(data.rotation, [90.0, 10.0]);
+    assert_eq!(data.world, "minecraft:overworld");
+    assert!((data.health - 19.0).abs() < f32::EPSILON);
+    assert_eq!(data.experience_level, 5);
+    assert_eq!(data.experience_total, 7);
+
+    assert_imported_items(&data);
+
+    let respawn = data.respawn_config.as_ref().expect("respawn point is set");
+    assert_eq!(respawn.respawn_data.pos(), BlockPos::new(10, 100, 10));
+    assert!(respawn.forced);
+
+    let play_time = data
+        .stats
+        .iter()
+        .find(|stat| {
+            stat.stat.stat_type_key() == &vanilla_stat_types::CUSTOM.key
+                && stat.stat.stat_value_key() == &Identifier::vanilla_static("play_time")
+        })
+        .map(|stat| stat.count);
+    assert_eq!(play_time, Some(218));
+    assert!(
+        data.advancements.iter().any(|(id, progress)| id
+            == &Identifier::vanilla_static("story/root")
+            && progress.has_progress()),
+        "granted advancements stay done"
+    );
+    assert_eq!(
+        storage
+            .load_global(uuid)
+            .await
+            .expect("global data should load")
+            .map(|global| global.last_active_domain),
+        Some("minecraft".to_owned())
+    );
+
+    let again = import_players(&vanilla_world, &save_path, "minecraft").await;
+    assert!(
+        matches!(again, Err(AnvilImportError::PlayerDataExists { .. })),
+        "existing Steel players are never overwritten"
+    );
+    let _ = fs::remove_dir_all(&save_path);
+}
+
+fn assert_imported_items(data: &PersistentPlayerData) {
+    use steel_registry::vanilla_items;
+
+    let slot = |slots: &[PersistentSlot], index: i8| {
+        slots
+            .iter()
+            .find(|slot| slot.slot == index)
+            .map(|slot| (slot.item.item.key.clone(), slot.item.count))
+    };
+    assert_eq!(
+        slot(&data.inventory, 0),
+        Some((vanilla_items::DIAMOND_SWORD.key.clone(), 1))
+    );
+    assert_eq!(
+        slot(&data.inventory, 1),
+        Some((vanilla_items::COBBLESTONE.key.clone(), 40))
+    );
+    assert_eq!(
+        slot(&data.inventory, 39),
+        Some((vanilla_items::IRON_HELMET.key.clone(), 1)),
+        "the helmet moves from equipment to the head slot"
+    );
+    assert_eq!(
+        slot(&data.inventory, 40),
+        Some((vanilla_items::SHIELD.key.clone(), 1)),
+        "the offhand item moves to the offhand slot"
+    );
+    assert_eq!(
+        slot(&data.ender_items, 5),
+        Some((vanilla_items::EMERALD.key.clone(), 12))
+    );
+    let sword = data
+        .inventory
+        .iter()
+        .find(|slot| slot.slot == 0)
+        .expect("sword slot");
+    assert!(
+        !sword.item.patch().is_empty(),
+        "the sword keeps its components"
+    );
 }

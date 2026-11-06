@@ -63,15 +63,22 @@ impl MeleeAttackGoal {
         }
     }
 
-    const fn reset_attack_cooldown(&mut self) {
+    /// Vanilla `MeleeAttackGoal.resetAttackCooldown`.
+    pub(crate) const fn reset_attack_cooldown(&mut self) {
         self.ticks_until_next_attack = Self::attack_interval();
     }
 
-    const fn is_time_to_attack(&self) -> bool {
+    /// Vanilla `MeleeAttackGoal.isTimeToAttack`.
+    pub(crate) const fn is_time_to_attack(&self) -> bool {
         self.ticks_until_next_attack <= 0
     }
 
-    fn can_perform_attack(&self, mob: &dyn PathfinderMob, target: &dyn LivingEntity) -> bool {
+    /// Vanilla `MeleeAttackGoal.canPerformAttack`.
+    pub(crate) fn can_perform_attack(
+        &self,
+        mob: &dyn PathfinderMob,
+        target: &dyn LivingEntity,
+    ) -> bool {
         self.is_time_to_attack()
             && mob.is_within_melee_attack_range(target)
             && mob.has_line_of_sight_cached(target)
@@ -211,6 +218,16 @@ impl Goal for MeleeAttackGoal {
             return;
         };
 
+        self.tick_pursuit(mob, &target);
+        self.check_and_perform_attack(mob, entity, &target);
+    }
+}
+
+impl MeleeAttackGoal {
+    /// The part of vanilla `MeleeAttackGoal.tick` before `checkAndPerformAttack`:
+    /// looks at the target, repaths when needed and counts the attack cooldown down.
+    /// Goals that override `checkAndPerformAttack` call this and then attack their own way.
+    pub(crate) fn tick_pursuit(&mut self, mob: &dyn PathfinderMob, target: &SharedEntity) {
         let target_position = target.position();
         mob.mob_base().controls().lock().look_control.set_look_at(
             DVec3::new(target_position.x, target.get_eye_y(), target_position.z),
@@ -220,12 +237,11 @@ impl Goal for MeleeAttackGoal {
 
         self.ticks_until_next_path_recalculation =
             (self.ticks_until_next_path_recalculation - 1).max(0);
-        if self.should_recalculate_path(mob, &target) {
-            self.recalculate_path(mob, &target);
+        if self.should_recalculate_path(mob, target) {
+            self.recalculate_path(mob, target);
         }
 
         self.ticks_until_next_attack = (self.ticks_until_next_attack - 1).max(0);
-        self.check_and_perform_attack(mob, entity, &target);
     }
 }
 
