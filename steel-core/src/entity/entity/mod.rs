@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 
 use super::*;
 use crate::entity::entities::mobs::hostile::cube_mob::AbstractCubeMob;
-use crate::entity::entities::mobs::passive::equine::{AbstractHorse, PlayerRideableJumping};
+use crate::entity::entities::mobs::passive::equine::{AbstractHorse, Llama, PlayerRideableJumping};
 use crate::entity::entities::{Guardian, LightningBoltEntity, Squid};
 use crate::entity::{leash::Leashable, pushing::EntityPush};
 use rand::{RngExt, rng};
@@ -1781,6 +1781,11 @@ pub trait Entity: EntityEventSource + ErasedType + Send + Sync + 'static {
     /// `instanceof AbstractHorse`.
     fn as_abstract_horse(&self) -> Option<&dyn AbstractHorse> {
         try_as_dyn::<Self, dyn AbstractHorse>(self)
+    }
+
+    /// `instanceof Llama`: llamas and trader llamas.
+    fn as_llama(&self) -> Option<&dyn Llama> {
+        try_as_dyn::<Self, dyn Llama>(self)
     }
 
     /// Whether this entity is a horse-like mount.
