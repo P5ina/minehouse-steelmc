@@ -269,6 +269,13 @@ impl World {
         environment::moon_phase(self.dimension_type, level_data.world_clocks()).brightness()
     }
 
+    /// Vanilla `EnvironmentAttributes.CAT_WAKING_UP_GIFT_CHANCE`: the chance a
+    /// cat brings its owner a gift when the owner wakes up.
+    pub fn cat_waking_up_gift_chance(&self) -> f32 {
+        let level_data = self.level_data.read();
+        environment::cat_waking_up_gift_chance(self.dimension_type, level_data.world_clocks())
+    }
+
     /// Whether the environment currently permits daylight burning.
     pub fn monsters_burn(&self) -> bool {
         let level_data = self.level_data.read();

@@ -1,13 +1,16 @@
 //! Weighted natural spawn lists: biome spawners, structure overrides and the fortress list.
 
 use std::ptr;
+use std::str::FromStr as _;
 
 use rand::{Rng, RngExt as _};
 use steel_registry::biome::SpawnerData;
 use steel_registry::blocks::block_state_ext::BlockStateExt as _;
 use steel_registry::entity_type::{EntityTypeRef, MobCategory};
 use steel_registry::structure::{StructureSpawnBoundingBox, StructureSpawnerData};
-use steel_registry::{REGISTRY, RegistryExt, vanilla_blocks, vanilla_entities};
+use steel_registry::{
+    REGISTRY, RegistryExt, TaggedRegistryExt as _, vanilla_blocks, vanilla_entities,
+};
 use steel_utils::random::Random;
 use steel_utils::{BlockPos, ChunkPos, Identifier, SectionPos};
 
@@ -187,6 +190,30 @@ impl World {
         category == MobCategory::Monster
             && self.get_block_state(pos.below()).get_block() == &vanilla_blocks::NETHER_BRICKS
             && self.structure_start_contains(&FORTRESS, pos, |start_box, _| start_box)
+    }
+
+    /// Vanilla `StructureManager.getStructureWithPieceAt(pos, structures).isValid()`,
+    /// with `structures` written as in data packs: a structure id or a `#tag`.
+    pub(crate) fn structure_with_piece_at(&self, structures: &str, pos: BlockPos) -> bool {
+        let keys: Vec<Identifier> = if let Some(tag) = structures.strip_prefix('#') {
+            let Ok(tag) = Identifier::from_str(tag) else {
+                return false;
+            };
+            REGISTRY
+                .structures
+                .iter_tag(&tag)
+                .map(|structure| structure.key.clone())
+                .collect()
+        } else {
+            let Ok(key) = Identifier::from_str(structures) else {
+                return false;
+            };
+            vec![key]
+        };
+        let referenced = self.structure_references_at(pos);
+        keys.iter()
+            .filter(|key| referenced.contains(key))
+            .any(|key| self.structure_start_contains(key, pos, |_, piece_box| piece_box))
     }
 
     /// The biome's spawners for `category`, vanilla `MobSpawnSettings.getMobsToSpawn`.

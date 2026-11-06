@@ -4,6 +4,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use glam::DVec3;
 use steel_registry::item_stack::ItemStack;
 use steel_registry::vanilla_attributes;
+use uuid::Uuid;
 
 use super::reduced_tick_delay;
 use super::selector::{Goal, GoalControls};
@@ -28,6 +29,7 @@ pub struct TemptGoal {
     stop_distance: f64,
     scare_condition: Option<fn(&dyn PathfinderMob) -> bool>,
     running_flag: Option<Arc<AtomicBool>>,
+    scare_exempt_player: Option<Uuid>,
 }
 
 impl TemptGoal {
@@ -60,6 +62,7 @@ impl TemptGoal {
             stop_distance,
             scare_condition: None,
             running_flag: None,
+            scare_exempt_player: None,
         }
     }
 
@@ -81,6 +84,18 @@ impl TemptGoal {
         self
     }
 
+    /// The player this goal is following, vanilla `TemptGoal.player`.
+    #[must_use]
+    pub(crate) const fn player(&self) -> Option<&Arc<Player>> {
+        self.player.as_ref()
+    }
+
+    /// A player who can move without scaring the mob off, as vanilla
+    /// `Cat.CatTemptGoal.selectedPlayer` does.
+    pub(crate) const fn set_scare_exempt_player(&mut self, player: Option<Uuid>) {
+        self.scare_exempt_player = player;
+    }
+
     fn set_running(&mut self, running: bool) {
         self.is_running = running;
         if let Some(flag) = &self.running_flag {
@@ -98,7 +113,12 @@ impl TemptGoal {
     }
 
     fn can_scare(&self, mob: &dyn PathfinderMob) -> bool {
-        self.can_scare && self.scare_condition.is_none_or(|condition| condition(mob))
+        let exempt = self.scare_exempt_player.is_some_and(|exempt| {
+            self.player
+                .as_ref()
+                .is_some_and(|player| player.uuid() == exempt)
+        });
+        !exempt && self.can_scare && self.scare_condition.is_none_or(|condition| condition(mob))
     }
 
     const fn targeting_conditions(range: f64) -> TargetingConditions {

@@ -2,7 +2,9 @@ use rustc_hash::FxHashMap;
 use simdnbt::ToNbtTag;
 use simdnbt::owned::NbtTag;
 use steel_utils::Identifier;
+use steel_utils::random::Random;
 
+use crate::RegistryExt;
 use crate::sound_event::SoundEventRef;
 
 /// Represents a set of sounds for a cat variant from a data pack JSON file.
@@ -77,6 +79,17 @@ impl CatSoundVariantRegistry {
             cat_sound_variants_by_key: FxHashMap::default(),
             allows_registering: true,
         }
+    }
+
+    /// Vanilla `CatSoundVariants.pickRandomSoundVariant`.
+    #[must_use]
+    pub fn pick_random(&self, random: &mut impl Random) -> Option<CatSoundVariantRef> {
+        let bound = i32::try_from(self.len()).ok()?;
+        if bound == 0 {
+            return None;
+        }
+
+        self.by_id(random.next_i32_bounded(bound) as usize)
     }
 }
 
