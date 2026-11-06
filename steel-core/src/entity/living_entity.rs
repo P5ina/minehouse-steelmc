@@ -2664,6 +2664,29 @@ pub trait LivingEntity: Entity {
         Some((movement, result))
     }
 
+    /// Vanilla `travelFlying(input, waterSpeed, lavaSpeed, airSpeed)`: gravity-free
+    /// flight with water (0.8), lava (0.5) and air (0.91) drag.
+    fn travel_flying(
+        &self,
+        entity: &SharedEntity,
+        input: DVec3,
+        water_speed: f32,
+        lava_speed: f32,
+        air_speed: f32,
+    ) -> Option<MoveResult> {
+        let (speed, drag) = if self.is_in_water() {
+            (water_speed, f64::from(0.8_f32))
+        } else if self.is_in_lava() {
+            (lava_speed, 0.5)
+        } else {
+            (air_speed, f64::from(0.91_f32))
+        };
+        self.move_relative(speed, input);
+        let result = Arc::clone(entity).move_entity(MoverType::SelfMovement, self.velocity());
+        self.set_velocity(self.velocity() * drag);
+        result
+    }
+
     /// Handles movement, gravity, and air friction while the entity is airborne.
     fn travel_in_air(&self, entity: &SharedEntity, input: DVec3) -> Option<MoveResult> {
         let world = self.level()?;

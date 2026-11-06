@@ -6,8 +6,9 @@ pub mod objects;
 pub use mobs::ambient::BatEntity;
 pub use mobs::golems::{IronGolemEntity, SnowGolemEntity};
 pub use mobs::hostile::{
-    BlazeEntity, CaveSpiderEntity, CreeperEntity, EndermiteEntity, GiantEntity, HuskEntity,
-    MagmaCubeEntity, SlimeEntity, SpiderEntity, VexEntity, ZombieEntity, ZombieGroupData,
+    BlazeEntity, CaveSpiderEntity, CreeperEntity, EndermiteEntity, GhastEntity, GiantEntity,
+    HuskEntity, MagmaCubeEntity, SlimeEntity, SpiderEntity, VexEntity, ZombieEntity,
+    ZombieGroupData,
 };
 pub use mobs::passive::*;
 pub use mobs::raiders::{EvokerEntity, VindicatorEntity, WitchEntity};

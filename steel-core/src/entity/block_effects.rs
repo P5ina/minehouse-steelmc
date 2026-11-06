@@ -48,7 +48,7 @@ impl VisitedBlockPositions {
     }
 }
 
-pub(super) fn for_each_block_intersected_between(
+pub(crate) fn for_each_block_intersected_between(
     from: DVec3,
     to: DVec3,
     aabb_at_target: WorldAabb,
@@ -104,7 +104,7 @@ pub(super) fn for_each_block_intersected_between(
     Some(last_iteration + 1)
 }
 
-pub(super) fn collided_with_shape_moving_from(
+pub(crate) fn collided_with_shape_moving_from(
     entity_box_at_from: WorldAabb,
     from: DVec3,
     to: DVec3,
