@@ -91,6 +91,12 @@ pub trait Goal: Send {
         false
     }
 
+    /// Identifies vanilla `BreakDoorGoal` so mobs can add and remove it as
+    /// their door-breaking ability changes.
+    fn is_break_door_goal(&self) -> bool {
+        false
+    }
+
     fn start(&mut self, _mob: &dyn PathfinderMob) {}
 
     fn stop(&mut self, _mob: &dyn PathfinderMob) {}

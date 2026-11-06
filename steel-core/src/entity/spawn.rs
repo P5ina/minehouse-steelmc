@@ -16,6 +16,7 @@ use text_components::TextComponent;
 use uuid::Uuid;
 
 use super::{AddEntityError, ENTITIES, SharedEntity, next_entity_id};
+use crate::entity::entities::ZombieGroupData;
 use crate::entity::entity::{read_nbt_dvec3, read_nbt_rotation, sanitize_nbt_motion};
 use crate::entity::{EntityBaseSaveData, EntityFireFreezeState, EntityLoadRequest};
 use crate::physics::{CollisionWorld, WorldCollisionProvider, collide};
@@ -464,6 +465,9 @@ pub enum SpawnGroupData {
     AgeableMob(AgeableMobGroupData),
     /// Vanilla `Spider.SpiderEffectsGroupData`: the infinite effect a spider spawns with.
     SpiderEffects(Option<MobEffectRef>),
+    /// Vanilla `Zombie.ZombieGroupData`: whether the group spawns as babies and
+    /// may ride chickens.
+    Zombie(ZombieGroupData),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -582,7 +586,7 @@ mod tests {
                 .is_none()
         );
 
-        let unimplemented = entity_nbt("minecraft:giant");
+        let unimplemented = entity_nbt("minecraft:illusioner");
         assert!(
             load_entity_recursive_owned(world, &unimplemented, EntitySpawnReason::Spawner, |_| {},)
                 .is_none()
@@ -601,7 +605,7 @@ mod tests {
             "Passengers",
             NbtList::Compound(vec![
                 entity_nbt("minecraft:not_an_entity"),
-                entity_nbt("minecraft:giant"),
+                entity_nbt("minecraft:illusioner"),
                 entity_nbt("minecraft:chicken"),
                 entity_nbt("minecraft:pig"),
             ]),

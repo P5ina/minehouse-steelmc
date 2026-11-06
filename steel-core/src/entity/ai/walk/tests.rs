@@ -8,11 +8,11 @@ use steel_utils::{BlockPos, BlockStateId, Direction, WorldAabb};
 use steel_worldgen::density_functions::overworld::OverworldNoiseSettings;
 
 use super::{
-    MobPathSettings, WalkNodeEvaluator, WalkPathEvaluator,
-    node_evaluator::{AcceptedNodeRequest, WalkNeighbors},
+    MobPathSettings, WalkNodeEvaluator, WalkPathEvaluator, node_evaluator::AcceptedNodeRequest,
 };
 use crate::behavior::{BlockStateBehaviorExt as _, init_behaviors};
 use crate::entity::Mob as _;
+use crate::entity::ai::node_evaluator::{NodeEvaluator as _, NodeNeighbors};
 use crate::entity::ai::path::{
     PathComputationType, PathType, PathfindingContext, PathfindingMalus,
 };
@@ -631,7 +631,7 @@ const fn accepted_request(
 
 fn neighbor_positions(
     evaluator: &WalkNodeEvaluator,
-    neighbors: &WalkNeighbors,
+    neighbors: &NodeNeighbors,
 ) -> Vec<(i32, i32, i32)> {
     neighbors
         .iter()

@@ -15,47 +15,6 @@ pub struct AcceptedNodeRequest {
     pub current_path_type: PathType,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct WalkNeighbors {
-    nodes: [Option<i32>; 8],
-    len: usize,
-}
-
-impl WalkNeighbors {
-    #[must_use]
-    pub const fn new() -> Self {
-        Self {
-            nodes: [None; 8],
-            len: 0,
-        }
-    }
-
-    #[must_use]
-    pub const fn len(&self) -> usize {
-        self.len
-    }
-
-    #[must_use]
-    pub const fn is_empty(&self) -> bool {
-        self.len == 0
-    }
-
-    pub fn iter(&self) -> impl Iterator<Item = i32> + '_ {
-        self.nodes[..self.len].iter().copied().flatten()
-    }
-
-    const fn push(&mut self, node: i32) {
-        self.nodes[self.len] = Some(node);
-        self.len += 1;
-    }
-}
-
-impl Default for WalkNeighbors {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 const VANILLA_HORIZONTAL_DIRECTIONS: [Direction; 4] = [
     Direction::North,
     Direction::East,
@@ -80,26 +39,26 @@ impl WalkNodeEvaluator {
     pub fn clear_nodes(&mut self) {
         self.nodes.clear();
     }
+}
 
-    #[must_use]
-    pub fn node(&self, hash: i32) -> Option<&Node> {
+impl NodeEvaluator for WalkNodeEvaluator {
+    fn node(&self, hash: i32) -> Option<&Node> {
         self.nodes.get(hash)
     }
 
-    pub(crate) fn node_mut(&mut self, hash: i32) -> Option<&mut Node> {
+    fn node_mut(&mut self, hash: i32) -> Option<&mut Node> {
         self.nodes.get_mut(hash)
     }
 
-    pub(crate) const fn nodes_mut(&mut self) -> &mut NodeStore {
+    fn nodes_mut(&mut self) -> &mut NodeStore {
         &mut self.nodes
     }
 
-    pub(crate) fn reset_search_state(&mut self) {
+    fn reset_search_state(&mut self) {
         self.nodes.reset_search_state();
     }
 
-    #[must_use]
-    pub fn get_start(&mut self, context: &mut PathfindingContext<'_>) -> i32 {
+    fn get_start(&mut self, context: &mut PathfindingContext<'_>) -> i32 {
         let position = self.settings.mob_position_vec();
         let mut start_y = self.settings.mob_position().y();
         let mut reusable_pos = BlockPos::containing(position.x, f64::from(start_y), position.z);
@@ -153,15 +112,14 @@ impl WalkNodeEvaluator {
         self.get_start_node(context, centered_start)
     }
 
-    #[must_use]
-    pub fn get_neighbors(
+    fn get_neighbors(
         &mut self,
         context: &mut PathfindingContext<'_>,
         collision: &mut impl WalkNodeCollision,
         pos_hash: i32,
-    ) -> WalkNeighbors {
+    ) -> NodeNeighbors {
         let Some(pos) = self.node(pos_hash) else {
-            return WalkNeighbors::new();
+            return NodeNeighbors::new();
         };
         let pos_x = pos.x;
         let pos_y = pos.y;
@@ -180,7 +138,7 @@ impl WalkNodeEvaluator {
         };
         let pos_height = self.get_floor_level(context, pos_block);
 
-        let mut neighbors = WalkNeighbors::new();
+        let mut neighbors = NodeNeighbors::new();
         let mut reusable_neighbors = [None; 4];
         for (index, direction) in VANILLA_HORIZONTAL_DIRECTIONS.iter().copied().enumerate() {
             let (step_x, _, step_z) = direction.offset();
@@ -240,7 +198,9 @@ impl WalkNodeEvaluator {
 
         neighbors
     }
+}
 
+impl WalkNodeEvaluator {
     #[must_use]
     pub fn get_floor_level(&self, context: &PathfindingContext<'_>, pos: BlockPos) -> f64 {
         if self.settings.can_float() && context.get_block_state(pos).get_fluid_state().is_water() {

@@ -8,6 +8,7 @@
 
 use crate::chunk::chunk_map::ChunkMap;
 
+pub mod anvil_import;
 pub mod behavior;
 pub mod block_entity;
 mod block_state_provider;

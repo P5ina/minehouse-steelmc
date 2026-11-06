@@ -1,6 +1,7 @@
 //! Vanilla-shaped mob foundations.
 
 mod pathfinder;
+pub(crate) mod spawn_equipment;
 
 use crate::entity::leash::{LeashData, Leashable};
 pub use pathfinder::PathfinderMob;
@@ -452,6 +453,11 @@ pub trait Mob: LivingEntity + Leashable {
     /// Returns whether this mob may attack the target; excludes ghasts, which
     /// mobs never target directly.
     fn can_attack(&self, target: &dyn LivingEntity) -> bool {
+        self.default_can_attack_mob(target)
+    }
+
+    /// The `Mob.canAttack` body, for overrides that call `super.canAttack`.
+    fn default_can_attack_mob(&self, target: &dyn LivingEntity) -> bool {
         target.entity_type() != &vanilla_entities::GHAST && LivingEntity::can_attack(self, target)
     }
 

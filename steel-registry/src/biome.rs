@@ -18,6 +18,8 @@ pub struct Biome {
     pub temperature_modifier: TemperatureModifier,
     pub effects: BiomeEffects,
     pub creature_spawn_probability: f32,
+    /// The `minecraft:gameplay/snow_golem_melts` environment attribute, when this biome sets it.
+    pub snow_golem_melts: Option<bool>,
     pub spawners: FxHashMap<String, Vec<SpawnerData>>,
     pub spawn_costs: FxHashMap<Identifier, SpawnCost>,
     pub carvers: Vec<Identifier>,

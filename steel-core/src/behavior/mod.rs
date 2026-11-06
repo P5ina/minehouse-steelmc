@@ -25,6 +25,7 @@
 //! ```
 
 mod block;
+pub(crate) mod block_pattern;
 pub mod blocks;
 mod consume_effect;
 mod context;

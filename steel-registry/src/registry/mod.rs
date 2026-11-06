@@ -826,6 +826,7 @@ mod tests {
                 particle: None,
             },
             creature_spawn_probability: 0.0,
+            snow_golem_melts: None,
             spawners: FxHashMap::default(),
             spawn_costs: FxHashMap::default(),
             carvers,

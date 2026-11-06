@@ -2,6 +2,7 @@
 
 pub mod ambient;
 pub mod bosses;
+pub mod golems;
 pub mod hostile;
 pub mod jockeys;
 pub mod neutral;
