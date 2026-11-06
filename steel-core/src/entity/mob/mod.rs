@@ -889,6 +889,16 @@ pub trait Mob: LivingEntity + Leashable {
         current_item_stack: &ItemStack,
         slot: EquipmentSlot,
     ) -> bool {
+        self.default_can_replace_current_item(new_item_stack, current_item_stack, slot)
+    }
+
+    /// The base `Mob.canReplaceCurrentItem`, for overrides to fall back on.
+    fn default_can_replace_current_item(
+        &self,
+        new_item_stack: &ItemStack,
+        current_item_stack: &ItemStack,
+        slot: EquipmentSlot,
+    ) -> bool {
         if current_item_stack.is_empty() {
             true
         } else if slot.is_armor() {
@@ -1746,6 +1756,11 @@ pub trait Mob: LivingEntity + Leashable {
     }
 
     fn tick_move_control(&self) {
+        self.default_tick_move_control();
+    }
+
+    /// The base `MoveControl.tick`, for custom move controls to fall back on.
+    fn default_tick_move_control(&self) {
         let move_control = {
             let mut controls = self.mob_base().controls().lock();
             let move_control = controls.move_control;

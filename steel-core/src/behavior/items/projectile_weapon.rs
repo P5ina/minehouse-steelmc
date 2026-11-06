@@ -11,7 +11,7 @@ use steel_registry::{vanilla_entities, vanilla_items};
 use steel_utils::types::InteractionHand;
 
 use crate::enchantment_helper;
-use crate::entity::entities::{ArrowEntity, SpectralArrowEntity};
+use crate::entity::entities::{ArrowEntity, SpectralArrowEntity, ThrownTridentEntity};
 use crate::entity::{AbstractArrow, LivingEntity, Projectile as _, SharedEntity, next_entity_id};
 use crate::inventory::container::Container as _;
 use crate::inventory::equipment::EquipmentSlot;
@@ -199,16 +199,20 @@ pub(crate) fn create_arrow(
     }
 }
 
-/// Returns `entity` as an arrow created by [`create_arrow`].
+/// Returns `entity` as an arrow created by [`create_arrow`], or a thrown
+/// trident.
 #[must_use]
 pub(crate) fn as_abstract_arrow(entity: &SharedEntity) -> Option<&dyn AbstractArrow> {
     use steel_utils::Downcast as _;
     if let Some(arrow) = entity.downcast_ref::<ArrowEntity>() {
         return Some(arrow);
     }
+    if let Some(arrow) = entity.downcast_ref::<SpectralArrowEntity>() {
+        return Some(arrow);
+    }
     entity
-        .downcast_ref::<SpectralArrowEntity>()
-        .map(|arrow| arrow as &dyn AbstractArrow)
+        .downcast_ref::<ThrownTridentEntity>()
+        .map(|trident| trident as &dyn AbstractArrow)
 }
 
 /// Vanilla `Projectile.spawnProjectile` tail for arrows: adds the arrow to

@@ -584,6 +584,11 @@ pub trait AbstractArrow: Projectile {
 
     /// Vanilla `tickDespawn`.
     fn tick_despawn(&self) {
+        self.default_tick_despawn();
+    }
+
+    /// The base `AbstractArrow.tickDespawn`.
+    fn default_tick_despawn(&self) {
         let life = {
             let mut state = self.arrow_base().state.lock();
             state.life += 1;
@@ -695,7 +700,7 @@ pub trait AbstractArrow: Projectile {
                 Some(entity.as_ref()),
                 owner,
                 false,
-                BOUNCE_DEFLECT_POWER,
+                DVec3::splat(BOUNCE_DEFLECT_POWER),
             );
             if self.velocity().length_squared() < 1.0e-7 {
                 if self.pickup() == ArrowPickup::Allowed {
@@ -781,6 +786,11 @@ pub trait AbstractArrow: Projectile {
 
     /// Vanilla `tryPickup`.
     fn try_pickup(&self, player: &Arc<Player>) -> bool {
+        self.default_try_pickup(player)
+    }
+
+    /// The base `AbstractArrow.tryPickup`.
+    fn default_try_pickup(&self, player: &Arc<Player>) -> bool {
         match self.pickup() {
             ArrowPickup::Disallowed => false,
             ArrowPickup::Allowed => {
