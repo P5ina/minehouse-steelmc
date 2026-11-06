@@ -868,7 +868,7 @@ pub use manager::{
     EntityMoveUpdate, EntityOwnership, EntityVisibility, WorldEntityManager,
 };
 pub(crate) use mob::{Mob, MobBase, PathfinderMob};
-pub(crate) use monster::{Enemy, Monster};
+pub(crate) use monster::{Enemy, Monster, is_dark_enough_to_spawn, is_spawn_allowed_on_difficulty};
 pub use movement_sync::{
     EntityMovementSyncPacket, EntityMovementSyncPackets, EntityMovementSyncState,
     EntityMovementSyncUpdate, EntityPositionRotSyncPacket, EntityPositionSyncDecision,

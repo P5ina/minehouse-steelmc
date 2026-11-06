@@ -1147,9 +1147,13 @@ pub trait LivingEntity: Entity {
                 mob.drop_custom_death_loot_mob(source, killed_by_player);
             }
         }
+        self.drop_equipment();
         self.drop_experience(&world, source.causing_entity().map(AsRef::as_ref));
-        // TODO: Drop non-mob equipment overrides once those foundations exist.
     }
+
+    /// Vanilla `LivingEntity.dropEquipment`: drops what this entity carries
+    /// beyond its loot table, such as a mount's saddlebags.
+    fn drop_equipment(&self) {}
 
     /// Awards experience for this entity's death when eligible, spawning an experience orb.
     fn drop_experience(&self, world: &Arc<World>, killer_entity: Option<&dyn Entity>) {

@@ -2,6 +2,7 @@ use std::collections::BTreeSet;
 
 use super::*;
 use crate::entity::entities::mobs::hostile::cube_mob::AbstractCubeMob;
+use crate::entity::entities::mobs::passive::equine::{AbstractHorse, PlayerRideableJumping};
 use crate::entity::entities::{LightningBoltEntity, Squid};
 use crate::entity::{leash::Leashable, pushing::EntityPush};
 use rand::{RngExt, rng};
@@ -1737,6 +1738,23 @@ pub trait Entity: EntityEventSource + ErasedType + Send + Sync + 'static {
     /// `instanceof AbstractCubeMob`.
     fn as_cube_mob(&self) -> Option<&dyn AbstractCubeMob> {
         try_as_dyn::<Self, dyn AbstractCubeMob>(self)
+    }
+
+    /// Returns this entity as a horse-like mount, equivalent to vanilla's
+    /// `instanceof AbstractHorse`.
+    fn as_abstract_horse(&self) -> Option<&dyn AbstractHorse> {
+        try_as_dyn::<Self, dyn AbstractHorse>(self)
+    }
+
+    /// Whether this entity is a horse-like mount.
+    fn is_abstract_horse(&self) -> bool {
+        self.as_abstract_horse().is_some()
+    }
+
+    /// Returns this entity as a mount whose rider can charge jumps,
+    /// equivalent to vanilla's `instanceof PlayerRideableJumping`.
+    fn as_player_rideable_jumping(&self) -> Option<&dyn PlayerRideableJumping> {
+        try_as_dyn::<Self, dyn PlayerRideableJumping>(self)
     }
 
     /// Returns this entity as an ageable mob when it has ageable behavior.

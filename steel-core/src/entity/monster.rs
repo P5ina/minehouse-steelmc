@@ -114,28 +114,7 @@ pub trait Monster: PathfinderMob + Enemy {
     where
         Self: Sized,
     {
-        if i32::from(level.brightness(LightLayer::Sky, pos))
-            > random.random_range(0..SKY_LIGHT_SPAWN_ROLL_BOUND)
-        {
-            return false;
-        }
-
-        let dimension_type = level.dimension_type();
-        let block_light_limit = dimension_type.monster_spawn_block_light_limit;
-        if block_light_limit < i32::from(MAX_LIGHT_LEVEL)
-            && i32::from(level.brightness(LightLayer::Block, pos)) > block_light_limit
-        {
-            return false;
-        }
-
-        let sky_darkening = if level.is_thundering() {
-            THUNDERING_SKY_DARKENING
-        } else {
-            level.sky_darkening()
-        };
-        let brightness = level.max_local_raw_brightness(pos, sky_darkening);
-        i32::from(brightness)
-            <= sample_monster_spawn_light_test(&dimension_type.monster_spawn_light_level, random)
+        is_dark_enough_to_spawn(level, pos, random)
     }
 
     /// Vanilla `Monster.checkMonsterSpawnRules`: difficulty, light, and the spawn surface.
@@ -185,9 +164,40 @@ pub trait Monster: PathfinderMob + Enemy {
     }
 }
 
+/// Vanilla `Monster.isDarkEnoughToSpawn`, for mobs that spawn by monster
+/// rules without being monsters, such as the zombie horse.
+pub(crate) fn is_dark_enough_to_spawn(
+    level: &dyn ServerLevelAccessor,
+    pos: BlockPos,
+    random: &mut dyn Rng,
+) -> bool {
+    if i32::from(level.brightness(LightLayer::Sky, pos))
+        > random.random_range(0..SKY_LIGHT_SPAWN_ROLL_BOUND)
+    {
+        return false;
+    }
+
+    let dimension_type = level.dimension_type();
+    let block_light_limit = dimension_type.monster_spawn_block_light_limit;
+    if block_light_limit < i32::from(MAX_LIGHT_LEVEL)
+        && i32::from(level.brightness(LightLayer::Block, pos)) > block_light_limit
+    {
+        return false;
+    }
+
+    let sky_darkening = if level.is_thundering() {
+        THUNDERING_SKY_DARKENING
+    } else {
+        level.sky_darkening()
+    };
+    let brightness = level.max_local_raw_brightness(pos, sky_darkening);
+    i32::from(brightness)
+        <= sample_monster_spawn_light_test(&dimension_type.monster_spawn_light_level, random)
+}
+
 /// Applies vanilla's `EntityType.canSpawn` difficulty gate here until Steel
 /// has a creation/spawner gate that rejects hostile types on Peaceful.
-fn is_spawn_allowed_on_difficulty(
+pub(crate) fn is_spawn_allowed_on_difficulty(
     entity_type: EntityTypeRef,
     level: &dyn ServerLevelAccessor,
 ) -> bool {

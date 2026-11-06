@@ -14,7 +14,6 @@ minehouse_mob_camel_husk
 minehouse_mob_cat
 minehouse_mob_creaking
 minehouse_mob_dolphin
-minehouse_mob_donkey
 minehouse_mob_drowned
 minehouse_mob_elder_guardian
 minehouse_mob_ender_dragon
@@ -27,10 +26,8 @@ minehouse_mob_goat
 minehouse_mob_guardian
 minehouse_mob_happy_ghast
 minehouse_mob_hoglin
-minehouse_mob_horse
 minehouse_mob_illusioner
 minehouse_mob_llama
-minehouse_mob_mule
 minehouse_mob_nautilus
 minehouse_mob_ocelot
 minehouse_mob_panda
@@ -47,7 +44,6 @@ minehouse_mob_ravager
 minehouse_mob_shulker
 minehouse_mob_silverfish
 minehouse_mob_skeleton
-minehouse_mob_skeleton_horse
 minehouse_mob_sniffer
 minehouse_mob_stray
 minehouse_mob_strider
@@ -64,7 +60,6 @@ minehouse_mob_wither_skeleton
 minehouse_mob_wolf
 minehouse_mob_zoglin
 minehouse_mob_zombie
-minehouse_mob_zombie_horse
 minehouse_mob_zombie_nautilus
 minehouse_mob_zombie_villager
 minehouse_mob_zombified_piglin
