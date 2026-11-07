@@ -302,7 +302,7 @@ pub struct VibrationData {
 }
 
 impl VibrationData {
-    /// The vibration currently travelling to the listener.
+    /// The vibration currently traveling to the listener.
     #[must_use]
     pub const fn current_vibration(&self) -> Option<&VibrationInfo> {
         self.current_vibration.as_ref()

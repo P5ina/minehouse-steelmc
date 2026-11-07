@@ -94,7 +94,7 @@ fn data_round_trips_through_nbt() {
     };
     assert_eq!(loaded.travel_time_in_ticks(), 4);
     let Some(current) = loaded.current_vibration() else {
-        panic!("the travelling vibration is saved");
+        panic!("the traveling vibration is saved");
     };
     assert_eq!(
         current.game_event().key,
