@@ -298,6 +298,62 @@ impl PointOfInterestStorage {
         results
     }
 
+    /// Vanilla `PoiManager.getInRange`: the horizontal square of
+    /// [`Self::get_in_horizontal_square`], cut down to a sphere.
+    #[must_use]
+    pub fn get_in_range(
+        &self,
+        type_predicate: &impl Fn(usize) -> bool,
+        center: BlockPos,
+        radius: i32,
+        status: OccupationStatus,
+    ) -> Vec<(BlockPos, usize)> {
+        let radius_sq = i64::from(radius) * i64::from(radius);
+        let mut results = self.get_in_horizontal_square(type_predicate, center, radius, status);
+        results.retain(|(pos, _)| distance_sq(*pos, center) <= radius_sq);
+        results
+    }
+
+    /// Vanilla `PoiManager.findAllClosestFirstWithType`: the POIs in range
+    /// that pass `filter`, closest to `center` first. `filter` sees every
+    /// candidate in range, like vanilla's stream before it sorts.
+    #[must_use]
+    pub fn find_all_closest_first(
+        &self,
+        type_predicate: &impl Fn(usize) -> bool,
+        mut filter: impl FnMut(BlockPos) -> bool,
+        center: BlockPos,
+        radius: i32,
+        status: OccupationStatus,
+    ) -> Vec<(BlockPos, usize)> {
+        let mut results = self.get_in_range(type_predicate, center, radius, status);
+        results.retain(|(pos, _)| filter(*pos));
+        results.sort_by_key(|(pos, _)| distance_sq(*pos, center));
+        results
+    }
+
+    /// Vanilla `PoiManager.take`: reserves a ticket on the first POI in
+    /// range with space that passes `filter`.
+    pub fn take(
+        &mut self,
+        type_predicate: &impl Fn(usize) -> bool,
+        filter: impl Fn(usize, BlockPos) -> bool,
+        center: BlockPos,
+        radius: i32,
+    ) -> Option<BlockPos> {
+        let (pos, _) = self
+            .get_in_range(type_predicate, center, radius, OccupationStatus::Free)
+            .into_iter()
+            .find(|(pos, type_id)| filter(*type_id, *pos))?;
+        self.reserve_ticket(pos).then_some(pos)
+    }
+
+    /// Vanilla `PoiManager.exists`.
+    #[must_use]
+    pub fn exists(&self, pos: BlockPos, type_predicate: impl Fn(usize) -> bool) -> bool {
+        self.get_type(pos).is_some_and(type_predicate)
+    }
+
     /// Counts matching POIs within a spherical region.
     #[must_use]
     pub fn count(
@@ -548,6 +604,55 @@ mod tests {
             positions,
             vec![BlockPos::new(0, -64, 0), BlockPos::new(0, 320, 0)]
         );
+    }
+
+    #[test]
+    fn closest_first_queries_sort_by_distance_and_take_claims_a_ticket() {
+        init_vanilla_registry();
+        let home = vanilla_poi_types::HOME
+            .try_id()
+            .expect("vanilla home POI type should be registered");
+        let tickets = vanilla_poi_types::HOME.ticket_count;
+        let center = BlockPos::new(0, 64, 0);
+        let near = BlockPos::new(2, 64, 0);
+        let middle = BlockPos::new(0, 64, -5);
+        let far = BlockPos::new(9, 64, 9);
+        let out_of_range = BlockPos::new(10, 64, 10);
+        let mut storage = PointOfInterestStorage::new();
+        for pos in [far, out_of_range, near, middle] {
+            storage.add(pos, home, tickets);
+        }
+        let is_home = |type_id| type_id == home;
+
+        let mut seen = Vec::new();
+        let found = storage.find_all_closest_first(
+            &is_home,
+            |pos| {
+                seen.push(pos);
+                pos != middle
+            },
+            center,
+            13,
+            OccupationStatus::Free,
+        );
+        assert_eq!(
+            found.iter().map(|(pos, _)| *pos).collect::<Vec<_>>(),
+            vec![near, far]
+        );
+        assert_eq!(seen.len(), 3, "the filter sees everything in range");
+
+        assert_eq!(
+            storage.take(&is_home, |_, pos| pos == near, near, 1),
+            Some(near)
+        );
+        assert!(storage.is_occupied(near));
+        assert_eq!(
+            storage.take(&is_home, |_, pos| pos == near, near, 1),
+            None,
+            "a bed has one ticket"
+        );
+        assert!(storage.exists(near, is_home));
+        assert!(!storage.exists(center, is_home));
     }
 
     #[test]

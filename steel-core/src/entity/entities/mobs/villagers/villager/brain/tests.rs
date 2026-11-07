@@ -2,17 +2,25 @@ use std::sync::Arc;
 
 use glam::DVec3;
 use steel_registry::item_stack::ItemStack;
+use steel_registry::poi::PointOfInterestType;
 use steel_registry::{
-    init_vanilla_registry, vanilla_entities, vanilla_items, vanilla_villager_professions,
-    vanilla_villager_types, vanilla_world_clocks,
+    RegistryEntry as _, init_vanilla_registry, vanilla_entities, vanilla_items, vanilla_poi_types,
+    vanilla_villager_professions, vanilla_villager_types, vanilla_world_clocks,
 };
 use steel_utils::types::InteractionHand;
+use steel_utils::{BlockPos, GlobalPos};
 
+use super::poi::{
+    GoToPotentialJobSite, acquirable_job_site, assign_profession_from_job_site, held_job_site,
+    poi_competitor_scan, reset_profession,
+};
 use super::{ShowTradesToPlayer, VillagerPanicTrigger, hostile_distance, villager_calm_down};
 use crate::behavior::init_behaviors;
 use crate::entity::ai::brain::behavior::{Behavior, TimedBehavior};
+use crate::entity::ai::brain::behaviors::validate_nearby_poi;
 use crate::entity::ai::brain::memory_types::{
-    GOLEM_DETECTED_RECENTLY, INTERACTION_TARGET, NEAREST_HOSTILE, WALK_TARGET, WalkTarget,
+    GOLEM_DETECTED_RECENTLY, HOME, INTERACTION_TARGET, JOB_SITE, NEAREST_HOSTILE,
+    NEAREST_LIVING_ENTITIES, POTENTIAL_JOB_SITE, WALK_TARGET, WalkTarget,
 };
 use crate::entity::ai::brain::{Activity, BehaviorControl as _};
 use crate::entity::entities::ZombieEntity;
@@ -142,7 +150,8 @@ fn hostiles_make_villagers_panic_until_they_calm_down() {
     mob.brain.memories().lock().erase(&NEAREST_HOSTILE);
     // Vanilla only rereads the schedule once a second.
     let mut calm_down = villager_calm_down();
-    mob.brain.replace_with(super::make_brain(false));
+    mob.brain
+        .replace_with(super::make_brain(false, mob.profession()));
     mob.brain.set_schedule(super::schedule_for(false));
     mob.brain.set_active_activity_if_possible(Activity::PANIC);
     assert!(calm_down.try_start(world, &mob, world.game_time()));
@@ -220,4 +229,235 @@ fn villagers_show_the_trades_a_player_can_pay_for() {
     });
     assert!(cleared.is_empty());
     assert!(!mob.brain.memories().lock().has_value(&INTERACTION_TARGET));
+}
+
+fn poi_id(poi_type: &'static PointOfInterestType) -> usize {
+    poi_type.try_id().expect("vanilla POI types are registered")
+}
+
+/// Adds a `poi_type` POI at `pos` to the world.
+fn add_poi(world: &World, pos: BlockPos, poi_type: &'static PointOfInterestType) {
+    world
+        .poi_storage
+        .lock()
+        .add(pos, poi_id(poi_type), poi_type.ticket_count);
+}
+
+fn global(world: &World, pos: BlockPos) -> GlobalPos {
+    GlobalPos::new(world.key.clone(), pos)
+}
+
+#[test]
+fn professions_hold_the_workstation_of_their_name() {
+    init_vanilla_registry();
+    let composter = poi_id(&vanilla_poi_types::FARMER);
+    let lectern = poi_id(&vanilla_poi_types::LIBRARIAN);
+    let bed = poi_id(&vanilla_poi_types::HOME);
+    let farmer = &vanilla_villager_professions::FARMER;
+    let none = &vanilla_villager_professions::NONE;
+    let nitwit = &vanilla_villager_professions::NITWIT;
+
+    assert!(held_job_site(farmer, composter));
+    assert!(!held_job_site(farmer, lectern));
+    assert!(acquirable_job_site(farmer, composter));
+    assert!(!acquirable_job_site(farmer, lectern));
+    assert!(acquirable_job_site(none, composter) && acquirable_job_site(none, lectern));
+    assert!(!acquirable_job_site(none, bed), "beds are no job");
+    assert!(!held_job_site(none, composter));
+    assert!(!acquirable_job_site(nitwit, composter) && !held_job_site(nitwit, composter));
+}
+
+#[test]
+fn unemployed_villagers_take_the_job_at_the_site_they_reach() {
+    init_vanilla_registry();
+    let fixture = fresh_test_world("villager_brain_assign_profession");
+    let world = &fixture.world;
+    let mob = villager_in(world);
+    let site = mob.block_position();
+    add_poi(world, site, &vanilla_poi_types::LIBRARIAN);
+    mob.brain
+        .memories()
+        .lock()
+        .set(&POTENTIAL_JOB_SITE, Some(global(world, site)));
+
+    let mut assign = assign_profession_from_job_site();
+    assert!(assign.try_start(world, &mob, world.game_time()));
+
+    assert_eq!(
+        mob.profession().key,
+        vanilla_villager_professions::LIBRARIAN.key
+    );
+    assert_eq!(
+        mob.brain.memories().lock().get(&JOB_SITE),
+        Some(global(world, site))
+    );
+    assert!(!mob.brain.memories().lock().has_value(&POTENTIAL_JOB_SITE));
+    assert!(mob.state.lock().brain_refresh_pending);
+}
+
+#[test]
+fn villagers_stay_put_until_they_reach_the_job_site() {
+    init_vanilla_registry();
+    let fixture = fresh_test_world("villager_brain_assign_far");
+    let world = &fixture.world;
+    let mob = villager_in(world);
+    let site = mob.block_position().offset(5, 0, 0);
+    add_poi(world, site, &vanilla_poi_types::LIBRARIAN);
+    mob.brain
+        .memories()
+        .lock()
+        .set(&POTENTIAL_JOB_SITE, Some(global(world, site)));
+
+    let mut assign = assign_profession_from_job_site();
+    assert!(!assign.try_start(world, &mob, world.game_time()));
+    assert_eq!(mob.profession().key, vanilla_villager_professions::NONE.key);
+}
+
+#[test]
+fn villagers_who_never_traded_lose_their_job_with_the_site() {
+    init_vanilla_registry();
+    let fixture = fresh_test_world("villager_brain_reset_profession");
+    let world = &fixture.world;
+    let mob = villager_in(world);
+    mob.set_villager_data(
+        &vanilla_villager_types::PLAINS,
+        &vanilla_villager_professions::FARMER,
+        1,
+    );
+
+    let mut reset = reset_profession();
+    assert!(reset.try_start(world, &mob, world.game_time()));
+    assert_eq!(mob.profession().key, vanilla_villager_professions::NONE.key);
+
+    let veteran = villager_in(world);
+    veteran.set_villager_data(
+        &vanilla_villager_types::PLAINS,
+        &vanilla_villager_professions::FARMER,
+        1,
+    );
+    veteran.set_villager_xp(10);
+    let mut reset = reset_profession();
+    assert!(!reset.try_start(world, &veteran, world.game_time()));
+    assert_eq!(
+        veteran.profession().key,
+        vanilla_villager_professions::FARMER.key
+    );
+}
+
+#[test]
+fn the_more_experienced_villager_keeps_a_shared_job_site() {
+    init_vanilla_registry();
+    let fixture = fresh_test_world("villager_brain_competitors");
+    let world = &fixture.world;
+    let site = BlockPos::new(1, 64, 1);
+    add_poi(world, site, &vanilla_poi_types::FARMER);
+    let rookie = villager_in(world);
+    let veteran = Arc::new(villager_in(world));
+    for villager in [&rookie, &*veteran] {
+        villager.set_villager_data(
+            &vanilla_villager_types::PLAINS,
+            &vanilla_villager_professions::FARMER,
+            1,
+        );
+        villager
+            .brain
+            .memories()
+            .lock()
+            .set(&JOB_SITE, Some(global(world, site)));
+    }
+    veteran.set_villager_xp(10);
+    let veteran_entity: SharedEntity = Arc::clone(&veteran) as SharedEntity;
+    rookie
+        .brain
+        .memories()
+        .lock()
+        .set(&NEAREST_LIVING_ENTITIES, Some(vec![veteran_entity]));
+
+    let mut scan = poi_competitor_scan();
+    assert!(scan.try_start(world, &rookie, world.game_time()));
+
+    assert!(!rookie.brain.memories().lock().has_value(&JOB_SITE));
+    assert!(veteran.brain.memories().lock().has_value(&JOB_SITE));
+}
+
+#[test]
+fn giving_up_on_a_potential_job_site_frees_it() {
+    init_vanilla_registry();
+    let fixture = fresh_test_world("villager_brain_go_to_job_site");
+    let world = &fixture.world;
+    let mob = villager_in(world);
+    let site = BlockPos::new(8, 64, 8);
+    add_poi(world, site, &vanilla_poi_types::FARMER);
+    assert!(world.poi_storage.lock().reserve_ticket(site));
+    mob.brain
+        .memories()
+        .lock()
+        .set(&POTENTIAL_JOB_SITE, Some(global(world, site)));
+
+    let mut go = GoToPotentialJobSite {
+        speed_modifier: 0.5,
+    };
+    Behavior::tick(&mut go, world, &mob, 0);
+    assert!(
+        mob.brain.memories().lock().has_value(&WALK_TARGET),
+        "walks to the job site"
+    );
+    Behavior::stop(&mut go, world, &mob, 1);
+
+    assert!(!mob.brain.memories().lock().has_value(&POTENTIAL_JOB_SITE));
+    assert!(!world.poi_storage.lock().is_occupied(site));
+}
+
+#[test]
+fn nearby_pois_that_vanished_are_forgotten() {
+    init_vanilla_registry();
+    let fixture = fresh_test_world("villager_brain_validate_poi");
+    let world = &fixture.world;
+    let mob = villager_in(world);
+    let bell = BlockPos::new(3, 64, 3);
+    mob.brain
+        .memories()
+        .lock()
+        .set(&HOME, Some(global(world, bell)));
+
+    let mut validate = validate_nearby_poi(super::is_home, &HOME);
+    assert!(validate.try_start(world, &mob, world.game_time()));
+    assert!(!mob.brain.memories().lock().has_value(&HOME));
+
+    let far = BlockPos::new(40, 64, 40);
+    mob.brain
+        .memories()
+        .lock()
+        .set(&HOME, Some(global(world, far)));
+    let mut validate = validate_nearby_poi(super::is_home, &HOME);
+    assert!(
+        !validate.try_start(world, &mob, world.game_time()),
+        "too far away to check"
+    );
+    assert!(mob.brain.memories().lock().has_value(&HOME));
+}
+
+#[test]
+fn villagers_free_their_pois_and_remember_them_across_refreshes() {
+    init_vanilla_registry();
+    let fixture = fresh_test_world("villager_brain_release_pois");
+    let world = &fixture.world;
+    let mob = villager_in(world);
+    let bed = BlockPos::new(2, 64, 2);
+    add_poi(world, bed, &vanilla_poi_types::HOME);
+    assert!(world.poi_storage.lock().reserve_ticket(bed));
+    mob.brain
+        .memories()
+        .lock()
+        .set(&HOME, Some(global(world, bed)));
+
+    mob.refresh_brain();
+    assert_eq!(
+        mob.brain.memories().lock().get(&HOME),
+        Some(global(world, bed)),
+        "homes are saved with the brain"
+    );
+
+    mob.release_all_pois();
+    assert!(!world.poi_storage.lock().is_occupied(bed));
 }

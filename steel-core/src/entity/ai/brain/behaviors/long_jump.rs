@@ -10,8 +10,8 @@ use steel_protocol::packets::game::SoundSource;
 use steel_registry::blocks::block_state_ext::BlockStateExt as _;
 use steel_registry::sound_event::SoundEventRef;
 use steel_registry::{vanilla_attributes, vanilla_blocks};
-use steel_utils::BlockPos;
 use steel_utils::geometry::WorldAabb;
+use steel_utils::{BlockPos, Identifier};
 
 use super::UniformInt;
 use crate::entity::ai::brain::MemoryStatus;
@@ -141,6 +141,11 @@ pub struct LongJumpToRandomPos<E> {
     prepare_jump_start: i64,
     get_jump_sound: fn(&E) -> SoundEventRef,
     acceptable_landing_spot: fn(&E, BlockPos) -> bool,
+    /// Vanilla `LongJumpToPreferredBlock`: the tag of blocks to prefer
+    /// landing on, and the chance a jump goes looking for one.
+    preferred_blocks: Option<(&'static Identifier, f32)>,
+    not_preferred_jump_candidates: Vec<PossibleJump>,
+    currently_wanting_preferred_ones: bool,
 }
 
 impl<E: PathfinderMob> LongJumpToRandomPos<E> {
@@ -185,7 +190,63 @@ impl<E: PathfinderMob> LongJumpToRandomPos<E> {
             prepare_jump_start: 0,
             get_jump_sound,
             acceptable_landing_spot,
+            preferred_blocks: None,
+            not_preferred_jump_candidates: Vec::new(),
+            currently_wanting_preferred_ones: false,
         }
+    }
+
+    /// Vanilla `LongJumpToPreferredBlock`: like `with_landing_spot`, but a
+    /// jump started with `preferred_blocks_chance` aims for a block standing
+    /// on `preferred_block_tag` first.
+    #[expect(clippy::too_many_arguments, reason = "mirrors the vanilla constructor")]
+    #[must_use]
+    pub const fn to_preferred_block(
+        time_between_long_jumps: UniformInt,
+        max_long_jump_height: i32,
+        max_long_jump_width: i32,
+        max_jump_velocity_multiplier: f32,
+        get_jump_sound: fn(&E) -> SoundEventRef,
+        preferred_block_tag: &'static Identifier,
+        preferred_blocks_chance: f32,
+        acceptable_landing_spot: fn(&E, BlockPos) -> bool,
+    ) -> Self {
+        let mut behavior = Self::with_landing_spot(
+            time_between_long_jumps,
+            max_long_jump_height,
+            max_long_jump_width,
+            max_jump_velocity_multiplier,
+            get_jump_sound,
+            acceptable_landing_spot,
+        );
+        behavior.preferred_blocks = Some((preferred_block_tag, preferred_blocks_chance));
+        behavior
+    }
+
+    /// Vanilla `getJumpCandidate`, with `LongJumpToPreferredBlock`'s
+    /// override: while wanting a preferred block, every other candidate is
+    /// set aside and only the first one of those is offered back.
+    fn get_jump_candidate(&mut self, world: &World) -> Option<PossibleJump> {
+        let Some((preferred_block_tag, _)) = self.preferred_blocks else {
+            return self.take_jump_candidate();
+        };
+        if !self.currently_wanting_preferred_ones {
+            return self.take_jump_candidate();
+        }
+        while !self.jump_candidates.is_empty() {
+            if let Some(jump) = self.take_jump_candidate() {
+                if world
+                    .get_block_state(jump.target_pos.below())
+                    .get_block()
+                    .has_tag(preferred_block_tag)
+                {
+                    return Some(jump);
+                }
+                self.not_preferred_jump_candidates.push(jump);
+            }
+        }
+        (!self.not_preferred_jump_candidates.is_empty())
+            .then(|| self.not_preferred_jump_candidates.remove(0))
     }
 
     /// Vanilla `getJumpCandidate`: a weighted random candidate, removed from
@@ -243,7 +304,7 @@ impl<E: PathfinderMob> LongJumpToRandomPos<E> {
     /// Vanilla `pickCandidate`.
     fn pick_candidate(&mut self, world: &Arc<World>, body: &E, time: i64) {
         while !self.jump_candidates.is_empty() {
-            let Some(jump) = self.take_jump_candidate() else {
+            let Some(jump) = self.get_jump_candidate(world) else {
                 continue;
             };
             let target_pos = jump.target_pos;
@@ -336,6 +397,10 @@ impl<E: PathfinderMob> Behavior<E> for LongJumpToRandomPos<E> {
             }
         })
         .collect();
+        self.not_preferred_jump_candidates.clear();
+        self.currently_wanting_preferred_ones = self
+            .preferred_blocks
+            .is_some_and(|(_, chance)| rand::random::<f32>() < chance);
     }
 
     fn tick(&mut self, world: &Arc<World>, body: &E, time: i64) {
@@ -492,8 +557,10 @@ fn is_clear_transition<E: Mob>(
 
 #[cfg(test)]
 mod tests {
-    use steel_registry::{init_vanilla_registry, vanilla_entities};
+    use steel_registry::vanilla_block_tags::BlockTag;
+    use steel_registry::{init_vanilla_registry, sound_events, vanilla_entities};
     use steel_utils::ChunkPos;
+    use steel_utils::types::UpdateFlags;
 
     use super::*;
     use crate::behavior::init_behaviors;
@@ -526,5 +593,49 @@ mod tests {
         assert!((jump.y / jump.x - f64::from(70.0_f32.to_radians()).tan()).abs() < 1.0e-3);
 
         assert!(calculate_jump_vector_for_angle(world, &goat, target, 0.1, 70, false).is_none());
+    }
+
+    static PREFERRED: Identifier = BlockTag::FROG_PREFER_JUMP_TO;
+
+    #[test]
+    fn preferred_jumps_aim_for_lily_pads_first() {
+        init_vanilla_registry();
+        init_behaviors();
+        let fixture = fresh_test_world("frog_preferred_long_jump");
+        let world = &fixture.world;
+        insert_ready_full_chunk(world, ChunkPos::new(0, 0));
+        let pad = BlockPos::new(4, 64, 4);
+        assert!(world.set_block(
+            pad,
+            vanilla_blocks::LILY_PAD.default_state(),
+            UpdateFlags::UPDATE_NONE,
+        ));
+        let mut jump = LongJumpToRandomPos::<GoatEntity>::to_preferred_block(
+            UniformInt::of(1, 1),
+            2,
+            4,
+            1.0,
+            |_| &sound_events::ENTITY_FROG_LONG_JUMP,
+            &PREFERRED,
+            1.0,
+            |_, _| true,
+        );
+        let plain = PossibleJump {
+            target_pos: BlockPos::new(1, 64, 1),
+            weight: 1_000,
+        };
+        let on_pad = PossibleJump {
+            target_pos: pad.above(),
+            weight: 1,
+        };
+        jump.jump_candidates = vec![plain, on_pad];
+        jump.currently_wanting_preferred_ones = true;
+        assert_eq!(jump.get_jump_candidate(world), Some(on_pad));
+        assert_eq!(jump.get_jump_candidate(world), Some(plain));
+        assert_eq!(jump.get_jump_candidate(world), None);
+
+        jump.jump_candidates = vec![plain];
+        jump.currently_wanting_preferred_ones = false;
+        assert_eq!(jump.get_jump_candidate(world), Some(plain));
     }
 }
