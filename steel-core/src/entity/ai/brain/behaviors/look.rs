@@ -11,7 +11,6 @@ use crate::entity::ai::brain::memory_types::{
     GAZE_COOLDOWN_TICKS, LOOK_TARGET, NEAREST_VISIBLE_LIVING_ENTITIES, PositionTracker,
 };
 use crate::entity::ai::brain::{BehaviorControl, MemoryStatus};
-use crate::entity::ai::control::DEFAULT_LOOK_Y_MAX_ROT_SPEED;
 use crate::entity::{LivingEntity, Mob};
 use crate::world::World;
 
@@ -71,9 +70,10 @@ impl<E: Mob + ?Sized> Behavior<E> for LookAtTargetSink {
         // Vanilla `LookControl.setLookAt(Vec3)` uses the mob's head rotation
         // speed and maximum head pitch.
         let position = target.current_position();
+        let head_rot_speed = body.head_rot_speed();
         body.mob_base().controls().lock().look_control.set_look_at(
             position,
-            DEFAULT_LOOK_Y_MAX_ROT_SPEED,
+            head_rot_speed,
             body.max_head_x_rot(),
         );
     }

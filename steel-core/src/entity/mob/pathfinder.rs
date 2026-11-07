@@ -710,7 +710,10 @@ fn create_path_with_evaluator<M: PathfinderMob + ?Sized>(
         );
     }
 
-    let mut evaluator = if kind == NavigationKind::Amphibious {
+    let is_frog = mob.mob_base().navigation().lock().is_frog();
+    let mut evaluator = if is_frog {
+        WalkNodeEvaluator::frog(settings)
+    } else if kind == NavigationKind::Amphibious {
         WalkNodeEvaluator::amphibious(settings, false)
     } else {
         WalkNodeEvaluator::new(settings)
