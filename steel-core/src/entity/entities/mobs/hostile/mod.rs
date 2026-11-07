@@ -56,3 +56,7 @@ pub use phantom::PhantomEntity;
 /// Enderman, the block-carrying teleporter that hates being stared at.
 pub mod enderman;
 pub use enderman::EndermanEntity;
+
+/// Hoglin and zoglin, the Nether boars.
+pub mod hoglin;
+pub use hoglin::{HoglinEntity, ZoglinEntity};
