@@ -833,6 +833,7 @@ mod tests {
             spawn_costs: FxHashMap::default(),
             carvers,
             features,
+            network_attributes: "{}",
             id: OnceLock::new(),
         }))
     }
