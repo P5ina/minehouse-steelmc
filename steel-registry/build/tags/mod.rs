@@ -3,12 +3,14 @@
 mod block;
 mod common;
 mod fluid;
+mod game_event;
 mod item;
 
 use proc_macro2::TokenStream;
 
 pub(crate) use block::build as block;
 pub(crate) use fluid::build as fluid;
+pub(crate) use game_event::build as game_event;
 pub(crate) use item::build as item;
 
 macro_rules! simple_tag_builder {
