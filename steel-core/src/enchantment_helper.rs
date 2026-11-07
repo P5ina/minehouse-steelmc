@@ -385,6 +385,53 @@ pub(crate) fn get_damage_protection<V: LivingEntity + ?Sized>(
     protection
 }
 
+/// Vanilla `EnchantmentHelper.processEquipmentDropChance`: Looting and the
+/// like raise the chance a mob drops its equipment. `killer` is the loot
+/// context's `this`; its `VICTIM` effects run first, then the causing entity's
+/// `ATTACKER` effects.
+pub(crate) fn process_equipment_drop_chance(
+    killer: &dyn LivingEntity,
+    damage_source: &DamageSource,
+    chance: f32,
+) -> f32 {
+    let context = EnchantmentDamageContext::from_damage_source(killer.entity_type(), damage_source);
+    let mut random = LegacyRandom::from_seed(rand::random());
+    let mut value = chance;
+    let mut run = |entity: &dyn LivingEntity, enchanted: EnchantmentTarget| {
+        for slot in EquipmentSlot::ALL {
+            entity.with_equipment_slot(slot, &mut |item| {
+                let Some(enchantments) = item.get_enchantments() else {
+                    return;
+                };
+                for (key, level) in enchantments.iter() {
+                    let Some(enchantment) = REGISTRY.enchantments.by_key(key) else {
+                        continue;
+                    };
+                    if !enchantment.matching_slot(slot) {
+                        continue;
+                    }
+                    let level = *level as i32;
+                    for effect in enchantment.effects.equipment_drops {
+                        if effect.enchanted == enchanted
+                            && effect.affected == EnchantmentTarget::Victim
+                            && requirements_match(effect.requirements, &context)
+                        {
+                            value = effect.effect.process_with_random(level, &mut random, value);
+                        }
+                    }
+                }
+            });
+        }
+    };
+    run(killer, EnchantmentTarget::Victim);
+    if let Some(attacker) = damage_source.causing_entity()
+        && let Some(attacker) = attacker.as_living_entity()
+    {
+        run(attacker, EnchantmentTarget::Attacker);
+    }
+    value
+}
+
 pub(crate) fn do_post_attack_effects_from_item(
     world: &World,
     item: &ItemStack,
@@ -1835,5 +1882,45 @@ mod tests {
         assert_eq!(slowness.duration(), 30);
         assert_eq!(slowness.amplifier(), 3);
         assert!(zombie.mob_effect(vanilla_mob_effects::SLOWNESS).is_none());
+    }
+
+    #[test]
+    fn looting_raises_equipment_drop_chance_for_players_only() {
+        init_vanilla_registry();
+        init_behaviors();
+        let sword = || {
+            enchanted_item(
+                &vanilla_items::DIAMOND_SWORD,
+                vanilla_enchantments::LOOTING.key.clone(),
+                3,
+            )
+        };
+
+        let player = Arc::new(TestLivingEntity::new(9_101, &vanilla_entities::PLAYER));
+        player.equip(EquipmentSlot::MainHand, sword());
+        let source = DamageSource::environment(&vanilla_damage_types::PLAYER_ATTACK)
+            .with_causing_entity(Arc::clone(&player) as SharedEntity);
+        let chance = process_equipment_drop_chance(player.as_ref(), &source, 0.085);
+        assert!((chance - 0.115).abs() < 1.0e-6, "{chance}");
+
+        let zombie = Arc::new(TestLivingEntity::new(9_102, &vanilla_entities::ZOMBIE));
+        zombie.equip(EquipmentSlot::MainHand, sword());
+        let source = DamageSource::environment(&vanilla_damage_types::MOB_ATTACK)
+            .with_causing_entity(Arc::clone(&zombie) as SharedEntity);
+        let chance = process_equipment_drop_chance(zombie.as_ref(), &source, 0.085);
+        assert!(
+            (chance - 0.085).abs() < 1.0e-6,
+            "looting needs a player attacker: {chance}"
+        );
+
+        let offhand = Arc::new(TestLivingEntity::new(9_103, &vanilla_entities::PLAYER));
+        offhand.equip(EquipmentSlot::OffHand, sword());
+        let source = DamageSource::environment(&vanilla_damage_types::PLAYER_ATTACK)
+            .with_causing_entity(Arc::clone(&offhand) as SharedEntity);
+        let chance = process_equipment_drop_chance(offhand.as_ref(), &source, 0.085);
+        assert!(
+            (chance - 0.085).abs() < 1.0e-6,
+            "looting only counts in the main hand: {chance}"
+        );
     }
 }
