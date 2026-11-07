@@ -16,7 +16,7 @@ use crate::behavior::init_behaviors;
 use crate::entity::ai::goal::selector::Goal as _;
 use crate::entity::{
     Entity as _, EntitySpawnReason, LivingEntity as _, MobEffectInstance, PatrollingMonster,
-    SharedEntity, create_entity_instance, init_entities, ominous_banner_instance,
+    SharedEntity, create_entity_instance, init_entities, next_entity_id, ominous_banner_instance,
 };
 use crate::inventory::prelude::EquipmentSlot;
 use crate::player::{Player, ResetReason};
@@ -63,7 +63,7 @@ fn village_world(name: &'static str) -> TestWorld {
 
 /// Starts a raid at the village and spawns its first wave.
 fn raid_with_first_wave(world: &Arc<World>) -> (Arc<Player>, Arc<Raid>) {
-    let player = TestPlayerBuilder::new(Arc::clone(world), "Hero", 1).build();
+    let player = TestPlayerBuilder::new(Arc::clone(world), "Hero", next_entity_id()).build();
     player.snap_to(DVec3::new(8.5, 64.0, 8.5), 0.0, 0.0);
     assert!(world.add_player(Arc::clone(&player), ResetReason::InitialJoin));
     assert!(player.add_mob_effect(MobEffectInstance::with_duration(
