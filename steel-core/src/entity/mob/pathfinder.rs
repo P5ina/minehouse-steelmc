@@ -519,10 +519,54 @@ pub trait PathfinderMob: Mob {
         targets: &[BlockPos],
         reach_range: i32,
     ) -> Option<Path> {
+        self.create_path_to_targets_with_max_length(world, targets, reach_range, None)
+    }
+
+    /// Vanilla `PathNavigation.createPath(pos, reachRange, maxPathLength)`:
+    /// a path to `target` no longer than `max_path_length` blocks.
+    fn create_path_to_with_max_length(
+        &self,
+        target: BlockPos,
+        reach_range: i32,
+        max_path_length: f32,
+    ) -> Option<Path> {
         if let Some(vehicle) = self.controlled_pathfinder_vehicle()
             && let Some(pathfinder) = vehicle.as_pathfinder_mob()
         {
-            return pathfinder.create_path_to_targets(world, targets, reach_range);
+            return pathfinder.create_path_to_with_max_length(target, reach_range, max_path_length);
+        }
+        let world = self.level()?;
+        if !world.has_full_chunk(ChunkPos::from_block_pos(target)) {
+            return None;
+        }
+        let target = path_target_for_mob(self, world.as_ref(), target);
+        let targets = [target];
+        self.create_path_to_targets_with_max_length(
+            &world,
+            &targets,
+            reach_range,
+            Some(max_path_length),
+        )
+    }
+
+    /// Vanilla `PathNavigation.createPath(targets, ..., maxPathLength)`; `None`
+    /// uses the follow-range length (vanilla `getMaxPathLength`).
+    fn create_path_to_targets_with_max_length(
+        &self,
+        world: &Arc<World>,
+        targets: &[BlockPos],
+        reach_range: i32,
+        max_path_length: Option<f32>,
+    ) -> Option<Path> {
+        if let Some(vehicle) = self.controlled_pathfinder_vehicle()
+            && let Some(pathfinder) = vehicle.as_pathfinder_mob()
+        {
+            return pathfinder.create_path_to_targets_with_max_length(
+                world,
+                targets,
+                reach_range,
+                max_path_length,
+            );
         }
 
         if targets.is_empty()
@@ -539,7 +583,7 @@ pub trait PathfinderMob: Mob {
         let max_path_length = {
             let mut navigation = self.mob_base().navigation().lock();
             navigation.update_pathfinder_max_visited_nodes(follow_range);
-            navigation.max_path_length(follow_range)
+            max_path_length.unwrap_or_else(|| navigation.max_path_length(follow_range))
         };
 
         let mob_position = self.block_position();
