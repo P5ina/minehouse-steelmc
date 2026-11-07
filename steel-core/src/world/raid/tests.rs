@@ -4,6 +4,7 @@ use std::sync::Arc;
 use glam::DVec3;
 use simdnbt::borrow::read_compound;
 use simdnbt::owned::NbtCompound;
+use steel_registry::data_components::vanilla_components::OMINOUS_BOTTLE_AMPLIFIER;
 use steel_registry::item_stack::ItemStack;
 use steel_registry::vanilla_game_rules::RAIDS;
 use steel_registry::{
@@ -11,15 +12,17 @@ use steel_registry::{
     vanilla_enchantments, vanilla_entities, vanilla_items, vanilla_mob_effects, vanilla_poi_types,
 };
 use steel_utils::types::{Difficulty, UpdateFlags};
-use steel_utils::{BlockPos, ChunkPos};
+use steel_utils::{BlockPos, ChunkPos, Downcast as _};
 use uuid::Uuid;
 
 use super::{Raid, RaidStatus, Raids, SavedRaids, num_groups};
+use crate::behavior::finish_consuming_stack;
 use crate::behavior::init_behaviors;
 use crate::entity::damage::DamageSource;
+use crate::entity::entities::ItemEntity;
 use crate::entity::{
     Entity as _, LivingEntity, MobEffectInstance, SharedEntity, create_entity_instance,
-    init_entities, ominous_banner_instance,
+    init_entities, next_entity_id, ominous_banner_instance,
 };
 use crate::inventory::prelude::EquipmentSlot;
 use crate::player::{Player, ResetReason};
@@ -63,7 +66,7 @@ fn village_world(name: &'static str, difficulty: Difficulty) -> TestWorld {
 }
 
 fn player_at(world: &Arc<World>, pos: DVec3) -> Arc<Player> {
-    let player = TestPlayerBuilder::new(Arc::clone(world), "Hero", 1).build();
+    let player = TestPlayerBuilder::new(Arc::clone(world), "Hero", next_entity_id()).build();
     player.snap_to(pos, 0.0, 0.0);
     assert!(world.add_player(Arc::clone(&player), ResetReason::InitialJoin));
     player
@@ -401,4 +404,91 @@ fn raiders_save_their_raid_id_and_rejoin_on_load() {
             .is_some_and(|r| Arc::ptr_eq(&r, &raid))
     );
     assert_eq!(raid.total_raiders_alive(), alive);
+}
+
+/// Kills a fresh pillager at `pos` and returns the ominous bottles it dropped.
+fn bottles_dropped_by_pillager(world: &Arc<World>, pos: DVec3, captain: bool) -> Vec<ItemStack> {
+    let entity = create_entity_instance(world, &vanilla_entities::PILLAGER, pos).expect("pillager");
+    assert!(
+        world
+            .try_add_fresh_entity_with_passengers(Arc::clone(&entity))
+            .is_ok()
+    );
+    let raider = entity.as_raider().expect("raider");
+    if captain {
+        raider.set_patrol_leader(true);
+        let _ = raider
+            .living_base()
+            .equipment()
+            .lock()
+            .set(EquipmentSlot::Head, ominous_banner_instance());
+        assert!(raider.is_captain());
+    }
+    entity
+        .as_living_entity()
+        .expect("living")
+        .die(&DamageSource::environment(&vanilla_damage_types::GENERIC));
+    let search = entity.bounding_box().inflate(4.0);
+    world
+        .get_entities_in_aabb_matching(&search, |found| {
+            found
+                .downcast_ref::<ItemEntity>()
+                .is_some_and(|item| item.get_item().is(&vanilla_items::OMINOUS_BOTTLE))
+        })
+        .into_iter()
+        .filter_map(|found| found.downcast_ref::<ItemEntity>().map(ItemEntity::get_item))
+        .collect()
+}
+
+#[test]
+fn only_a_captain_outside_a_raid_drops_an_ominous_bottle() {
+    let fixture = village_world("raid_captain_bottle", Difficulty::Normal);
+    let world = &fixture.world;
+    // Far from any raid: the village center has none yet.
+    let captain_bottles = bottles_dropped_by_pillager(world, DVec3::new(30.5, 64.0, 30.5), true);
+    assert_eq!(captain_bottles.len(), 1, "{captain_bottles:?}");
+    let amplifier = captain_bottles[0]
+        .get(OMINOUS_BOTTLE_AMPLIFIER)
+        .expect("amplifier")
+        .value();
+    assert!((0..=4).contains(&amplifier), "{amplifier}");
+
+    assert!(
+        bottles_dropped_by_pillager(world, DVec3::new(-20.5, 64.0, -20.5), false).is_empty(),
+        "a plain pillager drops no bottle"
+    );
+
+    let player = player_at(world, DVec3::new(8.5, 64.0, 8.5));
+    assert!(player.add_mob_effect(MobEffectInstance::with_duration(
+        vanilla_mob_effects::RAID_OMEN,
+        600,
+        0
+    )));
+    let _raid = world
+        .raids()
+        .create_or_extend_raid(world, &player, CENTER)
+        .expect("raid");
+    assert!(
+        bottles_dropped_by_pillager(world, DVec3::new(10.5, 64.0, 10.5), true).is_empty(),
+        "a captain killed inside a raid drops no bottle"
+    );
+}
+
+#[test]
+fn drinking_an_ominous_bottle_gives_bad_omen() {
+    let fixture = village_world("raid_drink_bottle", Difficulty::Normal);
+    let world = &fixture.world;
+    let player = player_at(world, DVec3::new(30.5, 64.0, 30.5));
+    let mut bottle = ItemStack::new(&vanilla_items::OMINOUS_BOTTLE);
+    bottle.set_ominous_bottle_amplifier(3);
+    let remainder = finish_consuming_stack(&bottle, world, player.as_ref());
+    assert!(remainder.is_empty());
+    let omen = player
+        .living_base()
+        .mob_effect(vanilla_mob_effects::BAD_OMEN)
+        .expect("bad omen");
+    assert_eq!(omen.amplifier(), 3);
+    assert_eq!(omen.duration(), 120_000);
+    assert!(!omen.is_ambient());
+    assert!(!omen.is_visible());
 }

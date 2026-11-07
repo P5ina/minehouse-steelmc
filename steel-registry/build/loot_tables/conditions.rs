@@ -174,6 +174,7 @@ fn generate_condition_object(condition: &LootConditionJson) -> TokenStream {
                             sheep_color: None,
                             sheep_sheared: None,
                             chicken_variant: None,
+                            raider: None,
                         }
                     }
                 }
@@ -186,6 +187,7 @@ fn generate_condition_object(condition: &LootConditionJson) -> TokenStream {
                         sheep_color: None,
                         sheep_sheared: None,
                         chicken_variant: None,
+                        raider: None,
                     }
                 }
             };

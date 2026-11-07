@@ -81,6 +81,8 @@ pub use context::{
 };
 pub use fluid::{FLUID_BEHAVIORS, FluidBehaviorRegistry};
 pub(crate) use item::apply_use_remainder;
+#[cfg(test)]
+pub(crate) use item::finish_consuming_stack;
 pub use item::{ItemBehavior, ItemBehaviorRegistry, ItemUseAnimation, SignApplicator};
 use item_behaviors::register_item_behaviors;
 pub use items::{

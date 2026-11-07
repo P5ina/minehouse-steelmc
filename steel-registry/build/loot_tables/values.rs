@@ -368,6 +368,15 @@ pub(super) fn generate_entity_predicate(predicate: &EntityPredicateJson) -> Toke
         .and_then(|sheep| sheep.sheared)
         .map_or_else(|| quote! { None }, |sheared| quote! { Some(#sheared) });
 
+    let raider = predicate.raider_type_specific.as_ref().map_or_else(
+        || quote! { None },
+        |raider| {
+            let has_raid = raider.has_raid;
+            let is_captain = raider.is_captain;
+            quote! { Some(RaiderPredicate { has_raid: #has_raid, is_captain: #is_captain }) }
+        },
+    );
+
     quote! {
         EntityPredicate {
             entity_type: #entity_type,
@@ -376,6 +385,7 @@ pub(super) fn generate_entity_predicate(predicate: &EntityPredicateJson) -> Toke
             sheep_color: #sheep_color,
             sheep_sheared: #sheep_sheared,
             chicken_variant: #chicken_variant,
+            raider: #raider,
         }
     }
 }
