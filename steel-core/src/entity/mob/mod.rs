@@ -1406,6 +1406,12 @@ pub trait Mob: LivingEntity + Leashable {
         75.0
     }
 
+    /// Vanilla `Mob.getHeadRotSpeed`: how many degrees per tick the head
+    /// turns towards a look target set without an explicit speed.
+    fn head_rot_speed(&self) -> f32 {
+        10.0
+    }
+
     /// Performs this mob's melee attack against `target`: computes weapon
     /// damage and knockback, applies enchantment effects, and returns whether
     /// the target was hurt.

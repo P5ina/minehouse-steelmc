@@ -324,6 +324,9 @@ struct EntityPredicateJson {
     /// registry-style flat key, not a nested object.
     #[serde(rename = "minecraft:type_specific/sheep", default)]
     sheep_type_specific: Option<SheepTypeSpecificJson>,
+    /// `minecraft:type_specific/raider`; both flags default to `false`.
+    #[serde(rename = "minecraft:type_specific/raider", default)]
+    raider_type_specific: Option<RaiderTypeSpecificJson>,
 }
 
 /// Entity data-component predicates (`minecraft:components`).
@@ -333,6 +336,16 @@ struct EntityComponentsJson {
     sheep_color: Option<String>,
     #[serde(rename = "minecraft:chicken/variant", default)]
     chicken_variant: Option<String>,
+}
+
+/// Vanilla `RaiderPredicate` (`minecraft:type_specific/raider`).
+#[derive(Deserialize, Debug, Clone)]
+#[serde(deny_unknown_fields)]
+struct RaiderTypeSpecificJson {
+    #[serde(default)]
+    has_raid: bool,
+    #[serde(default)]
+    is_captain: bool,
 }
 
 /// Type-specific entity predicates (`minecraft:type_specific/sheep`).
@@ -632,7 +645,7 @@ pub(crate) fn build() -> TokenStream {
             EntityFlags, EntityPredicate, EquipmentSlotGroup, InstrumentOptions, ItemPredicate,
             LocationPredicate, LootCondition, LootContextEntity, LootEntry, LootFunction, LootPool,
             LootTable, LootTableRef, LootTableRegistry, LootType, NameTarget, NumberProvider,
-            PropertyCheck, StewEffect, ToolPredicate,
+            PropertyCheck, RaiderPredicate, StewEffect, ToolPredicate,
         };
         use steel_utils::Identifier;
     });

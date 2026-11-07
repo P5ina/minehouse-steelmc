@@ -1,3 +1,4 @@
+use super::RaiderPredicate;
 use super::{BlockStateId, DyeColor, Identifier, ItemStack, REGISTRY, RegistryExt, RngExt};
 use crate::equipment::EquipmentSlot;
 
@@ -303,6 +304,9 @@ pub struct EntityRef<'a> {
     pub sheep_sheared: Option<bool>,
     /// Vanilla `minecraft:components.chicken/variant` entity data component key.
     pub chicken_variant: Option<&'a Identifier>,
+    /// Vanilla `Raider.hasRaid` and `isCaptain`. `None` when the entity is not a
+    /// raider, matching `RaiderPredicate.matches`' non-raider rejection.
+    pub raider: Option<RaiderPredicate>,
 }
 
 /// Entity flags for predicate checking.

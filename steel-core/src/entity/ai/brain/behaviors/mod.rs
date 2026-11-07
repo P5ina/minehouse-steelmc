@@ -6,6 +6,7 @@ mod cooldown;
 mod do_nothing;
 mod door;
 mod fight;
+mod find_land;
 pub mod gate;
 mod interact;
 mod long_jump;
@@ -33,9 +34,10 @@ pub use fight::{
     erase_memory_if, is_breeding, melee_attack,
     set_walk_target_from_attack_target_if_target_out_of_reach, stop_attacking_if_target_invalid,
 };
+pub use find_land::{try_find_land, try_find_land_near_liquid, try_lay_spawn_on_fluid_near_land};
 pub use gate::{run_one, trigger_one_shuffled};
 pub use interact::{interact_with_type, set_look_and_interact};
-pub use long_jump::{LongJumpMidJump, LongJumpToRandomPos};
+pub use long_jump::{LongJumpMidJump, LongJumpToRandomPos, default_acceptable_landing_spot};
 pub use look::{
     LookAtTargetSink, RandomLookAround, set_entity_look_target, set_entity_look_target_sometimes,
 };

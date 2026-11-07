@@ -72,6 +72,14 @@ impl MemoryValue for Vec<GlobalPos> {
     }
 }
 
+impl MemoryValue for Vec<Uuid> {
+    const KEY: DowncastTypeKey = DowncastTypeKey::new("steel:brain_memory/uuid_list");
+
+    fn is_empty_collection(&self) -> bool {
+        self.is_empty()
+    }
+}
+
 impl MemoryValue for RecentDamageSource {
     const KEY: DowncastTypeKey = DowncastTypeKey::new("steel:brain_memory/damage_source");
 }
@@ -435,3 +443,5 @@ pub static SNIFFER_SNIFFING_TARGET: MemoryModuleType<BlockPos> =
     MemoryModuleType::new("sniffer_sniffing_target");
 pub static SNIFFER_DIGGING: MemoryModuleType<bool> = MemoryModuleType::new("sniffer_digging");
 pub static SNIFFER_HAPPY: MemoryModuleType<bool> = MemoryModuleType::new("sniffer_happy");
+pub static UNREACHABLE_TONGUE_TARGETS: MemoryModuleType<Vec<Uuid>> =
+    MemoryModuleType::new("unreachable_tongue_targets");
