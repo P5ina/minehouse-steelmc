@@ -113,6 +113,17 @@ impl NearestAttackableTargetGoal {
         }
     }
 
+    /// Adds a target filter that also sees the targeting mob, for vanilla
+    /// selectors that read the mob's own state.
+    #[must_use]
+    pub(crate) fn with_targeter_selector(
+        mut self,
+        selector: impl Fn(&dyn LivingEntity, &dyn LivingEntity, &World) -> bool + Send + Sync + 'static,
+    ) -> Self {
+        self.target_conditions = self.target_conditions.targeter_selector(selector);
+        self
+    }
+
     /// Vanilla `TargetGoal.setUnseenMemoryTicks`.
     #[must_use]
     pub(crate) const fn with_unseen_memory_ticks(mut self, unseen_memory_ticks: i32) -> Self {
@@ -174,6 +185,24 @@ impl NearestAttackableTargetGoal {
                 })
             }
         };
+    }
+
+    /// Vanilla `TargetGoal.canAttack(target, targetConditions)` with this
+    /// goal's own conditions, for goals that pick their target themselves.
+    pub(crate) fn can_attack_target(
+        &mut self,
+        mob: &dyn PathfinderMob,
+        target: Option<&dyn LivingEntity>,
+    ) -> bool {
+        let target_conditions = self
+            .target_conditions
+            .clone()
+            .range(self.target_goal.follow_distance(mob));
+        let passes_mob_selector = match (target, mob.level()) {
+            (Some(target), Some(world)) => self.passes_mob_selector(mob, target, world.as_ref()),
+            _ => false,
+        };
+        passes_mob_selector && self.target_goal.can_attack(mob, target, &target_conditions)
     }
 
     pub(crate) fn set_target(&mut self, target: Option<SharedEntity>) {

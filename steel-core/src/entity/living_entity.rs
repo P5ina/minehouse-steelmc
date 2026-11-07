@@ -1233,6 +1233,12 @@ pub trait LivingEntity: Entity {
 
     /// Runs the currently implemented subset of vanilla `LivingEntity.dropAllDeathLoot`.
     fn drop_all_death_loot(&self, source: &DamageSource) {
+        self.default_drop_all_death_loot(source);
+    }
+
+    /// The base [`LivingEntity::drop_all_death_loot`]; overrides call this for
+    /// vanilla `super.dropAllDeathLoot(...)`.
+    fn default_drop_all_death_loot(&self, source: &DamageSource) {
         let Some(world) = self.level() else {
             return;
         };
