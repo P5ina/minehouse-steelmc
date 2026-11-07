@@ -21,11 +21,11 @@ use steel_registry::vanilla_entity_data::PigEntityData;
 use steel_registry::vanilla_item_tags::ItemTag;
 use steel_registry::{
     REGISTRY, RegistryExt, RegistryReference, TaggedRegistryExt, sound_events, vanilla_attributes,
-    vanilla_items,
+    vanilla_entities, vanilla_items,
 };
 use steel_utils::locks::SyncMutex;
 use steel_utils::random::legacy_random::LegacyRandom;
-use steel_utils::types::InteractionHand;
+use steel_utils::types::{Difficulty, InteractionHand};
 use steel_utils::{BlockPos, BlockStateId, DowncastType, DowncastTypeKey, Identifier};
 
 use crate::behavior::InteractionResult;
@@ -33,7 +33,9 @@ use crate::entity::ai::goal::{
     BreedGoal, FloatGoal, FollowParentGoal, LookAtPlayerGoal, PanicGoal, RandomLookAroundGoal,
     TemptGoal, WaterAvoidingRandomStrollGoal,
 };
+use crate::entity::conversion::ConversionParams;
 use crate::entity::damage::DamageSource;
+use crate::entity::entities::{LightningBoltEntity, ZombifiedPiglinEntity};
 use crate::entity::{
     AgeableMob, AgeableMobBase, Animal, AnimalBase, DefaultEntityPush, Entity, EntityBase,
     EntityBaseLoad, EntityPose, EntitySpawnReason, EntitySyncedData, ItemBasedSteering,
@@ -252,6 +254,32 @@ impl Entity for PigEntity {
 
     fn base_tick(&self) {
         Mob::base_tick_mob(self);
+    }
+
+    /// Vanilla `Pig.thunderHit`: lightning turns it into a zombified piglin
+    /// with a golden weapon that never despawns.
+    fn thunder_hit(&self, world: &World, _lightning: &LightningBoltEntity) {
+        use steel_utils::Downcast as _;
+
+        if world.difficulty() == Difficulty::Peaceful {
+            self.default_thunder_hit(world);
+            return;
+        }
+        let zombified_piglin = self.convert_to(
+            &vanilla_entities::ZOMBIFIED_PIGLIN,
+            ConversionParams::single(false, true),
+            Some(&|zombified_piglin: &dyn Mob| {
+                if let Some(zombified_piglin) =
+                    zombified_piglin.downcast_ref::<ZombifiedPiglinEntity>()
+                {
+                    zombified_piglin.populate_default_equipment();
+                }
+                zombified_piglin.set_persistence_required();
+            }),
+        );
+        if zombified_piglin.is_none() {
+            self.default_thunder_hit(world);
+        }
     }
 
     fn dimensions_for_pose(&self, _pose: EntityPose) -> EntityDimensions {

@@ -35,6 +35,7 @@ pub use blaze::BlazeEntity;
 pub mod zombie;
 pub use zombie::{
     DrownedEntity, GiantEntity, HuskEntity, ZombieEntity, ZombieGroupData, ZombieVillagerEntity,
+    ZombifiedPiglinEntity,
 };
 
 /// Hostile vex entity module.
