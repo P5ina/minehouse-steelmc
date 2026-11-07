@@ -5,6 +5,7 @@
 //! never converts. The giant is a plain monster with no AI goals at all.
 
 pub use drowned::DrownedEntity;
+pub use zombie_villager::ZombieVillagerEntity;
 
 use std::sync::{Arc, Weak};
 
@@ -39,7 +40,7 @@ use crate::entity::ai::goal::{
 use crate::entity::attribute::{AttributeModifier, AttributeModifierOperation};
 use crate::entity::conversion::ConversionParams;
 use crate::entity::damage::DamageSource;
-use crate::entity::entities::ChickenEntity;
+use crate::entity::entities::{ChickenEntity, VillagerEntity};
 use crate::entity::entity::EntityEventSource as _;
 use crate::entity::mob::spawn_equipment::{
     populate_default_equipment_enchantments, populate_default_equipment_slots,
@@ -94,6 +95,9 @@ const BABY_WIDTH: f32 = 0.49;
 const BABY_HEIGHT: f32 = 0.98;
 const ZOMBIE_BABY_EYE_HEIGHT: f32 = 0.775;
 const HUSK_BABY_EYE_HEIGHT: f32 = 0.825;
+const ZOMBIE_VILLAGER_BABY_EYE_HEIGHT: f32 = 0.67;
+const ZOMBIE_VILLAGER_BABY_VEHICLE_ATTACHMENTS: [EntityAttachmentPoint; 1] =
+    [EntityAttachmentPoint::new(0.0, 0.125, 0.0)];
 const BABY_VEHICLE_ATTACHMENTS: [EntityAttachmentPoint; 1] =
     [EntityAttachmentPoint::new(0.0, 0.1875, 0.0)];
 const ZOMBIE_BABY_DIMENSIONS: EntityDimensions = EntityDimensions::new_with_attachments(
@@ -101,6 +105,13 @@ const ZOMBIE_BABY_DIMENSIONS: EntityDimensions = EntityDimensions::new_with_atta
     BABY_HEIGHT,
     ZOMBIE_BABY_EYE_HEIGHT,
     EntityAttachments::new(&[], &BABY_VEHICLE_ATTACHMENTS, &[], &[]),
+);
+/// Vanilla `ZombieVillager.BABY_DIMENSIONS`.
+const ZOMBIE_VILLAGER_BABY_DIMENSIONS: EntityDimensions = EntityDimensions::new_with_attachments(
+    BABY_WIDTH,
+    BABY_HEIGHT,
+    ZOMBIE_VILLAGER_BABY_EYE_HEIGHT,
+    EntityAttachments::new(&[], &ZOMBIE_VILLAGER_BABY_VEHICLE_ATTACHMENTS, &[], &[]),
 );
 const HUSK_BABY_DIMENSIONS: EntityDimensions = EntityDimensions::new_with_attachments(
     BABY_WIDTH,
@@ -124,6 +135,7 @@ enum ZombieVariant {
     Zombie,
     Husk,
     Drowned,
+    ZombieVillager,
 }
 
 impl ZombieVariant {
@@ -131,6 +143,7 @@ impl ZombieVariant {
         match self {
             Self::Zombie | Self::Drowned => ZOMBIE_BABY_DIMENSIONS,
             Self::Husk => HUSK_BABY_DIMENSIONS,
+            Self::ZombieVillager => ZOMBIE_VILLAGER_BABY_DIMENSIONS,
         }
     }
 
@@ -141,6 +154,7 @@ impl ZombieVariant {
             Self::Husk => &sound_events::ENTITY_HUSK_AMBIENT,
             Self::Drowned if in_water => &sound_events::ENTITY_DROWNED_AMBIENT_WATER,
             Self::Drowned => &sound_events::ENTITY_DROWNED_AMBIENT,
+            Self::ZombieVillager => &sound_events::ENTITY_ZOMBIE_VILLAGER_AMBIENT,
         }
     }
 
@@ -150,6 +164,7 @@ impl ZombieVariant {
             Self::Husk => &sound_events::ENTITY_HUSK_HURT,
             Self::Drowned if in_water => &sound_events::ENTITY_DROWNED_HURT_WATER,
             Self::Drowned => &sound_events::ENTITY_DROWNED_HURT,
+            Self::ZombieVillager => &sound_events::ENTITY_ZOMBIE_VILLAGER_HURT,
         }
     }
 
@@ -159,6 +174,7 @@ impl ZombieVariant {
             Self::Husk => &sound_events::ENTITY_HUSK_DEATH,
             Self::Drowned if in_water => &sound_events::ENTITY_DROWNED_DEATH_WATER,
             Self::Drowned => &sound_events::ENTITY_DROWNED_DEATH,
+            Self::ZombieVillager => &sound_events::ENTITY_ZOMBIE_VILLAGER_DEATH,
         }
     }
 
@@ -167,18 +183,20 @@ impl ZombieVariant {
             Self::Zombie => &sound_events::ENTITY_ZOMBIE_STEP,
             Self::Husk => &sound_events::ENTITY_HUSK_STEP,
             Self::Drowned => &sound_events::ENTITY_DROWNED_STEP,
+            Self::ZombieVillager => &sound_events::ENTITY_ZOMBIE_VILLAGER_STEP,
         }
     }
 
-    /// Vanilla `Zombie.convertsInWater`: the drowned has nothing to become.
+    /// Vanilla `Zombie.convertsInWater`: the drowned has nothing to become
+    /// and the zombie villager overrides it off.
     const fn converts_in_water(self) -> bool {
-        !matches!(self, Self::Drowned)
+        !matches!(self, Self::Drowned | Self::ZombieVillager)
     }
 
     /// Vanilla `convertsToWhenDrowning`.
     fn converts_to_when_drowning(self) -> EntityTypeRef {
         match self {
-            Self::Zombie | Self::Drowned => &vanilla_entities::DROWNED,
+            Self::Zombie | Self::Drowned | Self::ZombieVillager => &vanilla_entities::DROWNED,
             Self::Husk => &vanilla_entities::ZOMBIE,
         }
     }
@@ -186,19 +204,24 @@ impl ZombieVariant {
     /// Vanilla `getConversionSound`.
     const fn conversion_sound(self) -> i32 {
         match self {
-            Self::Zombie | Self::Drowned => level_events::SOUND_ZOMBIE_TO_DROWNED,
+            Self::Zombie | Self::Drowned | Self::ZombieVillager => {
+                level_events::SOUND_ZOMBIE_TO_DROWNED
+            }
             Self::Husk => level_events::SOUND_HUSK_TO_ZOMBIE,
         }
     }
 
     /// Vanilla `HurtByTargetGoal.alertOthers` matches the hurt mob's class and
-    /// its subclasses: a zombie alerts every zombie kind, a husk only husks
-    /// and a drowned only drowned.
+    /// its subclasses: a zombie alerts every zombie kind, while a husk, a
+    /// drowned or a zombie villager only alerts its own kind.
     fn alert_matcher(self) -> fn(&dyn Entity) -> bool {
         match self {
             Self::Zombie => is_zombie_family,
             Self::Husk => |entity| entity.entity_type() == &vanilla_entities::HUSK,
             Self::Drowned => |entity| entity.entity_type() == &vanilla_entities::DROWNED,
+            Self::ZombieVillager => {
+                |entity| entity.entity_type() == &vanilla_entities::ZOMBIE_VILLAGER
+            }
         }
     }
 }
@@ -377,6 +400,14 @@ fn handle_zombie_attributes<M: Mob + ?Sized>(
         mob.set_health(mob.get_max_health());
     }
     true
+}
+
+/// The save data a `Zombie` subclass adds on top of the zombie's own, for
+/// vanilla `addAdditionalSaveData` / `readAdditionalSaveData` overrides.
+trait ZombieVariantSaveData {
+    fn save_variant_data(&self, _nbt: &mut NbtCompound) {}
+
+    fn load_variant_data(&self, _nbt: BorrowedNbtCompoundView<'_, '_>) {}
 }
 
 /// Implements the entity traits zombies and husks share, mirroring vanilla `Zombie`.
@@ -779,6 +810,17 @@ macro_rules! impl_zombie_traits {
 
             $($entity_extra)*
 
+            /// Vanilla `Zombie.killedEntity`: a villager killed on Normal or
+            /// Hard may come back as a zombie villager instead of dying.
+            fn killed_entity(
+                &self,
+                world: &World,
+                entity: &dyn LivingEntity,
+                _source: &DamageSource,
+            ) -> bool {
+                !infect_villager(self, world, entity)
+            }
+
             fn save_additional(&self, nbt: &mut NbtCompound) {
                 self.save_mob(nbt);
                 nbt.insert("IsBaby", i8::from(LivingEntity::is_baby(self)));
@@ -803,6 +845,8 @@ macro_rules! impl_zombie_traits {
                         NOT_CONVERTING
                     },
                 );
+                drop(state);
+                ZombieVariantSaveData::save_variant_data(self, nbt);
             }
 
             fn load_additional(&self, nbt: BorrowedNbtCompoundView<'_, '_>) {
@@ -817,6 +861,7 @@ macro_rules! impl_zombie_traits {
                 } else {
                     self.start_drowned_conversion(conversion_time);
                 }
+                ZombieVariantSaveData::load_variant_data(self, nbt);
             }
         }
 
@@ -1124,6 +1169,8 @@ impl ZombieEntity {
 
 impl_zombie_traits!(ZombieEntity, ZombieVariant::Zombie, finalize_spawn_zombie);
 
+impl ZombieVariantSaveData for ZombieEntity {}
+
 impl ZombieEntity {
     /// Vanilla `Zombie.finalizeSpawn`, with a fresh random.
     fn finalize_spawn_zombie(
@@ -1201,6 +1248,94 @@ impl HuskEntity {
 }
 
 impl_zombie_traits!(HuskEntity, ZombieVariant::Husk, finalize_spawn_husk);
+
+impl ZombieVariantSaveData for HuskEntity {}
+
+impl ZombieVariantSaveData for DrownedEntity {}
+
+mod zombie_villager;
+
+/// The villager half of vanilla `Zombie.killedEntity`: returns whether the
+/// killed entity was converted, in which case it does not perish.
+fn infect_villager(zombie: &dyn Entity, world: &World, victim: &dyn LivingEntity) -> bool {
+    let difficulty = world.difficulty();
+    if !matches!(difficulty, Difficulty::Normal | Difficulty::Hard) {
+        return false;
+    }
+    let victim: &dyn Entity = victim;
+    let Some(villager) = victim.downcast_ref::<VillagerEntity>() else {
+        return false;
+    };
+    let mut random = LegacyRandom::from_seed(rand::random());
+    if difficulty != Difficulty::Hard && random.next_bool() {
+        return false;
+    }
+    convert_villager_to_zombie_villager(zombie, villager)
+}
+
+/// Vanilla `Zombie.convertVillagerToZombieVillager`.
+fn convert_villager_to_zombie_villager(zombie: &dyn Entity, villager: &VillagerEntity) -> bool {
+    let after_conversion = |converted: &dyn Mob| {
+        let converted: &dyn Entity = converted;
+        let Some(zombie_villager) = converted.downcast_ref::<ZombieVillagerEntity>() else {
+            return;
+        };
+        let Some(world) = zombie_villager.level() else {
+            return;
+        };
+        zombie_villager.set_villager_data_finalized(villager.villager_data_finalized());
+        zombie_villager.finalize_spawn(
+            &world,
+            EntitySpawnReason::Conversion,
+            Some(SpawnGroupData::Zombie(ZombieGroupData {
+                is_baby: false,
+                can_spawn_jockey: true,
+            })),
+        );
+        zombie_villager.set_villager_data(
+            villager.villager_type(),
+            villager.profession(),
+            villager.villager_level(),
+        );
+        zombie_villager.set_gossips(villager.gossips());
+        zombie_villager.set_trade_offers(Some(villager.with_offers(|offers| offers.clone())));
+        zombie_villager.set_villager_xp(villager.villager_xp());
+        if !zombie.is_silent() {
+            world.level_event(
+                level_events::SOUND_ZOMBIE_INFECTED,
+                zombie.block_position(),
+                0,
+                None,
+            );
+        }
+    };
+    villager
+        .convert_to(
+            &vanilla_entities::ZOMBIE_VILLAGER,
+            ConversionParams::single(true, true),
+            Some(&after_conversion),
+        )
+        .is_some()
+}
+
+impl_zombie_traits!(
+    ZombieVillagerEntity,
+    ZombieVariant::ZombieVillager,
+    finalize_spawn_zombie_villager,
+    entity {},
+    living {
+        /// Vanilla `ZombieVillager.getVoicePitch`.
+        fn voice_pitch(&self) -> f32 {
+            self.voice_pitch_zombie_villager()
+        }
+    },
+    mob {
+        /// Vanilla `ZombieVillager.removeWhenFarAway`.
+        fn remove_when_far_away(&self, _distance_sqr: f64) -> bool {
+            self.remove_when_far_away_zombie_villager()
+        }
+    }
+);
 
 impl HuskEntity {
     /// Vanilla `Husk.finalizeSpawn`: the zombie spawn, then a second loot

@@ -33,7 +33,6 @@ minehouse_mob_wither
 minehouse_mob_zoglin
 minehouse_mob_zombie
 minehouse_mob_zombie_nautilus
-minehouse_mob_zombie_villager
 minehouse_mob_zombified_piglin
 
 # mobs: built with a dispenser

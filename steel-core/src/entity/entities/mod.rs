@@ -10,7 +10,7 @@ pub use mobs::hostile::{
     BlazeEntity, BoggedEntity, CaveSpiderEntity, CreeperEntity, DrownedEntity, EndermiteEntity,
     GhastEntity, GiantEntity, HuskEntity, MagmaCubeEntity, ParchedEntity, PhantomEntity,
     SilverfishEntity, SkeletonEntity, SlimeEntity, SpiderEntity, StrayEntity, VexEntity,
-    WitherSkeletonEntity, ZombieEntity, ZombieGroupData,
+    WitherSkeletonEntity, ZombieEntity, ZombieGroupData, ZombieVillagerEntity,
 };
 pub use mobs::hostile::{ElderGuardianEntity, Guardian, GuardianEntity};
 pub use mobs::neutral::{PolarBearEntity, WolfEntity};
