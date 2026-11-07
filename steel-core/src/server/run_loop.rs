@@ -1,4 +1,5 @@
 use super::tick_overload::TickOverloadGuard;
+use super::tick_watchdog::{TickStep, TickWatchdog};
 use super::world_tick_workers::{WorldTickWorkerError, WorldTickWorkers};
 use super::{
     Arc, CCommandSuggestions, CHUNK_SENDING_TPS, COMMAND_DATA_AUTOSAVE_INTERVAL,
@@ -58,9 +59,11 @@ impl Server {
             let s = Arc::clone(&self);
             let t = cancel_token.clone();
             let task_guard = GameTickTaskGuard::new(Arc::clone(&self), cancel_token.clone());
+            let watchdog = TickWatchdog::new();
+            watchdog.spawn(Arc::downgrade(&self));
             tokio::spawn(async move {
                 let _task_guard = task_guard;
-                s.run_game_tick(t).await;
+                s.run_game_tick(t, &watchdog).await;
             })
         };
         let chunk_send_handle = {
@@ -174,7 +177,11 @@ impl Server {
         clippy::too_many_lines,
         reason = "the ordered tick phases and their shutdown joins remain easier to audit together"
     )]
-    async fn run_game_tick(self: Arc<Self>, cancel_token: CancellationToken) {
+    async fn run_game_tick(
+        self: Arc<Self>,
+        cancel_token: CancellationToken,
+        watchdog: &TickWatchdog,
+    ) {
         let world_tick_workers = match WorldTickWorkers::spawn(self.worlds.values()) {
             Ok(workers) => workers,
             Err(error) => {
@@ -235,13 +242,17 @@ impl Server {
             }
 
             let tick_start = Instant::now();
+            watchdog.enter(TickStep::DrainPackets);
             self.packet_processor.close_for_tick().await;
             self.start_player_disconnect_saves(&mut player_disconnect_saves);
 
             let (tick_count, runs_normally) = self.advance_server_tick();
+            watchdog.start_tick(tick_count);
 
+            watchdog.enter(TickStep::Commands);
             self.tick_pending_command_executions(&mut pending_command_executions);
             self.tick_command_requests(&mut pending_command_executions);
+            watchdog.enter(TickStep::Worlds);
             if let Err(error) = self
                 .tick_worlds_game(&world_tick_workers, tick_count, runs_normally)
                 .await
@@ -250,15 +261,20 @@ impl Server {
                 cancel_token.cancel();
                 break;
             }
+            watchdog.enter(TickStep::Connections);
+            self.tick_connections();
             player_info_ticks += 1;
             if player_info_ticks > SEND_PLAYER_INFO_INTERVAL {
                 let _span = tracing::trace_span!("broadcast_latency").entered();
                 self.broadcast_player_latency_updates();
                 player_info_ticks = 0;
             }
+            watchdog.enter(TickStep::Jobs);
             self.tick_jobs(tick_count, runs_normally);
+            watchdog.enter(TickStep::PlayerJoins);
             self.process_player_joins();
 
+            watchdog.enter(TickStep::WorldChanges);
             {
                 let server = Arc::clone(&self);
                 let _ =
@@ -266,13 +282,16 @@ impl Server {
                         .await;
             }
 
+            watchdog.enter(TickStep::DomainSwitches);
             self.process_domain_switches();
 
+            watchdog.enter(TickStep::Autosave);
             self.tick_command_data_autosave(
                 &mut next_command_data_autosave,
                 &mut command_data_autosaves,
             );
 
+            watchdog.enter(TickStep::TabList);
             let tab_list_tick_stats = self.record_tick_and_capture_tab_stats(
                 tick_count,
                 tick_start.elapsed().as_nanos() as u64,
@@ -289,8 +308,10 @@ impl Server {
 
             self.packet_processor.open_after_tick();
             if should_sprint_this_tick || Instant::now() >= next_tick_time {
+                watchdog.enter(TickStep::OverloadPacketProgress);
                 self.packet_processor.wait_for_overload_progress().await;
             }
+            watchdog.enter(TickStep::Sleeping);
         }
 
         self.jobs.cancel_all();

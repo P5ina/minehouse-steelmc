@@ -724,6 +724,18 @@ impl Server {
         self.broadcast_to_online(player_info_packet);
     }
 
+    /// Ticks every online connection, like vanilla `MinecraftServer.tickConnection`.
+    ///
+    /// Keep-alives belong to the connection, not to the player entity: a player whose
+    /// entity is not ticking (removed after death, riding a vehicle that is not ticked,
+    /// or between domains) must still get keep-alives, or the client times out.
+    pub(super) fn tick_connections(&self) {
+        self.online_players.iter_players(|_, player| {
+            player.connection.tick();
+            true
+        });
+    }
+
     pub(super) fn broadcast_player_latency_updates(&self) {
         let mut latency_entries = Vec::new();
         self.online_players.iter_players(|uuid, player| {

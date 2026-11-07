@@ -11,6 +11,7 @@ mod service_keys;
 mod tick_overload;
 /// The tick rate manager for the server.
 pub mod tick_rate_manager;
+mod tick_watchdog;
 mod world_tick_workers;
 /// Domain-aware loaded world map.
 pub mod worlds;

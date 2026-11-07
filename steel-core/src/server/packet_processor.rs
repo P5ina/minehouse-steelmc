@@ -185,6 +185,11 @@ impl PacketProcessor {
     pub(super) fn stop(&self) {
         self.queued.stop();
     }
+
+    /// Describes the scheduling state for stall diagnostics.
+    pub(super) fn debug_state(&self) -> String {
+        self.queued.debug_state()
+    }
 }
 
 impl Default for PacketProcessor {
@@ -193,7 +198,7 @@ impl Default for PacketProcessor {
     }
 }
 
-#[derive(Clone, Copy, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum PacketPhase {
     Closed,
     Open,
@@ -485,6 +490,38 @@ where
         state.completed != completed
             || !Self::has_work(&state)
             || state.phase == PacketPhase::Stopped
+    }
+
+    fn debug_state(&self) -> String {
+        let state = self.state.lock();
+        let paused_lanes = state
+            .lanes
+            .values()
+            .filter(|lane| lane.pause_generation.is_some())
+            .count();
+        let active_lanes = state.lanes.values().filter(|lane| lane.active).count();
+        let queued: usize = state.lanes.values().map(|lane| lane.queued.len()).sum();
+        let deferred: usize = state.lanes.values().map(|lane| lane.deferred.len()).sum();
+        let head = |heap: &BinaryHeap<Reverse<(u64, K)>>| heap.peek().map(|entry| entry.0.0);
+        format!(
+            "phase={:?} active={} serialized_active={} exclusive_active={} completed={} \
+             next_sequence={} lanes={} active_lanes={active_lanes} paused_lanes={paused_lanes} \
+             queued={queued} deferred={deferred} ready_heads(player_local={:?}, serialized={:?}, \
+             exclusive={:?}) order_heads(serialized={:?}, exclusive={:?}) selectable={:?}",
+            state.phase,
+            state.active,
+            state.serialized_active,
+            state.exclusive_active,
+            state.completed,
+            state.next_sequence,
+            state.lanes.len(),
+            head(&state.player_local_ready),
+            head(&state.serialized_ready),
+            head(&state.exclusive_ready),
+            state.serialized.peek().map(|entry| entry.0),
+            state.exclusive.peek().map(|entry| entry.0),
+            Self::select_next(&state, None).map(|(sequence, _, execution)| (sequence, execution)),
+        )
     }
 
     fn has_work(state: &PacketQueueState<K, T>) -> bool {

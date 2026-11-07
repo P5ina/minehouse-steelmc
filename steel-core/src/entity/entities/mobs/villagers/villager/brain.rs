@@ -1106,19 +1106,19 @@ impl Sensor<VillagerEntity> for VillagerHostilesSensor {
     }
 
     fn do_tick(&mut self, _world: &Arc<World>, body: &VillagerEntity) {
-        let mut memories = body.brain.memories().lock();
+        let memories = body.brain.memories();
+        // The memories lock must be released before searching: visibility
+        // checks read the body's attack target.
+        let visible = memories.lock().get(&NEAREST_VISIBLE_LIVING_ENTITIES);
         let position = body.position();
-        let nearest = memories
-            .get_ref(&NEAREST_VISIBLE_LIVING_ENTITIES)
-            .and_then(|visible| {
-                visible.find_closest(|entity| {
-                    hostile_distance(entity.entity_type()).is_some_and(|distance| {
-                        entity.position().distance_squared(position)
-                            <= f64::from(distance * distance)
-                    })
+        let nearest = visible.and_then(|visible| {
+            visible.find_closest(|entity| {
+                hostile_distance(entity.entity_type()).is_some_and(|distance| {
+                    entity.position().distance_squared(position) <= f64::from(distance * distance)
                 })
-            });
-        memories.set(&NEAREST_HOSTILE, nearest);
+            })
+        });
+        memories.lock().set(&NEAREST_HOSTILE, nearest);
     }
 }
 
@@ -1131,19 +1131,20 @@ impl Sensor<VillagerEntity> for VillagerBabiesSensor {
     }
 
     fn do_tick(&mut self, _world: &Arc<World>, body: &VillagerEntity) {
-        let mut memories = body.brain.memories().lock();
-        let babies: Vec<SharedEntity> = memories
-            .get_ref(&NEAREST_VISIBLE_LIVING_ENTITIES)
-            .map_or_else(Vec::new, |visible| {
-                visible
-                    .find_all(|entity| {
-                        is_type(entity, &vanilla_entities::VILLAGER)
-                            && entity.as_living_entity().is_some_and(LivingEntity::is_baby)
-                    })
-                    .cloned()
-                    .collect()
-            });
-        memories.set(&VISIBLE_VILLAGER_BABIES, Some(babies));
+        let memories = body.brain.memories();
+        // The memories lock must be released before searching: visibility
+        // checks read the body's attack target.
+        let visible = memories.lock().get(&NEAREST_VISIBLE_LIVING_ENTITIES);
+        let babies: Vec<SharedEntity> = visible.map_or_else(Vec::new, |visible| {
+            visible
+                .find_all(|entity| {
+                    is_type(entity, &vanilla_entities::VILLAGER)
+                        && entity.as_living_entity().is_some_and(LivingEntity::is_baby)
+                })
+                .cloned()
+                .collect()
+        });
+        memories.lock().set(&VISIBLE_VILLAGER_BABIES, Some(babies));
     }
 }
 
