@@ -57,6 +57,12 @@ pub trait Behavior<E: ?Sized>: Send {
 
     fn stop(&mut self, _world: &Arc<World>, _body: &E, _time: i64) {}
 
+    /// Vanilla `stop` for behaviors that read `timedOut(timestamp)` there;
+    /// `end_time` is the run's vanilla `endTimestamp`.
+    fn stop_with_end_time(&mut self, world: &Arc<World>, body: &E, time: i64, _end_time: i64) {
+        self.stop(world, body, time);
+    }
+
     /// Vanilla `Behavior.timedOut`.
     fn timed_out(&self, time: i64, end_time: i64) -> bool {
         time > end_time
@@ -131,7 +137,8 @@ where
 
     fn do_stop(&mut self, world: &Arc<World>, body: &E, time: i64) {
         self.status = BehaviorStatus::Stopped;
-        self.behavior.stop(world, body, time);
+        self.behavior
+            .stop_with_end_time(world, body, time, self.end_time);
     }
 }
 

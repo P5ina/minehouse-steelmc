@@ -1368,6 +1368,14 @@ pub trait Mob: LivingEntity + Leashable {
             .set(path_type, malus);
     }
 
+    /// Vanilla `Mob.onPathfindingStart`, called when a walk or fly node
+    /// evaluator prepares for this mob.
+    fn on_pathfinding_start(&self) {}
+
+    /// Vanilla `Mob.onPathfindingDone`, called when a walk or fly node
+    /// evaluator finishes for this mob.
+    fn on_pathfinding_done(&self) {}
+
     fn is_no_ai(&self) -> bool {
         self.mob_flags() & MOB_FLAG_NO_AI != 0
     }

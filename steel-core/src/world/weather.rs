@@ -20,6 +20,7 @@ use super::{
 use glam::DVec3;
 
 use crate::chunk::light::MAX_LIGHT_LEVEL;
+use crate::entity::ai::brain::Activity;
 
 static BIOME_TEMPERATURE_NOISE: LazyLock<PerlinSimplexNoise> = LazyLock::new(|| {
     let mut random = RandomSource::Legacy(LegacyRandom::from_seed(1234));
@@ -276,10 +277,36 @@ impl World {
         environment::cat_waking_up_gift_chance(self.dimension_type, level_data.world_clocks())
     }
 
+    /// Vanilla `environmentAttributes().getValue` for an activity attribute
+    /// such as `minecraft:gameplay/villager_activity`.
+    pub fn scheduled_activity(&self, attribute: &str) -> Activity {
+        let level_data = self.level_data.read();
+        environment::scheduled_activity(self.dimension_type, level_data.world_clocks(), attribute)
+    }
+
     /// Whether the environment currently permits daylight burning.
     pub fn monsters_burn(&self) -> bool {
         let level_data = self.level_data.read();
         environment::monsters_burn(self.dimension_type, level_data.world_clocks())
+    }
+
+    /// Vanilla `EnvironmentAttributes.BEES_STAY_IN_HIVE`: true at night and
+    /// in rain or thunder.
+    pub fn bees_stay_in_hive(&self) -> bool {
+        let (rain_level, thunder_level) = if self.can_have_weather() {
+            let weather = self.weather.lock();
+            (weather.rain_level, weather.thunder_level)
+        } else {
+            (0.0, 0.0)
+        };
+        let level_data = self.level_data.read();
+        environment::bees_stay_in_hive(
+            self.dimension_type,
+            level_data.world_clocks(),
+            rain_level,
+            thunder_level,
+            self.can_have_weather(),
+        )
     }
 
     /// Returns sky-layer light after the current sky darkening is subtracted.

@@ -4,7 +4,6 @@
 
 # mobs: the entity (or the mob it converts into) does not exist in SteelMC yet
 minehouse_mob_allay
-minehouse_mob_bee
 minehouse_mob_breeze
 minehouse_mob_cat
 minehouse_mob_creaking
@@ -16,7 +15,6 @@ minehouse_mob_pig
 minehouse_mob_piglin
 minehouse_mob_piglin_brute
 minehouse_mob_rabbit
-minehouse_mob_sniffer
 minehouse_mob_sulfur_cube
 minehouse_mob_tadpole
 minehouse_mob_turtle
