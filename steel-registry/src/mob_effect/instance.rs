@@ -155,13 +155,18 @@ impl MobEffectInstance {
         )
     }
 
-    pub(crate) fn to_nbt_tag_ref(&self) -> NbtTag {
+    /// Encodes this effect with vanilla `MobEffectInstance.CODEC`.
+    #[must_use]
+    pub fn to_nbt_tag_ref(&self) -> NbtTag {
         let mut compound = self.details().to_nbt_compound();
         compound.insert("id", self.effect.key.to_string());
         NbtTag::Compound(compound)
     }
 
-    pub(crate) fn from_owned_nbt(tag: &NbtTag) -> Option<Self> {
+    /// Decodes an effect written with vanilla `MobEffectInstance.CODEC`. Returns `None` for
+    /// malformed data or an effect id the registry does not know.
+    #[must_use]
+    pub fn from_owned_nbt(tag: &NbtTag) -> Option<Self> {
         let compound = tag.compound()?;
         let id = Identifier::from_str(&compound.get("id")?.string()?.to_string()).ok()?;
         let effect = REGISTRY.mob_effects.by_key(&id)?;
@@ -182,6 +187,42 @@ impl PartialEq for MobEffectInstance {
 }
 
 impl MobEffectInstanceDetails {
+    /// Amplifier of this hidden effect.
+    #[must_use]
+    pub const fn amplifier(&self) -> i32 {
+        self.amplifier
+    }
+
+    /// Duration in ticks of this hidden effect.
+    #[must_use]
+    pub const fn duration(&self) -> i32 {
+        self.duration
+    }
+
+    /// Whether this hidden effect is ambient.
+    #[must_use]
+    pub const fn ambient(&self) -> bool {
+        self.ambient
+    }
+
+    /// Whether this hidden effect shows particles.
+    #[must_use]
+    pub const fn show_particles(&self) -> bool {
+        self.show_particles
+    }
+
+    /// Whether this hidden effect shows its icon.
+    #[must_use]
+    pub const fn show_icon(&self) -> bool {
+        self.show_icon
+    }
+
+    /// The effect hidden below this one.
+    #[must_use]
+    pub fn hidden_effect(&self) -> Option<&Self> {
+        self.hidden_effect.as_deref()
+    }
+
     #[must_use]
     pub fn new(
         amplifier: i32,

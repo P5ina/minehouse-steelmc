@@ -32,11 +32,8 @@ pub(crate) use data::{BlockPredicate, BlockStateProviderKind};
 pub(crate) use nbt::generate_block_state_provider_kind_nbt;
 pub(crate) use placement::generate_block_predicate;
 use placement::{generate_placed_feature_data, generate_placed_feature_ref};
-pub(crate) use providers::generate_block_state_provider;
-use providers::{
-    generate_float_provider, generate_height_provider, generate_int_provider,
-    generate_uniform_int_provider,
-};
+pub(crate) use providers::{generate_block_state_provider, generate_float_provider};
+use providers::{generate_height_provider, generate_int_provider, generate_uniform_int_provider};
 use structures::{
     generate_block_column_layer, generate_end_spike, generate_feature_size,
     generate_foliage_placer, generate_geode_block_settings, generate_geode_crack_settings,

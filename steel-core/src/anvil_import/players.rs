@@ -16,7 +16,8 @@ use chrono::DateTime;
 use rustc_hash::FxHashMap;
 use serde_json::Value;
 use simdnbt::borrow;
-use simdnbt::owned::{NbtCompound, NbtList};
+use simdnbt::owned::{NbtCompound, NbtList, NbtTag};
+use steel_registry::MobEffectInstance as RegistryMobEffectInstance;
 use steel_registry::item_stack::ItemStack;
 use steel_registry::stat::Stat;
 use steel_registry::{REGISTRY, RegistryExt};
@@ -27,6 +28,7 @@ use super::entities::{convert_entity, entity_uuid};
 use super::level::read_gzip_root;
 use super::report::ImportReport;
 use super::{AnvilImportError, chunk, nbt};
+use crate::entity::ActiveMobEffect;
 use crate::level_data::RespawnData;
 use crate::player::PlayerRespawnConfig;
 use crate::player::advancement::progress::{AdvancementProgress, CriterionProgress};
@@ -65,8 +67,8 @@ pub struct PlayerReport {
     pub unknown_advancements: BTreeMap<String, usize>,
     /// Vehicles and ender pearls dropped because Steel does not know their type.
     pub unknown_entities: BTreeMap<String, usize>,
-    /// Active effects dropped because Steel does not save player effects yet, by effect id.
-    pub dropped_effects: BTreeMap<String, usize>,
+    /// Active effects Steel does not know or cannot read, by effect id.
+    pub unknown_effects: BTreeMap<String, usize>,
     /// Players whose recipe book was dropped because Steel has no recipe book yet.
     pub dropped_recipe_books: usize,
 }
@@ -90,10 +92,7 @@ impl fmt::Display for PlayerReport {
                 "Unknown vehicles and ender pearls dropped",
                 &self.unknown_entities,
             ),
-            (
-                "Active effects dropped (Steel does not save them yet)",
-                &self.dropped_effects,
-            ),
+            ("Unknown active effects dropped", &self.unknown_effects),
         ] {
             if !map.is_empty() {
                 writeln!(f, "{title}:")?;
@@ -267,14 +266,7 @@ fn convert_player_data(
         }
     }
 
-    for effect in root
-        .list("active_effects")
-        .and_then(|list| list.compounds())
-        .unwrap_or_default()
-    {
-        let id = nbt::string(effect, "id").unwrap_or_else(|| "<missing id>".to_owned());
-        ImportReport::count(&mut report.dropped_effects, id);
-    }
+    let active_effects = active_effects(root, report);
     if root.contains("recipeBook") {
         report.dropped_recipe_books += 1;
     }
@@ -320,6 +312,7 @@ fn convert_player_data(
         was_in_powder_snow: false,
         has_visual_fire: nbt::boolean(root, "HasVisualFire"),
         health: root.float("Health").unwrap_or(20.0),
+        active_effects,
         game_mode: root.int("playerGameType").unwrap_or_default(),
         prev_game_mode: root.int("previousPlayerGameType"),
         abilities: PersistentAbilities {
@@ -385,6 +378,27 @@ fn item_stack(entry: &NbtCompound, report: &mut PlayerReport) -> Option<ItemStac
 }
 
 /// `ServerPlayer.RespawnConfig`: `{dimension, pos, yaw, pitch, forced}`.
+/// Vanilla `LivingEntity.readAdditionalSaveData` reads `active_effects` with
+/// `MobEffectInstance.CODEC`, skipping entries that do not decode.
+fn active_effects(root: &NbtCompound, report: &mut PlayerReport) -> Vec<ActiveMobEffect> {
+    let mut effects = Vec::new();
+    for effect in root
+        .list("active_effects")
+        .and_then(|list| list.compounds())
+        .unwrap_or_default()
+    {
+        if let Some(instance) =
+            RegistryMobEffectInstance::from_owned_nbt(&NbtTag::Compound(effect.clone()))
+        {
+            effects.push(ActiveMobEffect::from_registry_instance(&instance));
+        } else {
+            let id = nbt::string(effect, "id").unwrap_or_else(|| "<missing id>".to_owned());
+            ImportReport::count(&mut report.unknown_effects, id);
+        }
+    }
+    effects
+}
+
 fn respawn_config(respawn: &NbtCompound) -> Option<PlayerRespawnConfig> {
     let dimension = nbt::identifier(&nbt::string(respawn, "dimension")?)?;
     let [x, y, z] = *respawn.int_array("pos")? else {

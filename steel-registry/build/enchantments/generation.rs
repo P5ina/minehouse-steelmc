@@ -168,7 +168,12 @@ pub(super) fn generate_enchantment_effects(
         counter,
     );
     let hit_block = !effects.hit_block.is_empty();
-    let tick = !effects.tick.is_empty();
+    let tick = generate_conditional_entity_effects(
+        &format!("{prefix}_TICK"),
+        &effects.tick,
+        statics,
+        counter,
+    );
     let prevent_equipment_drop = effects.prevent_equipment_drop.is_some();
     let prevent_armor_change = effects.prevent_armor_change.is_some();
 

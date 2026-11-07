@@ -126,6 +126,26 @@ impl WorldClockManager {
         Some(())
     }
 
+    /// Vanilla `ServerClockManager.isAtTimeMarker`: the clock stands exactly on
+    /// the marker. A marker the clock's timelines do not define never matches.
+    pub(crate) fn is_at_time_marker(&self, clock: WorldClockRef, marker_key: &Identifier) -> bool {
+        let Some(total_ticks) = self.total_ticks(clock) else {
+            return false;
+        };
+        REGISTRY
+            .timelines
+            .iter()
+            .filter(|(_, timeline)| timeline.clock == clock)
+            .find_map(|(_, timeline)| {
+                timeline
+                    .time_markers
+                    .iter()
+                    .find(|marker| &marker.key == marker_key)
+                    .map(|marker| marker.occurs_at(total_ticks, timeline.period_ticks))
+            })
+            .unwrap_or(false)
+    }
+
     /// Moves a clock to a marker, returning `false` when that marker is not defined for it.
     pub(crate) fn move_to_time_marker(
         &mut self,
@@ -226,6 +246,18 @@ impl World {
     /// Returns the total ticks of one clock in this world.
     pub(crate) fn clock_total_ticks(&self, clock: WorldClockRef) -> Option<i64> {
         self.level_data.read().world_clocks().total_ticks(clock)
+    }
+
+    /// Vanilla `level.clockManager().isAtTimeMarker(clock, marker)`.
+    pub(crate) fn is_clock_at_time_marker(
+        &self,
+        clock: WorldClockRef,
+        marker: &Identifier,
+    ) -> bool {
+        self.level_data
+            .read()
+            .world_clocks()
+            .is_at_time_marker(clock, marker)
     }
 
     /// Creates a full per-world time synchronization packet.

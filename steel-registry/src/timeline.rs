@@ -44,6 +44,16 @@ pub struct TimeMarker {
 }
 
 impl TimeMarker {
+    /// Vanilla `ClockTimeMarker.occursAt`: whether the clock stands exactly on
+    /// this marker, once per period for a periodic timeline.
+    #[must_use]
+    pub fn occurs_at(&self, total_ticks: i64, period_ticks: Option<i32>) -> bool {
+        match period_ticks {
+            Some(period_ticks) => i64::from(self.ticks) == total_ticks % i64::from(period_ticks),
+            None => i64::from(self.ticks) == total_ticks,
+        }
+    }
+
     /// Resolves the next occurrence using vanilla's strictly-forward periodic behavior.
     #[must_use]
     pub fn resolve_time_to_move_to(&self, total_ticks: i64, period_ticks: Option<i32>) -> i64 {

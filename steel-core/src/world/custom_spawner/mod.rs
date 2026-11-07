@@ -6,6 +6,7 @@ mod patrol;
 mod phantom;
 #[cfg(test)]
 mod tests;
+mod village_siege;
 
 use std::sync::Arc;
 
@@ -16,6 +17,7 @@ use steel_registry::vanilla_game_rules::SPAWN_MOBS;
 pub(crate) use cat::CatSpawner;
 pub(crate) use patrol::PatrolSpawner;
 pub(crate) use phantom::PhantomSpawner;
+pub(crate) use village_siege::VillageSiege;
 
 use steel_utils::{BlockPos, ChunkPos};
 
@@ -36,6 +38,7 @@ pub(crate) fn custom_spawners_for(dimension_type: DimensionTypeRef) -> Vec<Box<d
             Box::new(PhantomSpawner::default()),
             Box::new(PatrolSpawner::default()),
             Box::new(CatSpawner::default()),
+            Box::new(VillageSiege::default()),
         ]
     } else {
         Vec::new()

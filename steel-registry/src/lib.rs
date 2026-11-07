@@ -63,6 +63,7 @@ mod macros;
 pub mod map_decoration_type;
 pub mod menu_type;
 pub mod mob_effect;
+pub mod villager_trade;
 pub use mob_effect::instance as mob_effect_instance;
 pub mod painting_variant;
 pub mod particle_type;
@@ -505,3 +506,8 @@ pub mod vanilla_suspicious_stew_effects;
 #[rustfmt::skip]
 #[path = "generated/vanilla_advancements.rs"]
 pub mod vanilla_advancements;
+
+#[expect(warnings)]
+#[rustfmt::skip]
+#[path = "generated/vanilla_villager_trades.rs"]
+pub mod vanilla_villager_trades;
