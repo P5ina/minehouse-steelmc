@@ -2,6 +2,7 @@
 //! and magma cubes with its tongue.
 
 mod ai;
+mod tadpole;
 #[cfg(test)]
 mod tests;
 
@@ -30,6 +31,8 @@ use steel_registry::{
 use steel_utils::locks::SyncMutex;
 use steel_utils::random::legacy_random::LegacyRandom;
 use steel_utils::{BlockPos, BlockStateId, DowncastType, DowncastTypeKey, Identifier};
+
+pub use tadpole::TadpoleEntity;
 
 use crate::entity::EntityEventSource as _;
 use crate::entity::ai::brain::memory_types::{
