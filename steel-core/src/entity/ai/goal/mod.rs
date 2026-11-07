@@ -47,6 +47,7 @@ mod swell_goal;
 mod tamable_goals;
 mod target_goal;
 mod tempt_goal;
+mod trade_with_player;
 mod try_find_water;
 mod use_item;
 mod vex_goals;
@@ -106,6 +107,7 @@ pub(crate) use tamable_goals::{
     TamableAnimalPanicGoal,
 };
 pub(crate) use tempt_goal::TemptGoal;
+pub(crate) use trade_with_player::TradeWithPlayerGoal;
 pub(crate) use try_find_water::TryFindLiquidGoal;
 pub(crate) use use_item::UseItemGoal;
 pub(crate) use vex_goals::{VexChargeAttackGoal, VexCopyOwnerTargetGoal, VexRandomMoveGoal};

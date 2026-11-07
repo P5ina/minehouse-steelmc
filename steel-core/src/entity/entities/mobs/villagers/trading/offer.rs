@@ -47,6 +47,12 @@ impl ItemCost {
         self.count
     }
 
+    /// The components the paid stack must carry.
+    #[must_use]
+    pub const fn components(&self) -> &DataComponentMap {
+        &self.components
+    }
+
     /// Vanilla `ItemCost.itemStack`: the cost as a stack carrying the required components.
     #[must_use]
     pub fn item_stack(&self) -> ItemStack {
@@ -412,6 +418,11 @@ impl MerchantOffers {
         self.offers.get(index)
     }
 
+    /// The offer at `index`, mutably.
+    pub fn get_mut(&mut self, index: usize) -> Option<&mut MerchantOffer> {
+        self.offers.get_mut(index)
+    }
+
     /// Iterates over the offers.
     pub fn iter(&self) -> impl Iterator<Item = &MerchantOffer> {
         self.offers.iter()
@@ -430,14 +441,27 @@ impl MerchantOffers {
         buy_b: &ItemStack,
         selection_hint: i32,
     ) -> Option<&MerchantOffer> {
+        self.recipe_index_for(buy_a, buy_b, selection_hint)
+            .and_then(|index| self.offers.get(index))
+    }
+
+    /// Vanilla `getRecipeFor`, as the index of the offer.
+    #[must_use]
+    pub fn recipe_index_for(
+        &self,
+        buy_a: &ItemStack,
+        buy_b: &ItemStack,
+        selection_hint: i32,
+    ) -> Option<usize> {
         if selection_hint > 0
-            && let Some(offer) = self.offers.get(selection_hint as usize)
+            && let Ok(hint) = usize::try_from(selection_hint)
+            && let Some(offer) = self.offers.get(hint)
         {
-            return offer.satisfied_by(buy_a, buy_b).then_some(offer);
+            return offer.satisfied_by(buy_a, buy_b).then_some(hint);
         }
         self.offers
             .iter()
-            .find(|offer| offer.satisfied_by(buy_a, buy_b))
+            .position(|offer| offer.satisfied_by(buy_a, buy_b))
     }
 
     /// Vanilla `MerchantOffers.CODEC` encode: `{Recipes: [...]}`, empty list omitted.

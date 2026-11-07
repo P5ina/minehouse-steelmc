@@ -4,6 +4,7 @@
 //! lightning. Its brain (schedule, jobs, beds, breeding, golem calls),
 //! trades and restocking come in later parts.
 
+use std::borrow::Cow;
 use std::sync::{Arc, Weak};
 
 use glam::DVec3;
@@ -22,24 +23,32 @@ use steel_registry::villager_profession::VillagerProfessionRef;
 use steel_registry::villager_type::VillagerTypeRef;
 use steel_registry::{
     REGISTRY, RegistryExt as _, sound_events, vanilla_attributes, vanilla_custom_stats,
-    vanilla_entities, vanilla_items, vanilla_villager_professions, vanilla_villager_types,
+    vanilla_entities, vanilla_items, vanilla_mob_effects, vanilla_villager_professions,
+    vanilla_villager_types,
 };
 use steel_utils::entity_events::EntityStatus;
 use steel_utils::locks::SyncMutex;
 use steel_utils::random::xoroshiro::Xoroshiro;
 use steel_utils::types::{Difficulty, InteractionHand};
 use steel_utils::{BlockPos, DowncastType, DowncastTypeKey, Identifier};
+use text_components::TextComponent;
+use text_components::translation::TranslatedMessage;
 use uuid::Uuid;
 
 use super::trading::{
     MerchantOffers, TradeContext, add_offers_from_trade_set, profession_trade_set,
 };
 use super::villager_data::{
-    MIN_VILLAGER_LEVEL, read_villager_data, villager_type_at, write_villager_data,
+    MIN_VILLAGER_LEVEL, can_level_up, max_xp_per_level, read_villager_data, villager_type_at,
+    write_villager_data,
 };
 use super::{
     FIRE_IN_NEIGHBOR_MALUS, FIRE_MALUS, INVENTORY_SIZE, load_inventory,
     pick_up_item_into_inventory, save_inventory,
+};
+use super::{
+    Merchant, open_trading_screen, play_trade_updated_sound, record_trade, send_merchant_offers,
+    spawn_trade_experience, trading_player_of,
 };
 use crate::behavior::InteractionResult;
 use crate::entity::ai::gossip::{GossipContainer, GossipType, ReputationEventType};
@@ -47,6 +56,8 @@ use crate::entity::ai::path::PathType;
 use crate::entity::conversion::ConversionParams;
 use crate::entity::damage::DamageSource;
 use crate::entity::entities::{ItemEntity, LightningBoltEntity};
+use crate::entity::living_base::MobEffectInstance;
+use crate::entity::remove_entity_name_actions;
 use crate::entity::{
     AgeableMob, AgeableMobBase, AgeableMobGroupData, DefaultEntityPush, Entity, EntityBase,
     EntityBaseLoad, EntityEventSource as _, EntityPose, EntitySpawnReason, EntitySyncedData,
@@ -65,6 +76,8 @@ const DEFAULT_STEP_HEIGHT: f32 = 0.6;
 const REQUIRED_PATH_LENGTH: f32 = 48.0;
 /// Vanilla `Mob.createMobAttributes` follow range.
 const DEFAULT_FOLLOW_RANGE: f64 = 16.0;
+/// Vanilla `rewardTradeXp`: Regeneration a levelled-up villager gets.
+const LEVEL_UP_REGENERATION_TICKS: i32 = 200;
 /// Vanilla `setUnhappy`: ticks the villager shakes its head.
 const UNHAPPY_TICKS: i32 = 40;
 /// Vanilla `AbstractVillager` offers NBT key.
@@ -96,6 +109,10 @@ struct VillagerState {
     number_of_restocks_today: i32,
     /// Vanilla `AbstractVillager.offers`: `None` until first needed.
     offers: Option<MerchantOffers>,
+    /// Vanilla `AbstractVillager.tradingPlayer`.
+    trading_player: Option<Uuid>,
+    /// Vanilla `lastTradedPlayer`: rewarded with gossip on the next AI step.
+    last_traded_player: Option<Uuid>,
 }
 
 /// A villager.
@@ -344,7 +361,12 @@ impl VillagerEntity {
             }
             ReputationEventType::GolemKilled => {}
         }
-        // TODO(villager trades): re-price the offers when `source` is trading.
+        drop(state);
+        if let Some(player) = trading_player_of(self)
+            && player.uuid() == source
+        {
+            self.update_special_prices(&player);
+        }
     }
 
     /// Vanilla `maybeDecayGossip`.
@@ -374,8 +396,8 @@ impl VillagerEntity {
     }
 
     /// Vanilla `Villager.updateTrades`: adds the trade set of the current
-    /// profession and level.
-    // TODO(trading menu): `updateSpecialPrices` for the trading player.
+    /// profession and level. Callers that store the offers re-price them for
+    /// the trading player afterwards, see [`Self::increase_merchant_career`].
     fn update_trades(&self, offers: &mut MerchantOffers) {
         let Some(trade_set) = profession_trade_set(self.profession(), self.villager_level()) else {
             return;
@@ -403,6 +425,97 @@ impl VillagerEntity {
         let mut offers = self.state.lock().offers.take().unwrap_or_default();
         self.update_trades(&mut offers);
         self.state.lock().offers = Some(offers);
+        if let Some(player) = trading_player_of(self) {
+            self.update_special_prices(&player);
+        }
+    }
+
+    /// Vanilla `Villager.startTrading`.
+    fn start_trading(&self, player: &Player) {
+        self.update_special_prices(player);
+        Merchant::set_trading_player(self, Some(player.uuid()));
+        let Some(merchant) = self
+            .level()
+            .and_then(|world| world.get_entity_by_id(self.id()))
+        else {
+            return;
+        };
+        open_trading_screen(merchant, player, self.display_name(), self.villager_level());
+    }
+
+    /// Vanilla `Villager.stopTrading`.
+    fn stop_trading(&self) {
+        Merchant::set_trading_player(self, None);
+    }
+
+    /// Vanilla `resetSpecialPrices`.
+    fn reset_special_prices(&self) {
+        self.with_offers(|offers| {
+            for offer in offers.iter_mut() {
+                offer.reset_special_price_diff();
+            }
+        });
+    }
+
+    /// Vanilla `updateSpecialPrices`: reputation and Hero of the Village
+    /// discounts for `player`, then the trading player's screen is refreshed.
+    fn update_special_prices(&self, player: &Player) {
+        self.reset_special_prices();
+        let reputation = self.player_reputation(player.uuid());
+        let hero_modifier = player
+            .mob_effect(vanilla_mob_effects::HERO_OF_THE_VILLAGE)
+            .map_or(0.0, |hero| {
+                f64::from(0.3_f32 + 0.0625_f32 * hero.amplifier() as f32)
+            });
+        let has_offers = self.with_offers(|offers| {
+            for offer in offers.iter_mut() {
+                if reputation != 0 {
+                    let discount = (reputation as f32 * offer.price_multiplier()).floor() as i32;
+                    offer.add_to_special_price_diff(-discount);
+                }
+                if hero_modifier > 0.0 {
+                    let cost_reduction =
+                        (hero_modifier * f64::from(offer.base_cost_a().count())).floor() as i32;
+                    offer.add_to_special_price_diff(-cost_reduction.max(1));
+                }
+            }
+            !offers.is_empty()
+        });
+
+        if has_offers
+            && let Some(trading_player) = trading_player_of(self)
+            && let Some(container_id) = trading_player.update_merchant_sell_item()
+        {
+            send_merchant_offers(&trading_player, container_id, self, self.villager_level());
+        }
+    }
+
+    /// Vanilla `shouldIncreaseLevel`.
+    fn should_increase_level(&self) -> bool {
+        let level = self.villager_level();
+        can_level_up(level) && self.villager_xp() >= max_xp_per_level(level)
+    }
+
+    /// Vanilla `Villager.rewardTradeXp`.
+    fn reward_trade_xp(&self, offer_xp: i32, reward_exp: bool) {
+        let mut pop_xp = 3 + rand::random_range(0..4);
+        {
+            let mut state = self.state.lock();
+            state.villager_xp += offer_xp;
+            state.last_traded_player = state.trading_player;
+        }
+        if self.should_increase_level() {
+            self.increase_merchant_career();
+            self.add_mob_effect(MobEffectInstance::with_duration(
+                vanilla_mob_effects::REGENERATION,
+                LEVEL_UP_REGENERATION_TICKS,
+                0,
+            ));
+            pop_xp += 5;
+        }
+        if reward_exp && let Some(world) = self.level() {
+            spawn_trade_experience(&world, self.position(), pop_xp);
+        }
     }
 
     /// Vanilla `playWorkSound`.
@@ -482,7 +595,78 @@ impl VillagerEntity {
 
 impl DefaultEntityPush for VillagerEntity {}
 
+impl Merchant for VillagerEntity {
+    fn trading_player(&self) -> Option<Uuid> {
+        self.state.lock().trading_player
+    }
+
+    /// Vanilla `Villager.setTradingPlayer`: clearing it stops trading.
+    fn set_trading_player(&self, player: Option<Uuid>) {
+        let should_stop = {
+            let mut state = self.state.lock();
+            let should_stop = state.trading_player.is_some() && player.is_none();
+            state.trading_player = player;
+            should_stop
+        };
+        if should_stop {
+            self.reset_special_prices();
+        }
+    }
+
+    fn with_merchant_offers(&self, f: &mut dyn FnMut(&mut MerchantOffers)) {
+        self.with_offers(|offers| f(offers));
+    }
+
+    fn notify_trade(&self, offer: usize) {
+        // Vanilla also fires the `TRADE` advancement trigger; Steel has no advancements.
+        if let Some((xp, reward_exp)) = self.with_offers(|offers| record_trade(self, offers, offer))
+        {
+            self.reward_trade_xp(xp, reward_exp);
+        }
+    }
+
+    fn notify_trade_updated(&self, result: &ItemStack) {
+        play_trade_updated_sound(
+            self,
+            result,
+            &sound_events::ENTITY_VILLAGER_YES,
+            &sound_events::ENTITY_VILLAGER_NO,
+        );
+    }
+
+    fn merchant_xp(&self) -> i32 {
+        self.villager_xp()
+    }
+
+    fn can_restock(&self) -> bool {
+        true
+    }
+}
+
 impl Entity for VillagerEntity {
+    /// Vanilla `Villager.getTypeName`: the profession's name.
+    fn name(&self) -> TextComponent {
+        self.custom_name().map_or_else(
+            || {
+                let profession = &self.profession().key;
+                TextComponent::translated(TranslatedMessage {
+                    key: Cow::Owned(format!(
+                        "entity.{}.villager.{}",
+                        profession.namespace, profession.path
+                    )),
+                    fallback: None,
+                    args: None,
+                })
+            },
+            remove_entity_name_actions,
+        )
+    }
+
+    /// Vanilla `AbstractVillager.teleport`: stops trading.
+    fn on_teleported(&self) {
+        self.stop_trading();
+    }
+
     fn as_default_entity_push(&self) -> Option<&dyn DefaultEntityPush> {
         Some(self)
     }
@@ -617,6 +801,12 @@ impl LivingEntity for VillagerEntity {
         Some(&sound_events::ENTITY_VILLAGER_DEATH)
     }
 
+    /// Vanilla `AbstractVillager.die`: stops trading after dying.
+    fn die(&self, source: &DamageSource) {
+        self.default_die(source);
+        self.stop_trading();
+    }
+
     fn set_last_hurt_by_mob(&self, target: Option<&SharedEntity>) {
         if let Some(attacker) = target {
             self.on_reputation_event_from(ReputationEventType::VillagerHurt, attacker.uuid());
@@ -722,9 +912,10 @@ impl Mob for VillagerEntity {
     }
 
     fn ambient_sound(&self) -> Option<SoundEventRef> {
-        // TODO(villager trades): `ENTITY_VILLAGER_TRADE` while trading.
         if self.is_sleeping() {
             None
+        } else if self.is_trading() {
+            Some(&sound_events::ENTITY_VILLAGER_TRADE)
         } else {
             Some(&sound_events::ENTITY_VILLAGER_AMBIENT)
         }
@@ -773,21 +964,48 @@ impl Mob for VillagerEntity {
             .lock()
             .get_item_in_hand(hand)
             .is(&vanilla_items::VILLAGER_SPAWN_EGG);
-        // TODO(villager trades): a trading villager also goes to the ageable branch.
-        if holds_spawn_egg || !LivingEntity::is_alive(self) || self.is_sleeping() {
+        if holds_spawn_egg
+            || !LivingEntity::is_alive(self)
+            || self.is_trading()
+            || self.is_sleeping()
+        {
             return self.mob_interact_ageable(player, hand);
         }
         if AgeableMob::is_baby(self) {
             self.set_unhappy();
             return InteractionResult::Success;
         }
-        // TODO(villager trades): open the trading screen when there are offers;
-        // until trades exist no villager has any, like the unemployed.
+        let no_offers = self.with_offers(|offers| offers.is_empty());
         if hand == InteractionHand::MainHand {
-            self.set_unhappy();
+            if no_offers {
+                self.set_unhappy();
+            }
             player.award_custom_stat(&vanilla_custom_stats::TALKED_TO_VILLAGER);
         }
-        InteractionResult::Consume
+        if no_offers {
+            return InteractionResult::Consume;
+        }
+        self.start_trading(player);
+        InteractionResult::Success
+    }
+
+    /// Vanilla `Villager.customServerAiStep`, after the brain.
+    fn custom_server_ai_step(&self) {
+        let last_traded_player = self.state.lock().last_traded_player.take();
+        if let Some(player) = last_traded_player {
+            self.on_reputation_event_from(ReputationEventType::Trade, player);
+            self.broadcast_entity_event(EntityStatus::VillagerHappy);
+        }
+        // TODO(raids): sweat (entity event 42) during an active raid.
+        let no_offers = self
+            .state
+            .lock()
+            .offers
+            .as_ref()
+            .is_none_or(MerchantOffers::is_empty);
+        if no_offers && self.is_trading() {
+            self.stop_trading();
+        }
     }
 
     fn mob_flags(&self) -> i8 {

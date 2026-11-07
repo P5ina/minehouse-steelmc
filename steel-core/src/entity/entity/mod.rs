@@ -4,6 +4,7 @@ use super::*;
 use crate::enchantment_helper;
 use crate::entity::entities::mobs::hostile::cube_mob::AbstractCubeMob;
 use crate::entity::entities::mobs::passive::equine::{AbstractHorse, Llama, PlayerRideableJumping};
+use crate::entity::entities::mobs::villagers::Merchant;
 use crate::entity::entities::{Guardian, LightningBoltEntity, Squid};
 use crate::entity::{leash::Leashable, pushing::EntityPush};
 use rand::{RngExt, rng};
@@ -1749,6 +1750,11 @@ pub trait Entity: EntityEventSource + ErasedType + Send + Sync + 'static {
     /// Returns the `Raider` capability, equivalent to vanilla's `instanceof Raider`.
     fn as_raider(&self) -> Option<&dyn Raider> {
         try_as_dyn::<Self, dyn Raider>(self)
+    }
+
+    /// Returns the `Merchant` capability, equivalent to vanilla's `instanceof Merchant`.
+    fn as_merchant(&self) -> Option<&dyn Merchant> {
+        try_as_dyn::<Self, dyn Merchant>(self)
     }
 
     /// Returns the `SpellcasterIllager` capability, equivalent to vanilla's

@@ -200,3 +200,33 @@ fn read_non_negative_varint(data: &mut Cursor<&[u8]>, name: &str) -> Result<usiz
     let value = VarInt::read(data)?.0;
     usize::try_from(value).map_err(|_| std::io::Error::other(format!("Negative {name}: {value}")))
 }
+
+impl super::DataComponentMap {
+    /// Vanilla `DataComponentExactPredicate.STREAM_CODEC`: a `VarInt`-prefixed list of
+    /// `TypedDataComponent`s, each the component type id followed by its network value.
+    ///
+    /// # Errors
+    /// Returns an error if a component is not registered or fails to encode.
+    pub fn write_typed_list(&self, writer: &mut impl Write) -> Result<()> {
+        use crate::{REGISTRY, RegistryExt};
+
+        let count = i32::try_from(self.len())
+            .map_err(|_| std::io::Error::other("Too many data components"))?;
+        VarInt(count).write(writer)?;
+        for (key, data) in self.iter() {
+            let id = REGISTRY
+                .data_components
+                .id_from_key(key)
+                .ok_or_else(|| std::io::Error::other(format!("Unknown component key: {key:?}")))?;
+            let entry = REGISTRY
+                .data_components
+                .by_id(id)
+                .ok_or_else(|| std::io::Error::other(format!("No entry for component id: {id}")))?;
+            VarInt(id as i32).write(writer)?;
+            let mut buf = Vec::new();
+            entry.write_network(data, &mut buf)?;
+            writer.write_all(&buf)?;
+        }
+        Ok(())
+    }
+}

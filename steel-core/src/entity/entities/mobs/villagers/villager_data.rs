@@ -19,6 +19,26 @@ pub(crate) const TAG_VILLAGER_DATA: &str = "VillagerData";
 
 /// Vanilla `VillagerData.MIN_VILLAGER_LEVEL`.
 pub(crate) const MIN_VILLAGER_LEVEL: i32 = 1;
+/// Vanilla `VillagerData.MAX_VILLAGER_LEVEL`.
+pub(crate) const MAX_VILLAGER_LEVEL: i32 = 5;
+/// Vanilla `VillagerData.NEXT_LEVEL_XP_THRESHOLDS`.
+const NEXT_LEVEL_XP_THRESHOLDS: [i32; 5] = [0, 10, 70, 150, 250];
+
+/// Vanilla `VillagerData.canLevelUp`.
+#[must_use]
+pub(crate) const fn can_level_up(level: i32) -> bool {
+    level >= MIN_VILLAGER_LEVEL && level < MAX_VILLAGER_LEVEL
+}
+
+/// Vanilla `VillagerData.getMaxXpPerLevel`.
+#[must_use]
+pub(crate) fn max_xp_per_level(level: i32) -> i32 {
+    usize::try_from(level)
+        .ok()
+        .filter(|_| can_level_up(level))
+        .and_then(|index| NEXT_LEVEL_XP_THRESHOLDS.get(index).copied())
+        .unwrap_or(0)
+}
 
 /// Vanilla `VillagerType.BY_BIOME`; every other biome gives plains villagers.
 pub(crate) fn villager_type_by_biome(biome: &Identifier) -> VillagerTypeRef {
