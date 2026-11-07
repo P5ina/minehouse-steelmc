@@ -40,7 +40,8 @@ use crate::entity::{
 use crate::inventory::container::SimpleContainer;
 use crate::inventory::prelude::EquipmentSlot;
 use crate::physics::MoveResult;
-use crate::world::{LevelReader, World};
+use crate::world::{LevelReader, World, raid};
+use steel_utils::types::Difficulty;
 
 const XP_REWARD: i32 = 5;
 const DEFAULT_STEP_HEIGHT: f32 = 0.6;
@@ -366,7 +367,18 @@ impl LivingEntity for PillagerEntity {
         Mob::mob_server_ai_step(self, entity);
     }
 
+    fn die(&self, source: &DamageSource) {
+        self.die_raider(source);
+        self.default_die(source);
+    }
+
+    fn hurt_server(&self, world: &World, source: &DamageSource, amount: f32) -> bool {
+        self.hurt_server_raider(world);
+        self.default_hurt_server(world, source, amount)
+    }
+
     fn ai_step(&self, entity: &SharedEntity) -> Option<MoveResult> {
+        self.raider_ai_step(entity);
         Monster::monster_ai_step(self, entity)
     }
 }
@@ -394,6 +406,10 @@ impl Mob for PillagerEntity {
 
     fn remove_when_far_away(&self, dist_sqr: f64) -> bool {
         self.remove_when_far_away_raider(dist_sqr)
+    }
+
+    fn requires_custom_persistence(&self) -> bool {
+        self.requires_custom_persistence_raider()
     }
 
     fn max_spawn_cluster_size(&self) -> i32 {
@@ -462,6 +478,28 @@ impl PatrollingMonster for PillagerEntity {
 impl Raider for PillagerEntity {
     fn raider_state(&self) -> &RaiderState {
         &self.raider
+    }
+
+    /// Vanilla `Pillager.applyRaidBuffs`: `raid/pillager_post_wave_3` (Quick Charge I)
+    /// after wave 3 and `raid/pillager_post_wave_5` (Quick Charge II) after wave 5.
+    fn apply_raid_buffs(&self, _world: &Arc<World>, wave: i32, enchant_odds: f32) {
+        if rand::random::<f32>() > enchant_odds {
+            return;
+        }
+        let level = if wave > raid::num_groups(Difficulty::Normal) {
+            2
+        } else if wave > raid::num_groups(Difficulty::Easy) {
+            1
+        } else {
+            return;
+        };
+        let mut crossbow = ItemStack::new(&vanilla_items::CROSSBOW);
+        crossbow.upgrade_enchantment(vanilla_enchantments::QUICK_CHARGE.key.clone(), level);
+        let _ = self
+            .living_base
+            .equipment()
+            .lock()
+            .set(EquipmentSlot::MainHand, crossbow);
     }
 
     fn is_celebrating(&self) -> bool {

@@ -11,7 +11,9 @@ use steel_registry::entity_type::{EntityDimensions, EntityTypeRef};
 use steel_registry::item_stack::ItemStack;
 use steel_registry::sound_event::SoundEventRef;
 use steel_registry::vanilla_entity_data::VindicatorEntityData;
-use steel_registry::{sound_events, vanilla_attributes, vanilla_entities, vanilla_items};
+use steel_registry::{
+    sound_events, vanilla_attributes, vanilla_enchantments, vanilla_entities, vanilla_items,
+};
 use steel_utils::locks::SyncMutex;
 use steel_utils::random::legacy_random::LegacyRandom;
 use steel_utils::text::DisplayResolutor;
@@ -35,7 +37,8 @@ use crate::entity::{
 };
 use crate::inventory::prelude::EquipmentSlot;
 use crate::physics::MoveResult;
-use crate::world::World;
+use crate::world::{World, raid};
+use steel_utils::types::Difficulty;
 
 const XP_REWARD: i32 = 5;
 const DEFAULT_STEP_HEIGHT: f32 = 0.6;
@@ -169,9 +172,12 @@ impl VindicatorEntity {
         self.johnny.get()
     }
 
-    /// Vanilla `Vindicator.populateDefaultEquipmentSlots`: an iron axe outside raids.
-    // TODO: Raid members get their axe from `applyRaidBuffs` once raids exist.
+    /// Vanilla `Vindicator.populateDefaultEquipmentSlots`: an iron axe outside raids;
+    /// raid members get theirs from `applyRaidBuffs`.
     fn populate_vindicator_equipment(&self) {
+        if self.current_raid().is_some() {
+            return;
+        }
         let _ = self.living_base.equipment().lock().set(
             EquipmentSlot::MainHand,
             ItemStack::new(&vanilla_items::IRON_AXE),
@@ -310,7 +316,18 @@ impl LivingEntity for VindicatorEntity {
         Mob::mob_server_ai_step(self, entity);
     }
 
+    fn die(&self, source: &DamageSource) {
+        self.die_raider(source);
+        self.default_die(source);
+    }
+
+    fn hurt_server(&self, world: &World, source: &DamageSource, amount: f32) -> bool {
+        self.hurt_server_raider(world);
+        self.default_hurt_server(world, source, amount)
+    }
+
     fn ai_step(&self, entity: &SharedEntity) -> Option<MoveResult> {
+        self.raider_ai_step(entity);
         Monster::monster_ai_step(self, entity)
     }
 }
@@ -330,9 +347,10 @@ impl Mob for VindicatorEntity {
 
     fn custom_server_ai_step(&self) {
         if !self.is_no_ai() {
-            // TODO: Vanilla opens doors only while `level.isRaided(blockPosition())`;
-            // until raids exist no position is raided.
-            self.mob_base.navigation().lock().set_can_open_doors(false);
+            let raided = self
+                .level()
+                .is_some_and(|world| world.is_raided(self.block_position()));
+            self.mob_base.navigation().lock().set_can_open_doors(raided);
         }
     }
 
@@ -346,6 +364,10 @@ impl Mob for VindicatorEntity {
 
     fn remove_when_far_away(&self, dist_sqr: f64) -> bool {
         self.remove_when_far_away_raider(dist_sqr)
+    }
+
+    fn requires_custom_persistence(&self) -> bool {
+        self.requires_custom_persistence_raider()
     }
 
     fn finalize_spawn(
@@ -394,6 +416,25 @@ impl PatrollingMonster for VindicatorEntity {
 impl Raider for VindicatorEntity {
     fn raider_state(&self) -> &RaiderState {
         &self.raider
+    }
+
+    /// Vanilla `Vindicator.applyRaidBuffs`: an iron axe, enchanted by `raid/vindicator`
+    /// (Sharpness I) or after wave 5 by `raid/vindicator_post_wave_5` (Sharpness II).
+    fn apply_raid_buffs(&self, _world: &Arc<World>, wave: i32, enchant_odds: f32) {
+        let mut axe = ItemStack::new(&vanilla_items::IRON_AXE);
+        if rand::random::<f32>() <= enchant_odds {
+            let level = if wave > raid::num_groups(Difficulty::Normal) {
+                2
+            } else {
+                1
+            };
+            axe.upgrade_enchantment(vanilla_enchantments::SHARPNESS.key.clone(), level);
+        }
+        let _ = self
+            .living_base
+            .equipment()
+            .lock()
+            .set(EquipmentSlot::MainHand, axe);
     }
 
     fn is_celebrating(&self) -> bool {

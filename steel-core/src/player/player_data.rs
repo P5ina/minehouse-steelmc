@@ -6,8 +6,8 @@ use rustc_hash::FxHashSet;
 use steel_registry::RegistryEntry;
 use steel_registry::item_stack::ItemStack;
 use steel_registry::stat::Stat;
-use steel_utils::Identifier;
 use steel_utils::types::GameType;
+use steel_utils::{BlockPos, Identifier};
 
 use super::advancement::PlayerAdvancement;
 use super::advancement::progress::AdvancementProgress;
@@ -28,7 +28,7 @@ use crate::{
 
 /// Current data version for player saves.
 /// Increment when making breaking changes to the format.
-pub const PLAYER_DATA_VERSION: i32 = 9;
+pub const PLAYER_DATA_VERSION: i32 = 10;
 
 /// Persistent player data saved by Steel's storage backend.
 ///
@@ -146,6 +146,9 @@ pub struct PersistentPlayerData {
 
     /// Vanilla `ShoulderEntityRight` as compound NBT bytes; empty when free.
     pub shoulder_entity_right: Vec<u8>,
+
+    /// Vanilla `raid_omen_position`: where Bad Omen turned into Raid Omen.
+    pub raid_omen_position: Option<BlockPos>,
 }
 
 /// A vanilla `RootVehicle` tree persisted with player data.
@@ -310,6 +313,7 @@ impl PersistentPlayerData {
             advancements,
             shoulder_entity_left: shoulder_tag_to_bytes(&player.shoulder_entity_left()),
             shoulder_entity_right: shoulder_tag_to_bytes(&player.shoulder_entity_right()),
+            raid_omen_position: player.raid_omen_position(),
         }
     }
 
@@ -559,6 +563,7 @@ impl PersistentPlayerData {
         player.set_seen_credits(self.seen_credits);
         player.set_shoulder_entity_left(shoulder_tag_from_bytes(&self.shoulder_entity_left));
         player.set_shoulder_entity_right(shoulder_tag_from_bytes(&self.shoulder_entity_right));
+        player.restore_raid_omen_position(self.raid_omen_position);
 
         // Statistics
         {
