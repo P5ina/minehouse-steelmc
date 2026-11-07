@@ -23,8 +23,8 @@ pub use chicken::ChickenEntity;
 pub use cow::CowEntity;
 pub use dolphin::DolphinEntity;
 pub use equine::{
-    DonkeyEntity, HorseEntity, LlamaEntity, MuleEntity, SkeletonHorseEntity, TraderLlamaEntity,
-    ZombieHorseEntity,
+    CamelEntity, CamelHuskEntity, DonkeyEntity, HorseEntity, LlamaEntity, MuleEntity,
+    SkeletonHorseEntity, TraderLlamaEntity, ZombieHorseEntity,
 };
 pub use feline::{CatEntity, OcelotEntity};
 pub use fish::{

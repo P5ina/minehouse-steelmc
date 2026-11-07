@@ -329,6 +329,8 @@ pub struct World {
     pub poi_storage: SyncMutex<PointOfInterestStorage>,
     /// Vanilla `ServerLevel.customSpawners`, ticked after natural spawning.
     custom_spawners: SyncMutex<Vec<Box<dyn custom_spawner::CustomSpawner>>>,
+    /// Vanilla `WanderingTraderData`, read by the wandering trader spawner.
+    pub(crate) wandering_trader_data: SyncMutex<custom_spawner::WanderingTraderData>,
     /// World-change requests queued by world-local ticks for server safe-point processing.
     pending_world_changes: SyncMutex<Vec<(SharedEntity, WorldChangeRequest)>>,
 }
@@ -408,6 +410,8 @@ impl World {
             level_data.save().await?;
         }
         let ticket_storage = ChunkTicketStorage::load(&saved_data, &key).await;
+        let wandering_trader_data =
+            custom_spawner::WanderingTraderData::load(&saved_data, &key).await;
         let world_border = WorldBorder::new(level_data.data().world_border)
             .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
         // let generator = Arc::new(ChunkGeneratorType::Flat(FlatChunkGenerator::new(
@@ -484,6 +488,7 @@ impl World {
                     dimension_type,
                 )),
                 pending_world_changes: SyncMutex::new(Vec::new()),
+                wandering_trader_data: SyncMutex::new(wandering_trader_data),
             }
         }))
     }
@@ -508,6 +513,18 @@ impl World {
         {
             Ok(()) => log::info!("World {} saved chunk ticket data successfully", self.key),
             Err(e) => log::error!("Failed to save world chunk ticket data: {e}"),
+        }
+
+        let wandering_trader_data = self.wandering_trader_data.lock().clone();
+        if wandering_trader_data.is_dirty() {
+            match self
+                .saved_data
+                .save(saved_data_names::WANDERING_TRADER, &wandering_trader_data)
+                .await
+            {
+                Ok(()) => self.wandering_trader_data.lock().mark_saved(),
+                Err(e) => log::error!("Failed to save world wandering trader data: {e}"),
+            }
         }
 
         match self.save_all_chunks().await {

@@ -745,6 +745,10 @@ pub trait Mob: LivingEntity + Leashable {
         !self.is_enemy()
     }
 
+    /// Vanilla `onElasticLeashPull` overrides, run after the shared
+    /// fall-distance check.
+    fn mob_on_elastic_leash_pull(&self) {}
+
     /// Returns whether this mob is allowed to pick up dropped items.
     fn can_pick_up_loot(&self) -> bool {
         *self.mob_base().can_pick_up_loot().lock()
@@ -1918,7 +1922,7 @@ pub trait Mob: LivingEntity + Leashable {
         self.default_tick_look_control();
     }
 
-    /// Vanilla `LookControl.tick`, callable from overrides as `super.tick()`.
+    /// The base `LookControl.tick`, for custom look controls to fall back on.
     fn default_tick_look_control(&self) {
         let look_control = {
             let mut controls = self.mob_base().controls().lock();
@@ -2013,6 +2017,12 @@ pub trait Mob: LivingEntity + Leashable {
     }
 
     fn tick_body_rotation_control(&self) {
+        self.default_tick_body_rotation_control();
+    }
+
+    /// The base `BodyRotationControl.clientTick`, for custom body controls
+    /// to fall back on.
+    fn default_tick_body_rotation_control(&self) {
         let moving = {
             let delta = self.position() - self.old_position();
             delta.x.mul_add(delta.x, delta.z * delta.z) > BODY_ROTATION_MOVING_DISTANCE_SQR
@@ -2057,6 +2067,11 @@ impl<T: Mob> Leashable for T {
     }
 
     /// Drops the leash and disables MOVE until re-leashed at close range.
+    fn on_elastic_leash_pull(&self) {
+        self.check_fall_distance_accumulation();
+        self.mob_on_elastic_leash_pull();
+    }
+
     fn leash_too_far_behaviour(&self) {
         self.drop_leash();
         self.mob_base()

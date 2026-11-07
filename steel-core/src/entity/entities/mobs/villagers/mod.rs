@@ -1,10 +1,16 @@
 //! Villagers (Vanilla `AbstractVillager` and its subclasses).
 
+mod merchant;
 pub mod trading;
 mod villager;
 pub(crate) mod villager_data;
 mod wandering_trader;
 
+pub use merchant::Merchant;
+pub(crate) use merchant::{
+    open_trading_screen, play_trade_updated_sound, record_trade, send_merchant_offers,
+    spawn_trade_experience, trading_player_of,
+};
 pub use villager::VillagerEntity;
 pub use wandering_trader::WanderingTraderEntity;
 
