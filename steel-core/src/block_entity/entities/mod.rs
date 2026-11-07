@@ -34,7 +34,8 @@ pub(crate) use abstract_furnace::{FurnaceContainer, pop_furnace_experience};
 pub use barrel::{BARREL_SLOTS, BarrelBlockEntity};
 pub use beacon::{BeaconBlockEntity, BeaconState};
 pub use beehive::{
-    BEEHIVE_MAX_OCCUPANTS, BEEHIVE_MIN_OCCUPATION_TICKS_NECTARLESS, BeehiveBlockEntity,
+    BEEHIVE_MAX_OCCUPANTS, BEEHIVE_MIN_OCCUPATION_TICKS_NECTARLESS, BeeReleaseStatus,
+    BeehiveBlockEntity,
 };
 pub use bell::BellBlockEntity;
 pub use brushable::BrushableBlockEntity;

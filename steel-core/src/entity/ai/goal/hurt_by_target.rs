@@ -18,7 +18,12 @@ pub(crate) struct HurtByTargetGoal {
     alert_same_type: bool,
     ignore_alert_types: Vec<DowncastTypeKey>,
     alert_matcher: Option<fn(&dyn Entity) -> bool>,
+    alert_condition: Option<AlertCondition>,
 }
+
+/// Extra check before alerting one mob, as vanilla subclasses overriding
+/// `HurtByTargetGoal.alertOther` do: (goal owner, mob to alert, attacker).
+pub(crate) type AlertCondition = fn(&dyn PathfinderMob, &dyn Entity, &SharedEntity) -> bool;
 
 impl HurtByTargetGoal {
     #[must_use]
@@ -34,6 +39,7 @@ impl HurtByTargetGoal {
             alert_same_type: false,
             ignore_alert_types: Vec::new(),
             alert_matcher: None,
+            alert_condition: None,
         }
     }
 
@@ -90,6 +96,13 @@ impl HurtByTargetGoal {
         self
     }
 
+    /// Only alerts mobs `condition` accepts, as vanilla `alertOther` overrides do.
+    #[must_use]
+    pub(crate) const fn with_alert_condition(mut self, condition: AlertCondition) -> Self {
+        self.alert_condition = Some(condition);
+        self
+    }
+
     /// Vanilla `HurtByTargetGoal.alertOthers`.
     pub(crate) fn alert_others(&self, mob: &dyn PathfinderMob, hurt_by_mob: &SharedEntity) {
         let Some(world) = mob.level() else {
@@ -136,6 +149,12 @@ impl HurtByTargetGoal {
             });
             other.target().is_none() && same_owner && !other.is_allied_to(hurt_by_mob.as_ref())
         }) {
+            if self
+                .alert_condition
+                .is_some_and(|condition| !condition(mob, entity.as_ref(), hurt_by_mob))
+            {
+                continue;
+            }
             if let Some(other) = entity.as_mob() {
                 let _ = other.set_target(Some(hurt_by_mob));
             }

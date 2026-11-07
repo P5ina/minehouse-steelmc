@@ -282,6 +282,25 @@ impl World {
         environment::monsters_burn(self.dimension_type, level_data.world_clocks())
     }
 
+    /// Vanilla `EnvironmentAttributes.BEES_STAY_IN_HIVE`: true at night and
+    /// in rain or thunder.
+    pub fn bees_stay_in_hive(&self) -> bool {
+        let (rain_level, thunder_level) = if self.can_have_weather() {
+            let weather = self.weather.lock();
+            (weather.rain_level, weather.thunder_level)
+        } else {
+            (0.0, 0.0)
+        };
+        let level_data = self.level_data.read();
+        environment::bees_stay_in_hive(
+            self.dimension_type,
+            level_data.world_clocks(),
+            rain_level,
+            thunder_level,
+            self.can_have_weather(),
+        )
+    }
+
     /// Returns sky-layer light after the current sky darkening is subtracted.
     ///
     /// Mirrors vanilla `LevelReader.getEffectiveSkyBrightness` without allowing

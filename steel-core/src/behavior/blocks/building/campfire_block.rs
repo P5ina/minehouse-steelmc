@@ -5,6 +5,7 @@ use steel_registry::block_entity_type::BlockEntityTypeRef;
 use steel_registry::blocks::properties::{
     BlockStateProperties, BoolProperty, Direction, EnumProperty,
 };
+use steel_registry::blocks::shapes::{BooleanOp, VoxelShape, join_is_not_empty};
 use steel_registry::blocks::{BlockRef, block_state_ext::BlockStateExt as _};
 use steel_registry::fluid::FluidState;
 use steel_registry::recipe::{SingleItemRecipeInput, vanilla_recipe_types};
@@ -14,12 +15,14 @@ use steel_registry::{
     vanilla_blocks, vanilla_custom_stats, vanilla_fluids, vanilla_game_events,
 };
 use steel_utils::{
-    BlockPos, BlockStateId, Downcast as _,
+    BlockLocalAabb, BlockPos, BlockStateId, Downcast as _,
     types::{InteractionHand, UpdateFlags},
 };
 
 use crate::behavior::block::schedule_water_tick_if_waterlogged;
+use crate::behavior::{BLOCK_BEHAVIORS, BlockCollisionContext};
 use crate::player::Player;
+use crate::world::LevelReader;
 use crate::{
     behavior::{
         BlockBehavior, BlockPlaceContext, InteractionResult, InventoryAccess,
@@ -32,6 +35,11 @@ use crate::{
         ClipHitResult, LevelAccessor, ScheduledTickAccess, World, game_event::GameEventContext,
     },
 };
+
+const SHAPE_VIRTUAL_POST_BOXES: &[BlockLocalAabb] =
+    &[BlockLocalAabb::new(0.375, 0.0, 0.375, 0.625, 1.0, 0.625)];
+/// Vanilla `CampfireBlock.SHAPE_VIRTUAL_POST`: the 4-pixel column smoke rises through.
+const SHAPE_VIRTUAL_POST: VoxelShape = VoxelShape::from_boxes(SHAPE_VIRTUAL_POST_BOXES);
 
 /// Behavior for campfires and soul campfires.
 ///
@@ -98,6 +106,27 @@ impl CampfireBlock {
             && !state.get_value(LIT)
             && !state.get_value(WATERLOGGED))
         .then(|| state.set_value(LIT, true))
+    }
+
+    /// Vanilla `CampfireBlock.isSmokeyPos`: a lit campfire up to five blocks
+    /// below, with smoke passing through anything that leaves the post free.
+    #[must_use]
+    pub fn is_smokey_pos(level: &dyn LevelReader, pos: BlockPos) -> bool {
+        for i in 1..=5 {
+            let pos_to_check = pos.below_n(i);
+            let state = level.get_block_state(pos_to_check);
+            if Self::is_lit_campfire(state) {
+                return true;
+            }
+            // Vanilla samples the collision shape at `pos`, not `pos_to_check`.
+            let shape = BLOCK_BEHAVIORS
+                .get_behavior(state.get_block())
+                .get_collision_shape(state, level, pos, BlockCollisionContext::empty());
+            if join_is_not_empty(SHAPE_VIRTUAL_POST, shape, BooleanOp::And) {
+                return Self::is_lit_campfire(level.get_block_state(pos_to_check.below()));
+            }
+        }
+        false
     }
 
     /// Whether `state` is a lit campfire or soul campfire.
