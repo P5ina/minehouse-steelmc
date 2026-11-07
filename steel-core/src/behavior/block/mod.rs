@@ -1410,6 +1410,12 @@ pub trait BlockBehavior: Send + Sync {
         None
     }
 
+    /// Vanilla `block instanceof CropBlock cropBlock && cropBlock.isMaxAge(state)`:
+    /// `None` for blocks that are no crop, else whether the crop is fully grown.
+    fn crop_is_max_age(&self, _state: BlockStateId) -> Option<bool> {
+        None
+    }
+
     /// Returns the shared vanilla `GrowingPlantHeadBlock` capability.
     fn as_growing_plant_head(&self) -> Option<&dyn GrowingPlantHeadBehavior> {
         None

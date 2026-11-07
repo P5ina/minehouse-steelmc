@@ -6,13 +6,15 @@ use steel_registry::blocks::properties::{BlockStateProperties, DoubleBlockHalf};
 use steel_registry::item_stack::ItemStack;
 use steel_registry::poi::PointOfInterestType;
 use steel_registry::{
-    RegistryEntry as _, init_vanilla_registry, vanilla_blocks, vanilla_entities, vanilla_items,
-    vanilla_poi_types, vanilla_villager_professions, vanilla_villager_types, vanilla_world_clocks,
+    RegistryEntry as _, init_vanilla_registry, vanilla_blocks, vanilla_entities,
+    vanilla_game_rules, vanilla_items, vanilla_poi_types, vanilla_villager_professions,
+    vanilla_villager_types, vanilla_world_clocks,
 };
 use steel_utils::types::InteractionHand;
 use steel_utils::types::UpdateFlags;
-use steel_utils::{BlockPos, ChunkPos, GlobalPos};
+use steel_utils::{BlockPos, BlockStateId, ChunkPos, GlobalPos};
 
+use super::farm::{HarvestFarmland, UseBonemeal};
 use super::poi::{
     GoToPotentialJobSite, acquirable_job_site, assign_profession_from_job_site, held_job_site,
     poi_competitor_scan, reset_profession,
@@ -21,12 +23,16 @@ use super::work::{SecondaryPoiSensor, WorkAtPoi, stroll_to_poi_list};
 use super::{ShowTradesToPlayer, VillagerPanicTrigger, hostile_distance, villager_calm_down};
 use crate::behavior::init_behaviors;
 use crate::entity::ai::brain::behavior::{Behavior, TimedBehavior};
-use crate::entity::ai::brain::behaviors::{interact_with_door, stroll_to_poi, validate_nearby_poi};
+use crate::entity::ai::brain::behaviors::{
+    go_to_wanted_item, interact_with_door, stroll_to_poi, validate_nearby_poi,
+};
 use crate::entity::ai::brain::memory_types::{
     DOORS_TO_CLOSE, GOLEM_DETECTED_RECENTLY, HOME, INTERACTION_TARGET, JOB_SITE,
-    LAST_WORKED_AT_POI, LOOK_TARGET, MEETING_POINT, NEAREST_HOSTILE, NEAREST_LIVING_ENTITIES, PATH,
-    POTENTIAL_JOB_SITE, SECONDARY_JOB_SITE, WALK_TARGET, WalkTarget,
+    LAST_WORKED_AT_POI, LOOK_TARGET, MEETING_POINT, NEAREST_HOSTILE, NEAREST_LIVING_ENTITIES,
+    NEAREST_VISIBLE_WANTED_ITEM, PATH, POTENTIAL_JOB_SITE, SECONDARY_JOB_SITE, WALK_TARGET,
+    WalkTarget,
 };
+use crate::entity::ai::brain::sensors::NearestItemSensor;
 use crate::entity::ai::brain::{Activity, BehaviorControl as _, Sensor as _};
 use crate::entity::ai::node::Node;
 use crate::entity::ai::path::Path;
@@ -38,7 +44,9 @@ use crate::entity::{
 };
 use crate::inventory::container::Container as _;
 use crate::inventory::equipment::EquipmentSlot;
-use crate::test_support::{TestPlayerBuilder, fresh_test_world, insert_ready_full_chunk};
+use crate::test_support::{
+    TestPlayerBuilder, TestWorld, fresh_test_world, insert_ready_full_chunk,
+};
 use crate::world::World;
 
 fn villager_in(world: &Arc<World>) -> VillagerEntity {
@@ -790,4 +798,166 @@ fn farmers_empty_a_ready_composter_and_compost_spare_seeds() {
         (1..=5).contains(&filled),
         "the emptied composter takes the five spare seeds, level {filled}"
     );
+}
+
+/// Farmland at `(1, 63, 1)` under the villager, with `crop` on it.
+fn farm_world(name: &'static str, crop: BlockStateId) -> TestWorld {
+    init_vanilla_registry();
+    init_behaviors();
+    let fixture = fresh_test_world(name);
+    insert_ready_full_chunk(&fixture.world, ChunkPos::new(0, 0));
+    fixture.world.set_block(
+        BlockPos::new(1, 63, 1),
+        vanilla_blocks::FARMLAND.default_state(),
+        UpdateFlags::UPDATE_CLIENTS,
+    );
+    fixture
+        .world
+        .set_block(BlockPos::new(1, 64, 1), crop, UpdateFlags::UPDATE_CLIENTS);
+    fixture
+}
+
+fn wheat(age: u8) -> BlockStateId {
+    vanilla_blocks::WHEAT
+        .default_state()
+        .set_value(&BlockStateProperties::AGE_7, age)
+}
+
+fn main_hand(mob: &VillagerEntity) -> ItemStack {
+    let mut held = ItemStack::empty();
+    mob.with_equipment_slot(EquipmentSlot::MainHand, &mut |stack| held = stack.clone());
+    held
+}
+
+#[test]
+fn farmers_harvest_grown_wheat_and_plant_seeds() {
+    let fixture = farm_world("villager_brain_harvest", wheat(7));
+    let world = &fixture.world;
+    let crop = BlockPos::new(1, 64, 1);
+    let mob = farmer_in(world);
+    let _ = mob
+        .inventory()
+        .lock()
+        .add_item(&ItemStack::with_count(&vanilla_items::WHEAT_SEEDS, 5));
+    let mut harvest = HarvestFarmland::new();
+
+    assert!(harvest.check_extra_start_conditions(world, &mob));
+    harvest.start(world, &mob, 100);
+    assert!(mob.brain.memories().lock().has_value(&WALK_TARGET));
+
+    harvest.tick(world, &mob, 100);
+    assert!(
+        world.get_block_state(crop).is_air(),
+        "the grown wheat broke"
+    );
+    harvest.tick(world, &mob, 101);
+    assert_eq!(world.get_block_state(crop), wheat(0), "seeds went in");
+    assert_eq!(
+        mob.inventory()
+            .lock()
+            .count_item(&vanilla_items::WHEAT_SEEDS),
+        4
+    );
+
+    harvest.stop(world, &mob, 102);
+    assert!(!mob.brain.memories().lock().has_value(&WALK_TARGET));
+    assert!(
+        !harvest.check_extra_start_conditions(world, &mob),
+        "nothing left to harvest or plant"
+    );
+}
+
+#[test]
+fn only_farmers_harvest_and_only_with_mob_griefing() {
+    let fixture = farm_world("villager_brain_harvest_rules", wheat(7));
+    let world = &fixture.world;
+    let mut harvest = HarvestFarmland::new();
+
+    assert!(!harvest.check_extra_start_conditions(world, &villager_in(world)));
+    assert!(world.set_game_rule(&vanilla_game_rules::MOB_GRIEFING, false));
+    assert!(!harvest.check_extra_start_conditions(world, &farmer_in(world)));
+}
+
+#[test]
+fn villagers_use_bone_meal_on_growing_crops() {
+    let fixture = farm_world("villager_brain_bone_meal", wheat(0));
+    let world = &fixture.world;
+    let crop = BlockPos::new(1, 64, 1);
+    let mob = villager_in(world);
+    let mut bone_meal = UseBonemeal::new();
+    assert!(
+        !bone_meal.check_extra_start_conditions(world, &mob),
+        "no bone meal to use"
+    );
+    let _ = mob
+        .inventory()
+        .lock()
+        .add_item(&ItemStack::with_count(&vanilla_items::BONE_MEAL, 3));
+
+    assert!(bone_meal.check_extra_start_conditions(world, &mob));
+    bone_meal.start(world, &mob, 10);
+    assert!(main_hand(&mob).is(&vanilla_items::BONE_MEAL));
+
+    bone_meal.tick(world, &mob, 10);
+    assert!(
+        world
+            .get_block_state(crop)
+            .get_value(&BlockStateProperties::AGE_7)
+            > 0,
+        "the wheat grew"
+    );
+    assert_eq!(
+        mob.inventory().lock().count_item(&vanilla_items::BONE_MEAL),
+        2
+    );
+    bone_meal.tick(world, &mob, 20);
+    assert_eq!(
+        mob.inventory().lock().count_item(&vanilla_items::BONE_MEAL),
+        2,
+        "forty ticks between uses"
+    );
+
+    bone_meal.stop(world, &mob, 21);
+    assert!(main_hand(&mob).is_empty());
+}
+
+#[test]
+fn villagers_see_and_walk_to_wanted_items() {
+    init_vanilla_registry();
+    init_behaviors();
+    let fixture = fresh_test_world("villager_brain_wanted_item");
+    let world = &fixture.world;
+    insert_ready_full_chunk(world, ChunkPos::new(0, 0));
+    let mob = villager_in(world);
+    let _stone = world
+        .spawn_item(
+            DVec3::new(3.5, 64.0, 1.5),
+            ItemStack::new(&vanilla_items::STONE),
+        )
+        .expect("the stone spawns");
+    NearestItemSensor.do_tick(world, &mob);
+    assert!(
+        !mob.brain
+            .memories()
+            .lock()
+            .has_value(&NEAREST_VISIBLE_WANTED_ITEM),
+        "villagers do not want stone"
+    );
+
+    let _wheat = world
+        .spawn_item(
+            DVec3::new(4.5, 64.0, 1.5),
+            ItemStack::new(&vanilla_items::WHEAT),
+        )
+        .expect("the wheat spawns");
+    NearestItemSensor.do_tick(world, &mob);
+    assert!(
+        mob.brain
+            .memories()
+            .lock()
+            .has_value(&NEAREST_VISIBLE_WANTED_ITEM)
+    );
+    let mut go = go_to_wanted_item(|_: &VillagerEntity| true, 0.5, false, 4);
+    assert!(go.try_start(world, &mob, 1));
+    assert!(mob.brain.memories().lock().has_value(&WALK_TARGET));
 }

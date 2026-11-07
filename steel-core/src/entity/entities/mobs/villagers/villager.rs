@@ -408,6 +408,16 @@ impl VillagerEntity {
         self.make_sound(Some(&sound_events::ENTITY_VILLAGER_NO));
     }
 
+    /// Vanilla `Villager.hasFarmSeeds`.
+    fn has_farm_seeds(&self) -> bool {
+        use crate::inventory::container::Container as _;
+        let inventory = self.inventory.lock();
+        (0..inventory.get_container_size()).any(|slot| {
+            let stack = inventory.get_item(slot);
+            !stack.is_empty() && stack.item().has_tag(&ItemTag::VILLAGER_PLANTABLE_SEEDS)
+        })
+    }
+
     /// Vanilla `AbstractVillager.getInventory`.
     #[must_use]
     pub const fn inventory(&self) -> &SyncMutex<SimpleContainer> {
