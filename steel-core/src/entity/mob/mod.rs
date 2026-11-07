@@ -1108,16 +1108,22 @@ pub trait Mob: LivingEntity + Leashable {
         }
     }
 
-    fn drop_custom_death_loot_mob(&self, _source: &DamageSource, killed_by_player: bool) {
+    fn drop_custom_death_loot_mob(&self, source: &DamageSource, killed_by_player: bool) {
         if self.level().is_none() {
             return;
         }
 
         for slot in EquipmentSlot::ALL {
-            let drop_chance = self.equipment_drop_chance(slot);
+            let mut drop_chance = self.equipment_drop_chance(slot);
             let preserve = self.is_equipment_drop_preserved(slot);
             if !can_attempt_equipment_drop(drop_chance, preserve, killed_by_player) {
                 continue;
+            }
+            if let Some(killer) = source.causing_entity()
+                && let Some(killer) = killer.as_living_entity()
+            {
+                drop_chance =
+                    enchantment_helper::process_equipment_drop_chance(killer, source, drop_chance);
             }
 
             let can_drop_item = {
@@ -1131,8 +1137,6 @@ pub trait Mob: LivingEntity + Leashable {
                 continue;
             }
 
-            // TODO: Apply EquipmentDrops enchantment value effects once damage
-            // sources can resolve their living attacker context.
             let random_roll = rand::random::<f32>();
             if random_roll >= drop_chance {
                 continue;
