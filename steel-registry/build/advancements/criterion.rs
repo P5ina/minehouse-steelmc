@@ -1,3 +1,4 @@
+use crate::generator_functions::generate_identifier;
 use proc_macro2::TokenStream;
 use quote::{ToTokens, quote};
 use serde::Deserialize;
@@ -6,7 +7,6 @@ use std::collections::BTreeMap;
 use steel_utils::Identifier;
 
 #[derive(Deserialize)]
-#[expect(dead_code)]
 pub(crate) struct CriterionJson {
     trigger: Identifier,
     #[serde(default)]
@@ -15,8 +15,14 @@ pub(crate) struct CriterionJson {
 
 impl ToTokens for CriterionJson {
     fn to_tokens(&self, tokens: &mut TokenStream) {
+        let trigger = generate_identifier(&self.trigger);
+        let conditions = if self.conditions.is_null() {
+            "{}".to_owned()
+        } else {
+            self.conditions.to_string()
+        };
         tokens.extend(quote! {
-            Box::new(Criterion::<ImpossibleInstance, ImpossibleTrigger>::default()) as Box<dyn AnyCriterion> // TODO when predicate are implemented
+            Criterion::new(#trigger, #conditions)
         });
     }
 }

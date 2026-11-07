@@ -260,6 +260,7 @@ impl Player {
             }
             Err(OpenMenuUnavailable::Unavailable) => {}
         }
+        self.fire_inventory_slot_changes();
     }
 
     /// Handles a container click packet (slot interaction).
@@ -278,6 +279,7 @@ impl Player {
             }
             Err(OpenMenuUnavailable::Unavailable) => {}
         }
+        self.fire_inventory_slot_changes();
     }
 
     /// Processes a container click on any menu implementing the Menu trait.
@@ -376,6 +378,8 @@ impl Player {
         menu.behavior_mut().resume_remote_updates();
 
         if full_resync_needed {
+            // Vanilla `broadcastFullState`.
+            menu.behavior_mut().trigger_all_slot_listeners();
             menu.behavior_mut()
                 .send_all_data_to_remote(&self.connection);
         } else {
@@ -524,6 +528,7 @@ impl Player {
             }
             let _ = self.drop_item(item_stack, true, Prediction::Predicted);
         }
+        self.fire_inventory_slot_changes();
     }
 
     /// Sets selected slot
@@ -735,8 +740,13 @@ impl Player {
 
         menu.behavior_mut()
             .send_all_data_to_remote(&self.connection);
+        // Vanilla `ServerPlayer.initMenu`: the slot listener sees every slot
+        // of the new menu once.
+        menu.behavior_mut()
+            .add_slot_listener(ContainerId::from(&self.inventory));
 
         self.finish_open_menu_callback(menu);
+        self.fire_inventory_slot_changes();
     }
 
     /// A shared handle to the 2x2 crafting grid of the always-open inventory
@@ -966,6 +976,34 @@ impl Player {
         self.finish_open_menu_callback(menu);
     }
 
+    /// Fires `inventory_changed` for every inventory stack the player's slot
+    /// listener saw change (vanilla `ServerPlayer.containerListener`), once
+    /// no menu lock is held.
+    pub(crate) fn fire_inventory_slot_changes(&self) {
+        let mut changes = self
+            .inventory_menu
+            .lock()
+            .behavior_mut()
+            .take_slot_changes();
+        if let Some(menu) = self.open_menu.lock().menu.as_mut() {
+            changes.extend(menu.behavior_mut().take_slot_changes());
+        }
+        for changed_item in &changes {
+            self.trigger_inventory_changed(changed_item);
+        }
+    }
+
+    /// Vanilla `ServerPlayer.initInventoryMenu`: adds the player's slot
+    /// listener to the inventory menu, which reports every stack already in
+    /// the inventory.
+    pub(crate) fn init_inventory_menu(&self) {
+        self.inventory_menu
+            .lock()
+            .behavior_mut()
+            .add_slot_listener(ContainerId::from(&self.inventory));
+        self.fire_inventory_slot_changes();
+    }
+
     /// Broadcasts inventory changes to the client (incremental sync).
     /// This is called every tick to sync only changed slots.
     pub fn broadcast_inventory_changes(&self) {
@@ -981,6 +1019,14 @@ impl Player {
                 .behavior_mut()
                 .broadcast_changes(&self.connection);
         }
+    }
+
+    /// [`Self::broadcast_inventory_changes`], then the `inventory_changed`
+    /// trigger for what the slot listener saw (vanilla runs both in
+    /// `broadcastChanges`).
+    pub fn broadcast_inventory_changes_and_trigger(&self) {
+        self.broadcast_inventory_changes();
+        self.fire_inventory_slot_changes();
     }
 
     /// Requests direct synchronization of logical player-inventory slots.

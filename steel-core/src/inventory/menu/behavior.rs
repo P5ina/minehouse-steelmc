@@ -22,10 +22,11 @@ use crate::{
         click::{DragKind, MouseButton, QuickCraft, can_item_quick_replace},
         lock::{ContainerId, ContainerLockGuard, ContainerRef},
         menu::builder::{FillDirection, MenuInstanceId},
-        slots::Slot,
+        slots::{ResultSlot, Slot},
     },
     player::{Player, PlayerConnection, connection::NetworkConnection},
 };
+use steel_utils::Downcast as _;
 
 /// Shared behavior and state for all menu types.
 pub struct MenuBehavior {
@@ -33,6 +34,15 @@ pub struct MenuBehavior {
     slots: Vec<Box<dyn Slot>>,
     /// The client's perception of the itemstacks.
     remote_slots: Vec<RemoteSlot>,
+    /// Vanilla `AbstractContainerMenu.lastSlots`: the stacks slot listeners
+    /// last saw, independent of what the client has.
+    last_slots: Vec<ItemStack>,
+    /// The container whose slot changes the player's slot listener reports
+    /// (vanilla `ServerPlayer.containerListener`, added by `initMenu`).
+    slot_listener: Option<ContainerId>,
+    /// Changed stacks of [`Self::slot_listener`]'s container, waiting for the
+    /// player to fire `inventory_changed` once no menu lock is held.
+    pending_slot_changes: Vec<ItemStack>,
     /// The item being carried by the cursor.
     carried: ItemStack,
     /// The client's perception of the carried item.
@@ -86,6 +96,9 @@ impl MenuBehavior {
             instance,
             slots,
             remote_slots: vec![RemoteSlot::Unknown; slot_count],
+            last_slots: vec![ItemStack::empty(); slot_count],
+            slot_listener: None,
+            pending_slot_changes: Vec::new(),
             carried: ItemStack::empty(),
             remote_carried: RemoteSlot::Unknown,
             container_id,
@@ -345,7 +358,7 @@ impl MenuBehavior {
         self.suppress_remote_updates = false;
     }
 
-    /// Copies another menu's remote slot state, matched by (`container_id`,
+    /// Copies another menu's listener and remote slot state, matched by (`container_id`,
     /// `container_slot`), so closing a menu doesn't resync shared inventory slots.
     pub(crate) fn transfer_state(&mut self, other: &MenuBehavior) {
         use rustc_hash::FxHashMap;
@@ -367,6 +380,7 @@ impl MenuBehavior {
             if let Some(key) = slot.storage().physical_key()
                 && let Some(&other_slot_index) = other_slots.get(&key)
             {
+                self.last_slots[slot_index] = other.last_slots[other_slot_index].clone();
                 self.remote_slots[slot_index] = other.remote_slots[other_slot_index].clone();
             }
         }
@@ -438,6 +452,14 @@ impl MenuBehavior {
         let mut changed: Vec<(usize, ItemStack)> = Vec::new();
         for index in 0..self.slots.len() {
             let item = self.slots[index].get_item(&guard);
+            Self::trigger_slot_listener(
+                &self.slots,
+                &mut self.last_slots,
+                self.slot_listener,
+                &mut self.pending_slot_changes,
+                index,
+                item,
+            );
             if self.remote_slots[index].matches(item) {
                 // Cache a matched hash as Known to avoid re-hashing next tick.
                 if matches!(self.remote_slots[index], RemoteSlot::Hashed(_)) {
@@ -464,6 +486,67 @@ impl MenuBehavior {
         for i in 0..self.data_slots.len() {
             self.synchronize_data_slot_to_remote(i, connection);
         }
+    }
+
+    /// Vanilla `AbstractContainerMenu.triggerSlotListeners`: records a slot
+    /// whose stack differs from what the listeners last saw. The player's
+    /// listener only reports slots of its own inventory, never result slots
+    /// (vanilla `ServerPlayer.containerListener.slotChanged`).
+    fn trigger_slot_listener(
+        slots: &[Box<dyn Slot>],
+        last_slots: &mut [ItemStack],
+        slot_listener: Option<ContainerId>,
+        pending: &mut Vec<ItemStack>,
+        index: usize,
+        current: &ItemStack,
+    ) {
+        if ItemStack::matches(&last_slots[index], current) {
+            return;
+        }
+        last_slots[index] = current.clone();
+        let slot = &slots[index];
+        if let Some(container) = slot_listener
+            && slot.downcast_ref::<ResultSlot>().is_none()
+            && slot
+                .storage()
+                .physical_key()
+                .is_some_and(|(id, _)| id == container)
+        {
+            pending.push(current.clone());
+        }
+    }
+
+    /// Vanilla `AbstractContainerMenu.addSlotListener` for the player's
+    /// listener: registers it and runs the slot listeners once, so every
+    /// stack the listeners have not seen is reported.
+    pub(crate) fn add_slot_listener(&mut self, inventory: ContainerId) {
+        if self.slot_listener == Some(inventory) {
+            return;
+        }
+        self.slot_listener = Some(inventory);
+        self.trigger_all_slot_listeners();
+    }
+
+    /// The slot-listener half of vanilla `broadcastFullState`: runs the slot
+    /// listeners over every slot.
+    pub(crate) fn trigger_all_slot_listeners(&mut self) {
+        let guard = self.lock_all_containers();
+        for index in 0..self.slots.len() {
+            let item = self.slots[index].get_item(&guard);
+            Self::trigger_slot_listener(
+                &self.slots,
+                &mut self.last_slots,
+                self.slot_listener,
+                &mut self.pending_slot_changes,
+                index,
+                item,
+            );
+        }
+    }
+
+    /// Takes the inventory stacks the player's slot listener has seen change.
+    pub(crate) fn take_slot_changes(&mut self) -> Vec<ItemStack> {
+        mem::take(&mut self.pending_slot_changes)
     }
 
     /// Sends a data slot update to the client if it changed.

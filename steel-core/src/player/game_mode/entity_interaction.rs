@@ -956,7 +956,7 @@ impl Player {
         let animation = self.interact_animation(packet.hand);
         let result = self.interact_on(target.as_ref(), packet.hand, packet.location);
         self.swing_after_interaction(packet.hand, animation, result);
-        self.broadcast_inventory_changes();
+        self.broadcast_inventory_changes_and_trigger();
     }
 
     /// Vanilla `Player.damageStatsAndHearts`: awards the damage stat and sends

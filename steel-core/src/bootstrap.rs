@@ -8,11 +8,13 @@ use steel_registry::init_vanilla_registry;
 use crate::behavior::init_behaviors;
 use crate::block_entity::init_block_entities;
 use crate::entity::init_entities;
+use crate::player::advancement::criteria::init_criteria;
 
 fn fill_behavior_registries() {
     init_behaviors();
     init_block_entities();
     init_entities();
+    init_criteria();
     log::info!("Behavior registries initialized");
 }
 

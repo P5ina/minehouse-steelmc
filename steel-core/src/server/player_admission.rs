@@ -307,6 +307,8 @@ impl Server {
         self.broadcast_player_join_message(&player, previous_name.as_deref());
         if player.mark_joined_world() {
             player.send_inventory_to_remote();
+            // Vanilla `PlayerList.placeNewPlayer` ends with `initInventoryMenu`.
+            player.init_inventory_menu();
         }
         self.schedule_domain_restores(&player, residence_token, restores);
         if player.connection.closed() {

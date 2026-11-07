@@ -25,7 +25,7 @@ pub(crate) use argument::{SteelArgumentParser, SteelArgumentSuggestionContext};
 pub(crate) use biome::BiomeOrTag;
 pub(crate) use block::{BlockInput, BlockPredicate, placement_flags};
 pub(crate) use coordinates::Coordinates;
-pub(crate) use item_predicate::ItemPredicate;
+pub(crate) use item_predicate::{ItemPredicate, registered_item_predicate_matches};
 pub(crate) use permission::PermissionGroupName;
 pub(crate) use profile::GameProfileArgument;
 pub use queue::CommandSuspensionOrder;

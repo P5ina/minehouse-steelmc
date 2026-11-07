@@ -650,6 +650,8 @@ impl Player {
         self.rebind_ender_pearls_to(&replacement);
 
         server.resend_player_context(&replacement);
+        // Vanilla `PlayerList.respawn`: `initInventoryMenu` on the new player.
+        replacement.init_inventory_menu();
 
         if kind == RespawnRequestKind::Death
             && let Some(pos) = spawn.anchor_deplete_sound_pos

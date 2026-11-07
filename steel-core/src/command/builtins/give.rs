@@ -107,7 +107,7 @@ fn give_to_player(player: &Player, prototype: &ItemStack, count: i32) {
             {
                 item.make_fake_item();
             }
-            player.broadcast_inventory_changes();
+            player.broadcast_inventory_changes_and_trigger();
         } else if let Some(item) = player.spawn_dropped_item(stack, false, false) {
             item.set_no_pickup_delay();
             item.set_owner(Some(player.gameprofile.id()));

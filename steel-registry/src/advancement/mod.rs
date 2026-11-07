@@ -1,4 +1,4 @@
-use crate::advancement::criterion::AnyCriterion;
+use crate::advancement::criterion::Criterion;
 use crate::advancement::display::DisplayInfo;
 use crate::loot_table::LootTableRef;
 use crate::recipe::UntypedRecipeRef;
@@ -25,7 +25,7 @@ pub mod registry;
 pub struct Advancement {
     pub(crate) key: Identifier,
     pub(crate) parent: Option<Identifier>,
-    pub(crate) criteria: BTreeMap<String, Box<dyn AnyCriterion>>,
+    pub(crate) criteria: BTreeMap<String, Criterion>,
     pub(crate) display: Option<DisplayInfo>,
     pub(crate) send_telemetry_event: bool,
     pub(crate) requirements: AdvancementRequirement,
@@ -77,8 +77,15 @@ impl Advancement {
     }
 
     #[must_use]
-    pub fn get_criterion(&self, criterion: &str) -> Option<&dyn AnyCriterion> {
-        self.criteria.get(criterion).map(Box::as_ref)
+    pub fn get_criterion(&self, criterion: &str) -> Option<&Criterion> {
+        self.criteria.get(criterion)
+    }
+
+    /// Iterates over the criteria by name.
+    pub fn criteria(&self) -> impl Iterator<Item = (&str, &Criterion)> {
+        self.criteria
+            .iter()
+            .map(|(name, criterion)| (name.as_str(), criterion))
     }
 
     #[must_use]
