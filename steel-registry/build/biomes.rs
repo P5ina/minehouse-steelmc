@@ -503,6 +503,53 @@ fn generate_biome_effects(effects: &BiomeEffects) -> TokenStream {
     }
 }
 
+/// Environment attributes built with `.syncable()` in vanilla `EnvironmentAttributes`.
+/// `EnvironmentAttributeMap.NETWORK_CODEC` sends only these to the client.
+const SYNCABLE_ATTRIBUTES: &[&str] = &[
+    "minecraft:visual/fog_color",
+    "minecraft:visual/fog_start_distance",
+    "minecraft:visual/fog_end_distance",
+    "minecraft:visual/sky_fog_end_distance",
+    "minecraft:visual/cloud_fog_end_distance",
+    "minecraft:visual/water_fog_color",
+    "minecraft:visual/water_fog_start_distance",
+    "minecraft:visual/water_fog_end_distance",
+    "minecraft:visual/sky_color",
+    "minecraft:visual/sunrise_sunset_color",
+    "minecraft:visual/cloud_color",
+    "minecraft:visual/cloud_height",
+    "minecraft:visual/sun_angle",
+    "minecraft:visual/moon_angle",
+    "minecraft:visual/star_angle",
+    "minecraft:visual/moon_phase",
+    "minecraft:visual/star_brightness",
+    "minecraft:visual/block_light_tint",
+    "minecraft:visual/sky_light_color",
+    "minecraft:visual/sky_light_factor",
+    "minecraft:visual/night_vision_color",
+    "minecraft:visual/ambient_light_color",
+    "minecraft:visual/default_dripstone_particle",
+    "minecraft:visual/ambient_particles",
+    "minecraft:audio/background_music",
+    "minecraft:audio/music_volume",
+    "minecraft:audio/ambient_sounds",
+    "minecraft:audio/firefly_bush_sounds",
+    "minecraft:gameplay/sky_light_level",
+    "minecraft:gameplay/water_evaporates",
+    "minecraft:gameplay/fast_lava",
+    "minecraft:gameplay/piglins_zombify",
+    "minecraft:gameplay/creaking_active",
+];
+
+/// The biome's syncable attributes as sorted JSON, sent as-is in the registry data.
+fn network_attributes_json(attributes: &FxHashMap<String, Value>) -> String {
+    let synced: std::collections::BTreeMap<&String, &Value> = attributes
+        .iter()
+        .filter(|(key, _)| SYNCABLE_ATTRIBUTES.contains(&key.as_str()))
+        .collect();
+    serde_json::to_string(&synced).expect("biome attributes serialize")
+}
+
 /// Vanilla `CREATURE_WORLD_GEN_SPAWN_PROBABILITY` default.
 const DEFAULT_CREATURE_SPAWN_PROBABILITY: f32 = 0.1;
 
@@ -678,6 +725,7 @@ pub(crate) fn build() -> TokenStream {
         let features = generate_vec(&biome.features, |inner_vec| {
             generate_vec(inner_vec, generate_identifier)
         });
+        let network_attributes = network_attributes_json(&biome.attributes);
 
         stream.extend(quote! {
             pub static #biome_ident: LazyLock<Biome> = LazyLock::new(|| Biome {
@@ -694,6 +742,7 @@ pub(crate) fn build() -> TokenStream {
                 spawn_costs: #spawn_costs,
                 carvers: #carvers,
                 features: #features,
+                network_attributes: #network_attributes,
                 id: OnceLock::new(),
             });
         });
