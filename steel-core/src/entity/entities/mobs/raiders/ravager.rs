@@ -25,10 +25,11 @@ use steel_utils::{BlockPos, BlockStateId, DowncastType, DowncastTypeKey, WorldAa
 use crate::entity::SpawnRule;
 use crate::entity::ai::goal::{
     FloatGoal, GoalControl, HurtByTargetGoal, LongDistancePatrolGoal, LookAtPlayerGoal,
-    MeleeAttackGoal, NearestAttackableTargetGoal, WaterAvoidingRandomStrollGoal,
+    MeleeAttackGoal, NearestAttackableTargetGoal, WaterAvoidingRandomStrollGoal, add_raider_goals,
 };
 use crate::entity::ai::path::PathType;
 use crate::entity::damage::DamageSource;
+use crate::entity::entities::ItemEntity;
 use crate::entity::spawn::SpawnGroupData;
 use crate::entity::{
     DefaultEntityPush, Entity, EntityBase, EntityBaseLoad, EntityMovementEmission, EntityPose,
@@ -131,10 +132,9 @@ impl RavagerEntity {
 
         {
             let mut goal_selector = mob_base.goal_selector().lock();
-            // TODO: Raider goals (`ObtainRaidLeaderBannerGoal` 1, `PathfindToRaidGoal` 3,
-            // `RaiderMoveThroughVillageGoal` 4, `RaiderCelebration` 5) come with raids.
-            // Vanilla `PatrollingMonster.registerGoals`.
+            // Vanilla `PatrollingMonster.registerGoals`, then `Raider.registerGoals`.
             goal_selector.add_goal(4, LongDistancePatrolGoal::new(0.7, 0.595));
+            add_raider_goals(&mut goal_selector);
             goal_selector.add_goal(0, FloatGoal::new(&mob_base));
             goal_selector.add_goal(4, MeleeAttackGoal::new(MELEE_SPEED, true));
             goal_selector.add_goal(5, WaterAvoidingRandomStrollGoal::new(STROLL_SPEED));
@@ -557,6 +557,12 @@ impl Mob for RavagerEntity {
 
     fn requires_custom_persistence(&self) -> bool {
         self.requires_custom_persistence_raider()
+    }
+
+    fn pick_up_item(&self, world: &Arc<World>, item_entity: &ItemEntity) {
+        if !self.pick_up_item_raider(world, item_entity) {
+            self.default_pick_up_item(world, item_entity);
+        }
     }
 
     fn finalize_spawn(

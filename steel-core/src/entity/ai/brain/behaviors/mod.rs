@@ -6,12 +6,14 @@ mod do_nothing;
 mod fight;
 mod find_land;
 pub mod gate;
+mod interact;
 mod long_jump;
 mod look;
 mod make_love;
 mod move_to_target;
 mod panic;
 mod ram;
+mod stroll;
 mod swim;
 mod temptation;
 pub mod utils;
@@ -26,6 +28,7 @@ pub use fight::{
 };
 pub use find_land::{try_find_land, try_find_land_near_liquid, try_lay_spawn_on_fluid_near_land};
 pub use gate::run_one;
+pub use interact::{interact_with_type, set_look_and_interact};
 pub use long_jump::{LongJumpMidJump, LongJumpToRandomPos, default_acceptable_landing_spot};
 pub use look::{
     LookAtTargetSink, RandomLookAround, set_entity_look_target, set_entity_look_target_sometimes,
@@ -34,6 +37,10 @@ pub use make_love::AnimalMakeLove;
 pub use move_to_target::MoveToTargetSink;
 pub use panic::AnimalPanic;
 pub use ram::PrepareRamNearestTarget;
+pub use stroll::{
+    inside_brownian_walk, set_walk_target_away_from_entity, village_bound_random_stroll,
+    village_bound_random_stroll_within,
+};
 pub use swim::Swim;
 pub use temptation::FollowTemptation;
 pub use walk::{

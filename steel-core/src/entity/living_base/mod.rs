@@ -726,6 +726,8 @@ struct LivingEntityState {
     no_action_time: i32,
     arrow_count: i32,
     remove_arrow_time: i32,
+    stinger_count: i32,
+    remove_stinger_time: i32,
 }
 
 impl LivingEntityState {
@@ -765,6 +767,8 @@ impl LivingEntityState {
             no_action_time: 0,
             arrow_count: 0,
             remove_arrow_time: 0,
+            stinger_count: 0,
+            remove_stinger_time: 0,
         }
     }
 
@@ -1675,6 +1679,35 @@ impl LivingEntityBase {
         if state.remove_arrow_time <= 0 {
             state.arrow_count -= 1;
             return Some(state.arrow_count);
+        }
+        None
+    }
+
+    /// Vanilla `LivingEntity.getStingerCount`: bee stingers stuck in the body.
+    #[must_use]
+    pub fn stinger_count(&self) -> i32 {
+        self.state.lock().stinger_count
+    }
+
+    /// Vanilla `LivingEntity.setStingerCount`.
+    pub fn set_stinger_count(&self, count: i32) {
+        self.state.lock().stinger_count = count;
+    }
+
+    /// Vanilla `LivingEntity.tick` stuck-stinger removal: one stinger falls
+    /// out every `20 * (30 - count)` ticks. Returns the new count when it changed.
+    pub fn tick_remove_stinger(&self) -> Option<i32> {
+        let mut state = self.state.lock();
+        if state.stinger_count <= 0 {
+            return None;
+        }
+        if state.remove_stinger_time <= 0 {
+            state.remove_stinger_time = 20 * (30 - state.stinger_count);
+        }
+        state.remove_stinger_time -= 1;
+        if state.remove_stinger_time <= 0 {
+            state.stinger_count -= 1;
+            return Some(state.stinger_count);
         }
         None
     }
