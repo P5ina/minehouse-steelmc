@@ -588,7 +588,7 @@ impl EntitySubPredicate {
                 location.matches(world, position.x, position.y, position.z)
             }
             Self::SteppingOn(location) => {
-                // Vanilla `SteppingOnPredicate`: the centre of `getOnPos()`.
+                // Vanilla `SteppingOnPredicate`: the center of `getOnPos()`.
                 entity.on_ground()
                     && entity.on_pos(1.0e-5).is_some_and(|pos| {
                         let (x, y, z) = pos.get_center();
