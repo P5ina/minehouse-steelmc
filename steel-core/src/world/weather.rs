@@ -20,6 +20,7 @@ use super::{
 use glam::DVec3;
 
 use crate::chunk::light::MAX_LIGHT_LEVEL;
+use crate::entity::ai::brain::Activity;
 
 static BIOME_TEMPERATURE_NOISE: LazyLock<PerlinSimplexNoise> = LazyLock::new(|| {
     let mut random = RandomSource::Legacy(LegacyRandom::from_seed(1234));
@@ -274,6 +275,13 @@ impl World {
     pub fn cat_waking_up_gift_chance(&self) -> f32 {
         let level_data = self.level_data.read();
         environment::cat_waking_up_gift_chance(self.dimension_type, level_data.world_clocks())
+    }
+
+    /// Vanilla `environmentAttributes().getValue` for an activity attribute
+    /// such as `minecraft:gameplay/villager_activity`.
+    pub fn scheduled_activity(&self, attribute: &str) -> Activity {
+        let level_data = self.level_data.read();
+        environment::scheduled_activity(self.dimension_type, level_data.world_clocks(), attribute)
     }
 
     /// Whether the environment currently permits daylight burning.

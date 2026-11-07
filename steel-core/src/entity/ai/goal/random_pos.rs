@@ -120,6 +120,43 @@ pub(crate) fn land_random_pos_weighted(
     best_pos.map(block_bottom_center)
 }
 
+/// Vanilla `LandRandomPos.getPosAway`: a land position up to
+/// `horizontal_dist` away from `avoid_pos`.
+pub(crate) fn land_random_pos_away(
+    mob: &(impl PathfinderMob + ?Sized),
+    horizontal_dist: i32,
+    vertical_dist: i32,
+    avoid_pos: DVec3,
+) -> Option<DVec3> {
+    let mut dir_away = mob.position() - avoid_pos;
+    if dir_away.length() == 0.0 {
+        dir_away = DVec3::new(
+            rand::random::<f64>() - 0.5,
+            0.0,
+            rand::random::<f64>() - 0.5,
+        );
+    }
+    let max_horizontal_dist = f64::from(horizontal_dist);
+    let restrict = mob_restricted(mob, max_horizontal_dist);
+    generate_random_pos(mob, || {
+        let direction = {
+            let mut random = LegacyRandom::from_seed(rand::random());
+            generate_random_direction_within_radians(
+                &mut random,
+                0.0,
+                max_horizontal_dist,
+                vertical_dist,
+                0,
+                dir_away.x,
+                dir_away.z,
+                FRAC_PI_2,
+            )
+        }?;
+        let pos = land_random_pos_toward_direction(mob, max_horizontal_dist, restrict, direction)?;
+        land_move_pos_up_out_of_solid(mob, pos)
+    })
+}
+
 /// Vanilla `HoverRandomPos.getPos`: a land position toward the direction,
 /// lifted a few blocks above the ground it lands on.
 #[expect(
@@ -281,16 +318,26 @@ fn move_up_to_above_solid(
 
 fn generate_random_pos(
     mob: &(impl PathfinderMob + ?Sized),
-    mut pos_supplier: impl FnMut() -> Option<BlockPos>,
+    pos_supplier: impl FnMut() -> Option<BlockPos>,
 ) -> Option<DVec3> {
-    let mut best_weight = f32::NEG_INFINITY;
+    generate_random_pos_weighted(pos_supplier, |pos| {
+        f64::from(mob.get_walk_target_value(pos))
+    })
+}
+
+/// Vanilla `RandomPos.generateRandomPos(Supplier, ToDoubleFunction)`.
+fn generate_random_pos_weighted(
+    mut pos_supplier: impl FnMut() -> Option<BlockPos>,
+    position_weight: impl Fn(BlockPos) -> f64,
+) -> Option<DVec3> {
+    let mut best_weight = f64::NEG_INFINITY;
     let mut best_pos = None;
 
     for _ in 0..RANDOM_POS_ATTEMPTS {
         let Some(pos) = pos_supplier() else {
             continue;
         };
-        let value = mob.get_walk_target_value(pos);
+        let value = position_weight(pos);
         if value > best_weight {
             best_weight = value;
             best_pos = Some(pos);

@@ -5,6 +5,7 @@ mod cooldown;
 mod do_nothing;
 mod fight;
 pub mod gate;
+mod interact;
 mod items;
 mod long_jump;
 mod look;
@@ -12,6 +13,7 @@ mod make_love;
 mod move_to_target;
 mod panic;
 mod ram;
+mod stroll;
 mod swim;
 mod temptation;
 pub mod utils;
@@ -25,6 +27,7 @@ pub use fight::{
     set_walk_target_from_attack_target_if_target_out_of_reach, stop_attacking_if_target_invalid,
 };
 pub use gate::run_one;
+pub use interact::{interact_with_type, set_look_and_interact};
 pub use items::{GoAndGiveItemsToTarget, go_to_wanted_item, stay_close_to_target};
 pub use long_jump::{LongJumpMidJump, LongJumpToRandomPos};
 pub use look::{
@@ -34,6 +37,10 @@ pub use make_love::AnimalMakeLove;
 pub use move_to_target::MoveToTargetSink;
 pub use panic::AnimalPanic;
 pub use ram::PrepareRamNearestTarget;
+pub use stroll::{
+    inside_brownian_walk, set_walk_target_away_from_entity, village_bound_random_stroll,
+    village_bound_random_stroll_within,
+};
 pub use swim::Swim;
 pub use temptation::FollowTemptation;
 pub use walk::{
