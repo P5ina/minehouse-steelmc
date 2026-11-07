@@ -276,7 +276,7 @@ impl Goal for BeeEnterHiveGoal {
 
 /// Vanilla `BeeGoToHiveGoal`: flies home, giving up on hives it cannot reach.
 pub(super) struct BeeGoToHiveGoal {
-    travelling_ticks: i32,
+    traveling_ticks: i32,
     last_path: Option<Path>,
     ticks_stuck: i32,
 }
@@ -284,7 +284,7 @@ pub(super) struct BeeGoToHiveGoal {
 impl BeeGoToHiveGoal {
     pub(super) const fn new() -> Self {
         Self {
-            travelling_ticks: 0,
+            traveling_ticks: 0,
             last_path: None,
             ticks_stuck: 0,
         }
@@ -369,12 +369,12 @@ impl Goal for BeeGoToHiveGoal {
     }
 
     fn start(&mut self, _mob: &dyn PathfinderMob) {
-        self.travelling_ticks = 0;
+        self.traveling_ticks = 0;
         self.ticks_stuck = 0;
     }
 
     fn stop(&mut self, mob: &dyn PathfinderMob) {
-        self.travelling_ticks = 0;
+        self.traveling_ticks = 0;
         self.ticks_stuck = 0;
         let mut navigation = mob.mob_base().navigation().lock();
         navigation.stop();
@@ -388,8 +388,8 @@ impl Goal for BeeGoToHiveGoal {
         let Some(hive_pos) = bee.hive_pos() else {
             return;
         };
-        self.travelling_ticks += 1;
-        if self.travelling_ticks > adjusted_tick_delay(TRAVEL_TICKS_LIMIT) {
+        self.traveling_ticks += 1;
+        if self.traveling_ticks > adjusted_tick_delay(TRAVEL_TICKS_LIMIT) {
             Self::drop_and_blacklist_hive(bee);
             return;
         }
@@ -428,13 +428,13 @@ impl Goal for BeeGoToHiveGoal {
 /// Vanilla `BeeGoToKnownFlowerGoal`: a bee that found no nectar for a while
 /// flies back to the flower it remembers.
 pub(super) struct BeeGoToKnownFlowerGoal {
-    travelling_ticks: i32,
+    traveling_ticks: i32,
 }
 
 impl BeeGoToKnownFlowerGoal {
     pub(super) const fn new() -> Self {
         Self {
-            travelling_ticks: 0,
+            traveling_ticks: 0,
         }
     }
 
@@ -459,11 +459,11 @@ impl Goal for BeeGoToKnownFlowerGoal {
     }
 
     fn start(&mut self, _mob: &dyn PathfinderMob) {
-        self.travelling_ticks = 0;
+        self.traveling_ticks = 0;
     }
 
     fn stop(&mut self, mob: &dyn PathfinderMob) {
-        self.travelling_ticks = 0;
+        self.traveling_ticks = 0;
         let mut navigation = mob.mob_base().navigation().lock();
         navigation.stop();
         navigation.reset_max_visited_nodes_multiplier();
@@ -476,8 +476,8 @@ impl Goal for BeeGoToKnownFlowerGoal {
         let Some(flower_pos) = bee.saved_flower_pos() else {
             return;
         };
-        self.travelling_ticks += 1;
-        if self.travelling_ticks > adjusted_tick_delay(TRAVEL_TICKS_LIMIT) {
+        self.traveling_ticks += 1;
+        if self.traveling_ticks > adjusted_tick_delay(TRAVEL_TICKS_LIMIT) {
             bee.drop_flower();
         } else if bee.mob_base().navigation().lock().is_done() {
             if bee.is_too_far_away(flower_pos) {
