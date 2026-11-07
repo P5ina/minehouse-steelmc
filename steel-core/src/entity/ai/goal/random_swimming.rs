@@ -48,19 +48,22 @@ impl Goal for RandomSwimmingGoal {
 }
 
 fn random_swimmable_pos(mob: &dyn PathfinderMob) -> Option<DVec3> {
+    random_swimmable_pos_within(
+        mob,
+        RANDOM_SWIMMING_HORIZONTAL_RANGE,
+        RANDOM_SWIMMING_VERTICAL_RANGE,
+    )
+}
+
+/// Vanilla `BehaviorUtils.getRandomSwimmablePos`.
+pub(crate) fn random_swimmable_pos_within(
+    mob: &(impl PathfinderMob + ?Sized),
+    horizontal_dist: i32,
+    vertical_dist: i32,
+) -> Option<DVec3> {
     retry_random_swimmable_pos(
-        default_random_pos(
-            mob,
-            RANDOM_SWIMMING_HORIZONTAL_RANGE,
-            RANDOM_SWIMMING_VERTICAL_RANGE,
-        ),
-        || {
-            default_random_pos(
-                mob,
-                RANDOM_SWIMMING_HORIZONTAL_RANGE,
-                RANDOM_SWIMMING_VERTICAL_RANGE,
-            )
-        },
+        default_random_pos(mob, horizontal_dist, vertical_dist),
+        || default_random_pos(mob, horizontal_dist, vertical_dist),
         |pos| is_water_pathfindable(mob, pos),
     )
 }
@@ -82,7 +85,7 @@ fn retry_random_swimmable_pos(
     }
 }
 
-fn is_water_pathfindable(mob: &dyn PathfinderMob, pos: DVec3) -> bool {
+fn is_water_pathfindable(mob: &(impl PathfinderMob + ?Sized), pos: DVec3) -> bool {
     let Some(world) = mob.level() else {
         return false;
     };

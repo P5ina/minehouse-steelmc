@@ -1,4 +1,5 @@
 use std::{collections::BTreeSet, io::Cursor, ptr, sync::Arc};
+use steel_registry::entity_variant::AxolotlVariant;
 
 use glam::DVec3;
 use simdnbt::borrow::{BaseNbtCompound, NbtCompound as BorrowedNbtCompoundView, read_compound};
@@ -478,6 +479,9 @@ pub enum SpawnGroupData {
     School(SchoolSpawnGroupData),
     /// Vanilla `Wolf.WolfPackData`: the variant every wolf of a pack shares.
     WolfPack(WolfPackData),
+    /// Vanilla `Axolotl.AxolotlGroupData`: the two common colors a group
+    /// picks from.
+    Axolotl(AgeableMobGroupData, [AxolotlVariant; 2]),
 }
 
 /// Vanilla `Wolf.WolfPackData`, an `AgeableMobGroupData` that never spawns
