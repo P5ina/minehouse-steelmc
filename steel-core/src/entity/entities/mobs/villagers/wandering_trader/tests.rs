@@ -11,6 +11,7 @@ use steel_utils::types::InteractionHand;
 
 use super::WanderingTraderEntity;
 use crate::behavior::{InteractionResult, init_behaviors};
+use crate::entity::entities::mobs::villagers::Merchant;
 use crate::entity::{AgeableMob, Entity, LivingEntity, Mob, init_entities, next_entity_id};
 use crate::test_support::{TestPlayerBuilder, fresh_test_world};
 
@@ -138,4 +139,24 @@ fn talking_to_a_trader_counts_and_opens_its_offers() {
         InteractionResult::Success
     );
     assert_eq!(mob.with_offers(|offers| offers.len()), 9);
+    assert_eq!(Merchant::trading_player(&mob), Some(player.uuid()));
+    // A trader that is already trading does not open a second screen.
+    assert_ne!(
+        mob.mob_interact(&player, InteractionHand::MainHand),
+        InteractionResult::Success
+    );
+}
+
+#[test]
+fn a_trading_wandering_trader_does_not_despawn() {
+    init_vanilla_registry();
+    init_behaviors();
+    let trader = trader(3);
+    trader.set_despawn_delay(1);
+    Merchant::set_trading_player(&trader, Some(uuid::Uuid::new_v4()));
+    trader.maybe_despawn();
+    assert_eq!(trader.despawn_delay(), 1);
+    Merchant::set_trading_player(&trader, None);
+    trader.maybe_despawn();
+    assert_eq!(trader.despawn_delay(), 0);
 }

@@ -16,6 +16,7 @@ use uuid::Uuid;
 use super::VillagerEntity;
 use crate::behavior::{InteractionResult, init_behaviors};
 use crate::entity::ai::gossip::ReputationEventType;
+use crate::entity::entities::mobs::villagers::Merchant;
 use crate::entity::entities::mobs::villagers::villager_data::villager_type_by_biome;
 use crate::entity::entities::{LightningBoltEntity, WitchEntity};
 use crate::entity::{AgeableMob, Entity, Mob, SharedEntity, init_entities, next_entity_id};
@@ -224,4 +225,51 @@ fn lightning_turns_a_villager_into_a_persistent_witch() {
         .as_mob()
         .unwrap_or_else(|| panic!("a witch is a mob"));
     assert!(witch.is_persistence_required());
+}
+
+#[test]
+fn trading_starts_with_reputation_discounts() {
+    init_vanilla_registry();
+    init_behaviors();
+    let fixture = fresh_test_world("villager_trade_discount");
+    let world = &fixture.world;
+    let player = TestPlayerBuilder::new(Arc::clone(world), "Customer", 21).build();
+    let mob = VillagerEntity::new(
+        &vanilla_entities::VILLAGER,
+        next_entity_id(),
+        DVec3::new(1.0, 64.0, 1.0),
+        Arc::downgrade(world),
+    );
+    mob.set_villager_data(
+        &vanilla_villager_types::PLAINS,
+        &vanilla_villager_professions::FARMER,
+        1,
+    );
+    // 20 major positive (weight 5) + 25 minor positive = 125 reputation.
+    mob.on_reputation_event_from(ReputationEventType::ZombieVillagerCured, player.uuid());
+
+    assert_eq!(
+        mob.mob_interact(&player, InteractionHand::MainHand),
+        InteractionResult::Success
+    );
+    assert_eq!(Merchant::trading_player(&mob), Some(player.uuid()));
+    let discounts = mob.with_offers(|offers| {
+        offers
+            .iter()
+            .map(|offer| {
+                (
+                    offer.special_price_diff(),
+                    -(125.0 * offer.price_multiplier()).floor() as i32,
+                )
+            })
+            .collect::<Vec<_>>()
+    });
+    assert_eq!(discounts.len(), 2, "a novice farmer rolls two trades");
+    for (actual, expected) in discounts {
+        assert_eq!(actual, expected);
+    }
+
+    // Closing the screen clears the trading player and the discounts.
+    Merchant::set_trading_player(&mob, None);
+    assert!(mob.with_offers(|offers| offers.iter().all(|offer| offer.special_price_diff() == 0)));
 }

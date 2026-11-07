@@ -20,7 +20,8 @@ use steel_protocol::packets::game::SSeenAdvancement::Opened;
 use steel_protocol::packets::game::{
     CContainerClose, CMountScreenOpen, COpenScreen, CSetPlayerInventory, ClickType,
     SContainerButtonClick, SContainerClick, SContainerClose, SContainerSlotStateChanged,
-    SRenameItem, SSeenAdvancement, SSetBeacon, SSetCarriedItem, SSetCreativeModeSlot, SoundSource,
+    SRenameItem, SSeenAdvancement, SSelectTrade, SSetBeacon, SSetCarriedItem, SSetCreativeModeSlot,
+    SoundSource,
 };
 use steel_registry::data_components::vanilla_components::SwingAnimation;
 use steel_registry::item_stack::ItemStack;
@@ -431,6 +432,48 @@ impl Player {
                 log::debug!("rename item without an open menu");
             }
             Err(OpenMenuUnavailable::Unavailable) => {}
+        }
+    }
+
+    /// Vanilla `handleSelectTrade`: picks the clicked offer in an open trading menu.
+    pub fn handle_select_trade(&self, packet: SSelectTrade) {
+        let Ok(mut menu) = self.take_open_menu_for_callback(None) else {
+            return;
+        };
+        if menu.is_merchant() {
+            if menu.still_valid(self) {
+                menu.select_trade(packet.item);
+            } else {
+                log::debug!(
+                    "Player {} interacted with invalid menu {menu:?}",
+                    self.gameprofile.name()
+                );
+            }
+        }
+        self.finish_open_menu_callback(menu);
+    }
+
+    /// Vanilla `if (containerMenu instanceof MerchantMenu menu) menu.updateSellItem()`
+    /// from a merchant re-pricing its offers. Returns the open menu's container id
+    /// for the offers that follow, or `None` when no menu is open.
+    ///
+    /// While a click is being handled the menu is busy; that click recomputes the
+    /// trade result itself, so only the container id is returned.
+    pub(crate) fn update_merchant_sell_item(&self) -> Option<i32> {
+        match self.take_open_menu_for_callback(None) {
+            Ok(mut menu) => {
+                menu.update_merchant_sell_item();
+                let container_id = i32::from(menu.container_id());
+                self.finish_open_menu_callback(menu);
+                Some(container_id)
+            }
+            Err(OpenMenuUnavailable::Unavailable) => self
+                .open_menu
+                .lock()
+                .dispatch
+                .as_ref()
+                .map(|dispatch| i32::from(dispatch.container_id)),
+            Err(OpenMenuUnavailable::Closed) => None,
         }
     }
 
