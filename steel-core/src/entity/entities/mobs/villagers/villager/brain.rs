@@ -1,9 +1,9 @@
 //! The villager brain (vanilla `Villager.BRAIN_PROVIDER` and
 //! `VillagerGoalPackages`), with the villager-only behaviors and sensors.
 //!
-//! Not yet ported: the work and meet activities, doors, sleeping, breeding,
-//! gifts to heroes, trading with other villagers, picking up wanted items,
-//! iron golem calls and raids.
+//! Not yet ported: working at the job site, sleeping, breeding, gifts to
+//! heroes, trading with other villagers, picking up wanted items, iron
+//! golem calls and raids.
 
 use std::sync::Arc;
 
@@ -23,9 +23,10 @@ use super::{VillagerEntity, trading_player_of};
 use crate::entity::ai::brain::behavior::{Behavior, OneShot, TimedBehavior};
 use crate::entity::ai::brain::behaviors::{
     DoNothing, LookAtTargetSink, MoveToTargetSink, Swim, acquire_poi, inside_brownian_walk,
-    interact_with_type, run_one, set_entity_look_target, set_look_and_interact,
-    set_walk_target_away_from_entity, set_walk_target_from_look_target, validate_bed_poi,
-    validate_nearby_poi, village_bound_random_stroll, village_bound_random_stroll_within,
+    interact_with_door, interact_with_type, run_one, set_entity_look_target, set_look_and_interact,
+    set_walk_target_away_from_entity, set_walk_target_from_look_target, stroll_around_poi,
+    stroll_to_poi, trigger_one_shuffled, validate_bed_poi, validate_nearby_poi,
+    village_bound_random_stroll, village_bound_random_stroll_within,
 };
 use crate::entity::ai::brain::memory::MemoryRequirement;
 use crate::entity::ai::brain::memory_types::{
@@ -43,6 +44,8 @@ use crate::entity::{AgeableMob, Entity as _, LivingEntity, Mob as _, SharedEntit
 use crate::inventory::equipment::EquipmentSlot;
 use crate::world::World;
 
+/// Vanilla `VillagerGoalPackages.STROLL_SPEED_MODIFIER`.
+const STROLL_SPEED_MODIFIER: f32 = 0.4;
 /// Vanilla `BRAIN_PROVIDER`: the speed modifier every package gets.
 const SPEED_MODIFIER: f32 = 0.5;
 /// Vanilla `VillagerGoalPackages.getPanicPackage`: `speedModifier * 1.5`.
@@ -58,12 +61,17 @@ pub(super) fn make_brain(baby: bool, profession: VillagerProfessionRef) -> Brain
     let mut activities = Vec::new();
     if baby {
         activities.push(play_package());
+    } else {
+        activities.push(work_package().with_conditions(vec![MemoryRequirement::new(
+            &JOB_SITE,
+            MemoryStatus::ValuePresent,
+        )]));
     }
-    // TODO(villager brain): the adult `WORK` package, active while a job site
-    // is remembered, comes with points of interest.
     activities.push(core_package(profession));
-    // TODO(villager brain): the `MEET` package, active while a meeting point
-    // is remembered, comes with points of interest.
+    activities.push(meet_package().with_conditions(vec![MemoryRequirement::new(
+        &MEETING_POINT,
+        MemoryStatus::ValuePresent,
+    )]));
     activities.push(rest_package());
     activities.push(idle_package());
     activities.push(panic_package());
@@ -102,11 +110,11 @@ fn is_type(entity: &SharedEntity, entity_type: EntityTypeRef) -> bool {
 
 /// Vanilla `VillagerGoalPackages.getCorePackage`.
 fn core_package(profession: VillagerProfessionRef) -> ActivityData<VillagerEntity> {
-    // TODO(villager brain): vanilla also opens doors (priority 0) and picks
-    // up wanted items (priority 5) here.
+    // TODO(villager brain): vanilla also picks up wanted items (priority 5).
     // TODO(raids): vanilla also reacts to bells and tracks raids (priority 0).
     let behaviors: Behaviors = vec![
         (0, Box::new(TimedBehavior::new(Swim::new(0.8)))),
+        (0, Box::new(interact_with_door())),
         (
             0,
             Box::new(TimedBehavior::new(LookAtTargetSink::new(45, 90))),
@@ -236,6 +244,147 @@ fn play_package() -> ActivityData<VillagerEntity> {
         (99, Box::new(update_activity_from_schedule())),
     ];
     ActivityData::new(Activity::PLAY, behaviors)
+}
+
+/// Vanilla `VillagerGoalPackages.getWorkPackage`.
+fn work_package() -> ActivityData<VillagerEntity> {
+    // TODO(villager brain): vanilla also works at the job site (weight 7;
+    // farmers use the composter), strolls between secondary job sites
+    // (weight 5), harvests farmland and uses bone meal here.
+    let work: Weighted = vec![
+        (
+            Box::new(stroll_around_poi(&JOB_SITE, STROLL_SPEED_MODIFIER, 4)),
+            2,
+        ),
+        (
+            Box::new(stroll_to_poi(&JOB_SITE, STROLL_SPEED_MODIFIER, 1, 10)),
+            5,
+        ),
+    ];
+    // TODO(villager brain): vanilla also gives gifts to heroes at priority 3.
+    let behaviors: Behaviors = vec![
+        (5, Box::new(minimal_look_behavior())),
+        (5, Box::new(run_one(Vec::new(), work))),
+        (10, Box::new(TimedBehavior::new(ShowTradesToPlayer::new()))),
+        (
+            10,
+            Box::new(set_look_and_interact(
+                |entity| is_type(entity, &vanilla_entities::PLAYER),
+                4,
+            )),
+        ),
+        (
+            2,
+            Box::new(set_walk_target_from_block_memory(
+                &JOB_SITE,
+                SPEED_MODIFIER,
+                9,
+                100,
+                1200,
+            )),
+        ),
+        (99, Box::new(update_activity_from_schedule())),
+    ];
+    ActivityData::new(Activity::WORK, behaviors)
+}
+
+/// Vanilla `VillagerGoalPackages.getMeetPackage`.
+fn meet_package() -> ActivityData<VillagerEntity> {
+    let socialize: Weighted = vec![
+        (
+            Box::new(stroll_around_poi(&MEETING_POINT, STROLL_SPEED_MODIFIER, 40)),
+            2,
+        ),
+        (Box::new(socialize_at_bell()), 2),
+    ];
+    // TODO(villager brain): vanilla also gives gifts to heroes and trades
+    // with other villagers at priority 3.
+    let behaviors: Behaviors = vec![
+        (2, Box::new(trigger_one_shuffled(socialize))),
+        (10, Box::new(TimedBehavior::new(ShowTradesToPlayer::new()))),
+        (
+            10,
+            Box::new(set_look_and_interact(
+                |entity| is_type(entity, &vanilla_entities::PLAYER),
+                4,
+            )),
+        ),
+        (
+            2,
+            Box::new(set_walk_target_from_block_memory(
+                &MEETING_POINT,
+                SPEED_MODIFIER,
+                6,
+                100,
+                200,
+            )),
+        ),
+        (3, Box::new(validate_nearby_poi(is_meeting, &MEETING_POINT))),
+        (5, Box::new(full_look_behavior())),
+        (99, Box::new(update_activity_from_schedule())),
+    ];
+    ActivityData::new(Activity::MEET, behaviors)
+}
+
+/// Vanilla `SocializeAtBell`: now and then, near the bell, walks up to the
+/// closest villager in sight to chat.
+fn socialize_at_bell() -> impl BehaviorControl<VillagerEntity> {
+    /// Vanilla `SPEED_MODIFIER`.
+    const SOCIALIZE_SPEED_MODIFIER: f32 = 0.3;
+    OneShot::new(
+        vec![
+            MemoryRequirement::new(&WALK_TARGET, MemoryStatus::Registered),
+            MemoryRequirement::new(&LOOK_TARGET, MemoryStatus::Registered),
+            MemoryRequirement::new(&MEETING_POINT, MemoryStatus::ValuePresent),
+            MemoryRequirement::new(&NEAREST_VISIBLE_LIVING_ENTITIES, MemoryStatus::ValuePresent),
+            MemoryRequirement::new(&INTERACTION_TARGET, MemoryStatus::ValueAbsent),
+        ],
+        |world: &Arc<World>, body: &VillagerEntity, _time: i64| {
+            let (meeting_point, visible) = {
+                let memories = body.brain.memories().lock();
+                if memories.has_value(&INTERACTION_TARGET) {
+                    return false;
+                }
+                let (Some(meeting_point), Some(visible)) = (
+                    memories.get(&MEETING_POINT),
+                    memories.get(&NEAREST_VISIBLE_LIVING_ENTITIES),
+                ) else {
+                    return false;
+                };
+                (meeting_point, visible)
+            };
+            let is_villager = |entity: &SharedEntity| is_type(entity, &vanilla_entities::VILLAGER);
+            let (x, y, z) = meeting_point.pos.get_center();
+            let near_bell = glam::DVec3::new(x, y, z).distance_squared(body.position()) < 16.0;
+            if rand::random_range(0..100) != 0
+                || world.key != meeting_point.dimension
+                || !near_bell
+                || !visible.contains_matching(is_villager)
+            {
+                return false;
+            }
+            let friend = visible.find_closest(|entity| {
+                is_villager(entity) && entity.position().distance_squared(body.position()) <= 32.0
+            });
+            if let Some(friend) = friend {
+                let mut memories = body.brain.memories().lock();
+                memories.set(&INTERACTION_TARGET, Some(Arc::clone(&friend)));
+                memories.set(
+                    &LOOK_TARGET,
+                    Some(PositionTracker::entity(Arc::clone(&friend), true)),
+                );
+                memories.set(
+                    &WALK_TARGET,
+                    Some(WalkTarget::new(
+                        PositionTracker::entity(friend, false),
+                        SOCIALIZE_SPEED_MODIFIER,
+                        1,
+                    )),
+                );
+            }
+            true
+        },
+    )
 }
 
 /// Vanilla `VillagerGoalPackages.getRestPackage`.

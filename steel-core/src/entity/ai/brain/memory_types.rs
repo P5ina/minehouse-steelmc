@@ -3,6 +3,7 @@
 //! Only memories with a Steel user are listed; add more as brains need them.
 
 use glam::DVec3;
+use rustc_hash::FxHashSet;
 use simdnbt::borrow::NbtCompound as BorrowedNbtCompound;
 use simdnbt::owned::{NbtCompound, NbtList, NbtTag};
 use steel_utils::{BlockPos, DowncastTypeKey, GlobalPos, Identifier, UuidExt as _};
@@ -55,6 +56,12 @@ impl MemoryValue for Vec<SharedEntity> {
 
 impl MemoryValue for GlobalPos {
     const KEY: DowncastTypeKey = DowncastTypeKey::new("steel:brain_memory/global_pos");
+}
+
+/// Vanilla keeps an emptied door set in memory, so it is no "empty
+/// collection" that clears the memory.
+impl MemoryValue for FxHashSet<GlobalPos> {
+    const KEY: DowncastTypeKey = DowncastTypeKey::new("steel:brain_memory/global_pos_set");
 }
 
 impl MemoryValue for Vec<GlobalPos> {
@@ -420,6 +427,8 @@ pub static GOLEM_DETECTED_RECENTLY: MemoryModuleType<bool> =
     MemoryModuleType::with_codec("golem_detected_recently", bool_codec());
 pub static SNIFF_COOLDOWN: MemoryModuleType<()> =
     MemoryModuleType::with_codec("sniff_cooldown", unit_codec());
+pub static DOORS_TO_CLOSE: MemoryModuleType<FxHashSet<GlobalPos>> =
+    MemoryModuleType::new("doors_to_close");
 pub static HOME: MemoryModuleType<GlobalPos> =
     MemoryModuleType::with_codec("home", global_pos_codec());
 pub static JOB_SITE: MemoryModuleType<GlobalPos> =
