@@ -14,6 +14,7 @@ pub use mobs::hostile::{
     GhastEntity, GiantEntity, HuskEntity, MagmaCubeEntity, ParchedEntity, PhantomEntity,
     SilverfishEntity, SkeletonEntity, SlimeEntity, SpiderEntity, StrayEntity, VexEntity,
     WitherSkeletonEntity, ZombieEntity, ZombieGroupData, ZombieVillagerEntity,
+    ZombifiedPiglinEntity,
 };
 pub use mobs::hostile::{ElderGuardianEntity, Guardian, GuardianEntity};
 pub use mobs::hostile::{HoglinEntity, ZoglinEntity};

@@ -6,6 +6,7 @@
 
 pub use drowned::DrownedEntity;
 pub use zombie_villager::ZombieVillagerEntity;
+pub use zombified_piglin::ZombifiedPiglinEntity;
 
 use std::sync::{Arc, Weak};
 
@@ -55,6 +56,7 @@ use crate::entity::{
 };
 use crate::inventory::equipment::EquipmentSlot;
 use crate::physics::MoveResult;
+use crate::player::Player;
 use crate::world::{DifficultyInstance, ServerLevelAccessor, World};
 
 const DEFAULT_STEP_HEIGHT: f32 = 0.6;
@@ -99,6 +101,7 @@ const BABY_HEIGHT: f32 = 0.98;
 const ZOMBIE_BABY_EYE_HEIGHT: f32 = 0.775;
 const HUSK_BABY_EYE_HEIGHT: f32 = 0.825;
 const ZOMBIE_VILLAGER_BABY_EYE_HEIGHT: f32 = 0.67;
+const ZOMBIFIED_PIGLIN_BABY_EYE_HEIGHT: f32 = 0.78;
 const ZOMBIE_VILLAGER_BABY_VEHICLE_ATTACHMENTS: [EntityAttachmentPoint; 1] =
     [EntityAttachmentPoint::new(0.0, 0.125, 0.0)];
 const BABY_VEHICLE_ATTACHMENTS: [EntityAttachmentPoint; 1] =
@@ -115,6 +118,13 @@ const ZOMBIE_VILLAGER_BABY_DIMENSIONS: EntityDimensions = EntityDimensions::new_
     BABY_HEIGHT,
     ZOMBIE_VILLAGER_BABY_EYE_HEIGHT,
     EntityAttachments::new(&[], &ZOMBIE_VILLAGER_BABY_VEHICLE_ATTACHMENTS, &[], &[]),
+);
+/// Vanilla `ZombifiedPiglin.BABY_DIMENSIONS`.
+const ZOMBIFIED_PIGLIN_BABY_DIMENSIONS: EntityDimensions = EntityDimensions::new_with_attachments(
+    BABY_WIDTH,
+    BABY_HEIGHT,
+    ZOMBIFIED_PIGLIN_BABY_EYE_HEIGHT,
+    EntityAttachments::new(&[], &BABY_VEHICLE_ATTACHMENTS, &[], &[]),
 );
 const HUSK_BABY_DIMENSIONS: EntityDimensions = EntityDimensions::new_with_attachments(
     BABY_WIDTH,
@@ -139,6 +149,7 @@ enum ZombieVariant {
     Husk,
     Drowned,
     ZombieVillager,
+    ZombifiedPiglin,
 }
 
 impl ZombieVariant {
@@ -147,6 +158,7 @@ impl ZombieVariant {
             Self::Zombie | Self::Drowned => ZOMBIE_BABY_DIMENSIONS,
             Self::Husk => HUSK_BABY_DIMENSIONS,
             Self::ZombieVillager => ZOMBIE_VILLAGER_BABY_DIMENSIONS,
+            Self::ZombifiedPiglin => ZOMBIFIED_PIGLIN_BABY_DIMENSIONS,
         }
     }
 
@@ -158,6 +170,7 @@ impl ZombieVariant {
             Self::Drowned if in_water => &sound_events::ENTITY_DROWNED_AMBIENT_WATER,
             Self::Drowned => &sound_events::ENTITY_DROWNED_AMBIENT,
             Self::ZombieVillager => &sound_events::ENTITY_ZOMBIE_VILLAGER_AMBIENT,
+            Self::ZombifiedPiglin => &sound_events::ENTITY_ZOMBIFIED_PIGLIN_AMBIENT,
         }
     }
 
@@ -168,6 +181,7 @@ impl ZombieVariant {
             Self::Drowned if in_water => &sound_events::ENTITY_DROWNED_HURT_WATER,
             Self::Drowned => &sound_events::ENTITY_DROWNED_HURT,
             Self::ZombieVillager => &sound_events::ENTITY_ZOMBIE_VILLAGER_HURT,
+            Self::ZombifiedPiglin => &sound_events::ENTITY_ZOMBIFIED_PIGLIN_HURT,
         }
     }
 
@@ -178,28 +192,35 @@ impl ZombieVariant {
             Self::Drowned if in_water => &sound_events::ENTITY_DROWNED_DEATH_WATER,
             Self::Drowned => &sound_events::ENTITY_DROWNED_DEATH,
             Self::ZombieVillager => &sound_events::ENTITY_ZOMBIE_VILLAGER_DEATH,
+            Self::ZombifiedPiglin => &sound_events::ENTITY_ZOMBIFIED_PIGLIN_DEATH,
         }
     }
 
     fn step_sound(self) -> SoundEventRef {
         match self {
-            Self::Zombie => &sound_events::ENTITY_ZOMBIE_STEP,
+            // Vanilla `ZombifiedPiglin` keeps the zombie's step sound.
+            Self::Zombie | Self::ZombifiedPiglin => &sound_events::ENTITY_ZOMBIE_STEP,
             Self::Husk => &sound_events::ENTITY_HUSK_STEP,
             Self::Drowned => &sound_events::ENTITY_DROWNED_STEP,
             Self::ZombieVillager => &sound_events::ENTITY_ZOMBIE_VILLAGER_STEP,
         }
     }
 
-    /// Vanilla `Zombie.convertsInWater`: the drowned has nothing to become
-    /// and the zombie villager overrides it off.
+    /// Vanilla `Zombie.convertsInWater`: the drowned has nothing to become,
+    /// and the zombie villager and the zombified piglin override it off.
     const fn converts_in_water(self) -> bool {
-        !matches!(self, Self::Drowned | Self::ZombieVillager)
+        !matches!(
+            self,
+            Self::Drowned | Self::ZombieVillager | Self::ZombifiedPiglin
+        )
     }
 
     /// Vanilla `convertsToWhenDrowning`.
     fn converts_to_when_drowning(self) -> EntityTypeRef {
         match self {
-            Self::Zombie | Self::Drowned | Self::ZombieVillager => &vanilla_entities::DROWNED,
+            Self::Zombie | Self::Drowned | Self::ZombieVillager | Self::ZombifiedPiglin => {
+                &vanilla_entities::DROWNED
+            }
             Self::Husk => &vanilla_entities::ZOMBIE,
         }
     }
@@ -207,7 +228,7 @@ impl ZombieVariant {
     /// Vanilla `getConversionSound`.
     const fn conversion_sound(self) -> i32 {
         match self {
-            Self::Zombie | Self::Drowned | Self::ZombieVillager => {
+            Self::Zombie | Self::Drowned | Self::ZombieVillager | Self::ZombifiedPiglin => {
                 level_events::SOUND_ZOMBIE_TO_DROWNED
             }
             Self::Husk => level_events::SOUND_HUSK_TO_ZOMBIE,
@@ -224,6 +245,9 @@ impl ZombieVariant {
             Self::Drowned => |entity| entity.entity_type() == &vanilla_entities::DROWNED,
             Self::ZombieVillager => {
                 |entity| entity.entity_type() == &vanilla_entities::ZOMBIE_VILLAGER
+            }
+            Self::ZombifiedPiglin => {
+                |entity| entity.entity_type() == &vanilla_entities::ZOMBIFIED_PIGLIN
             }
         }
     }
@@ -327,6 +351,10 @@ fn zombie_mob_base(variant: ZombieVariant) -> MobBase {
         drowned::add_behaviour_goals(&mob_base);
         return mob_base;
     }
+    if variant == ZombieVariant::ZombifiedPiglin {
+        zombified_piglin::add_behaviour_goals(&mob_base);
+        return mob_base;
+    }
     {
         let mut goal_selector = mob_base.goal_selector().lock();
         // Vanilla priority 2 uses spears; Steel has no spear goal yet.
@@ -380,10 +408,16 @@ fn handle_zombie_attributes<M: Mob + ?Sized>(
     spawn_reason: EntitySpawnReason,
 ) -> bool {
     let mut attributes = mob.attributes().lock();
-    // Vanilla `randomizeReinforcementsChance`.
+    // Vanilla `randomizeReinforcementsChance`; the zombified piglin's
+    // override never calls for reinforcements.
+    let reinforcements_chance = if mob.entity_type() == &vanilla_entities::ZOMBIFIED_PIGLIN {
+        0.0
+    } else {
+        random.next_f64() * f64::from(0.1_f32)
+    };
     attributes.set_base_value(
         vanilla_attributes::SPAWN_REINFORCEMENTS,
-        random.next_f64() * f64::from(0.1_f32),
+        reinforcements_chance,
     );
     attributes.set_modifier(
         vanilla_attributes::KNOCKBACK_RESISTANCE,
@@ -440,6 +474,20 @@ fn handle_zombie_attributes<M: Mob + ?Sized>(
     true
 }
 
+/// Vanilla `Zombie` methods a subclass overrides that the shared impl cannot
+/// tell apart by [`ZombieVariant`] alone.
+trait ZombieVariantHooks {
+    /// The subclass's own `getAmbientSound`, when it depends on its state.
+    fn variant_ambient_sound(&self) -> Option<SoundEventRef> {
+        None
+    }
+
+    /// The subclass's own `isPreventingPlayerRest`.
+    fn variant_is_preventing_player_rest(&self, _level: &World, _player: &Player) -> Option<bool> {
+        None
+    }
+}
+
 /// The save data a `Zombie` subclass adds on top of the zombie's own, for
 /// vanilla `addAdditionalSaveData` / `readAdditionalSaveData` overrides.
 trait ZombieVariantSaveData {
@@ -462,6 +510,25 @@ macro_rules! impl_zombie_traits {
         entity { $($entity_extra:tt)* },
         living { $($living_extra:tt)* },
         mob { $($mob_extra:tt)* }
+    ) => {
+        impl_zombie_traits!(
+            $entity,
+            $variant,
+            $finalize,
+            entity { $($entity_extra)* },
+            living { $($living_extra)* },
+            mob { $($mob_extra)* },
+            monster {}
+        );
+    };
+    (
+        $entity:ty,
+        $variant:expr,
+        $finalize:ident,
+        entity { $($entity_extra:tt)* },
+        living { $($living_extra:tt)* },
+        mob { $($mob_extra:tt)* },
+        monster { $($monster_extra:tt)* }
     ) => {
         impl $entity {
             const VARIANT: ZombieVariant = $variant;
@@ -623,6 +690,15 @@ macro_rules! impl_zombie_traits {
                     // Vanilla `Drowned.populateDefaultEquipmentSlots` replaces
                     // the zombie's armor and iron weapon.
                     drowned::populate_drowned_equipment(&self.living_base, random);
+                    return;
+                }
+                if Self::VARIANT == ZombieVariant::ZombifiedPiglin {
+                    // Vanilla `ZombifiedPiglin.populateDefaultEquipmentSlots`:
+                    // a golden weapon and no armor.
+                    zombified_piglin::populate_zombified_piglin_equipment(
+                        &self.living_base,
+                        random,
+                    );
                     return;
                 }
                 populate_default_equipment_slots(self, world, random, difficulty);
@@ -962,7 +1038,14 @@ macro_rules! impl_zombie_traits {
             }
         }
 
-        impl Monster for $entity {}
+        impl Monster for $entity {
+            fn is_preventing_player_rest(&self, level: &World, player: &Player) -> bool {
+                ZombieVariantHooks::variant_is_preventing_player_rest(self, level, player)
+                    .unwrap_or(true)
+            }
+
+            $($monster_extra)*
+        }
 
         impl PathfinderMob for $entity {}
 
@@ -980,7 +1063,10 @@ macro_rules! impl_zombie_traits {
             }
 
             fn ambient_sound(&self) -> Option<SoundEventRef> {
-                Some(Self::VARIANT.ambient_sound(self.is_in_water()))
+                Some(
+                    ZombieVariantHooks::variant_ambient_sound(self)
+                        .unwrap_or_else(|| Self::VARIANT.ambient_sound(self.is_in_water())),
+                )
             }
 
             $($mob_extra)*
@@ -1042,6 +1128,10 @@ macro_rules! impl_zombie_traits {
             }
 
             fn wants_to_pick_up(&self, item_stack: &ItemStack) -> bool {
+                // Vanilla `ZombifiedPiglin.wantsToPickUp` only asks `canHoldItem`.
+                if Self::VARIANT == ZombieVariant::ZombifiedPiglin {
+                    return self.can_hold_item(item_stack);
+                }
                 // Vanilla `Drowned.wantsToPickUp` refuses spears.
                 if Self::VARIANT == ZombieVariant::Drowned
                     && REGISTRY.items.is_in_tag(item_stack.item(), &ItemTag::SPEARS)
@@ -1209,6 +1299,8 @@ impl_zombie_traits!(ZombieEntity, ZombieVariant::Zombie, finalize_spawn_zombie);
 
 impl ZombieVariantSaveData for ZombieEntity {}
 
+impl ZombieVariantHooks for ZombieEntity {}
+
 impl ZombieEntity {
     /// Vanilla `Zombie.finalizeSpawn`, with a fresh random.
     fn finalize_spawn_zombie(
@@ -1291,7 +1383,32 @@ impl ZombieVariantSaveData for HuskEntity {}
 
 impl ZombieVariantSaveData for DrownedEntity {}
 
+impl ZombieVariantHooks for HuskEntity {}
+
+impl ZombieVariantHooks for DrownedEntity {}
+
+impl ZombieVariantHooks for ZombieVillagerEntity {}
+
 mod zombie_villager;
+
+mod zombified_piglin;
+
+impl_zombie_traits!(
+    ZombifiedPiglinEntity,
+    ZombieVariant::ZombifiedPiglin,
+    finalize_spawn_zombified_piglin,
+    entity {},
+    living {},
+    mob {
+        fn custom_server_ai_step(&self) {
+            self.custom_server_ai_step_zombified_piglin();
+        }
+
+        fn set_target(&self, target: Option<&SharedEntity>) -> bool {
+            self.set_target_zombified_piglin(target)
+        }
+    }
+);
 
 /// The villager half of vanilla `Zombie.killedEntity`: returns whether the
 /// killed entity was converted, in which case it does not perish.
