@@ -11,6 +11,7 @@ use steel_registry::fluid::FluidState;
 use steel_registry::game_rules::GameRule;
 use steel_registry::particle_type::ParticleData;
 use steel_registry::sound_event::SoundEventHolder;
+use steel_registry::vanilla_block_tags::BlockTag;
 use steel_registry::vanilla_game_rules::{
     BLOCK_EXPLOSION_DROP_DECAY, MOB_EXPLOSION_DROP_DECAY, MOB_GRIEFING, TNT_EXPLOSION_DROP_DECAY,
 };
@@ -40,6 +41,8 @@ pub enum ExplosionInteraction {
     Mob,
     /// A TNT explosion governed by `tnt_explosion_drop_decay`.
     Tnt,
+    /// A wind burst that triggers blocks (doors, levers, bells) without destroying them.
+    Trigger,
 }
 
 /// How an explosion interacts with blocks after its affected positions are calculated.
@@ -51,6 +54,8 @@ pub enum BlockInteraction {
     Destroy,
     /// Destroy affected blocks with the explosion radius in their loot context.
     DestroyWithDecay,
+    /// Trigger affected blocks instead of destroying them.
+    TriggerBlock,
 }
 
 impl BlockInteraction {
@@ -79,6 +84,8 @@ pub trait Explosion {
     fn center(&self) -> DVec3;
     /// Returns whether block-like entities may be affected.
     fn should_affect_blocklike_entities(&self) -> bool;
+    /// Vanilla `Explosion.canTriggerBlocks`: whether wind-burst block triggers run.
+    fn can_trigger_blocks(&self) -> bool;
 }
 
 /// Customizable Vanilla explosion resistance, damage, and knockback policy.
@@ -281,6 +288,42 @@ impl ExplosionDamageCalculator for EntityBasedExplosionDamageCalculator<'_> {
     ) -> bool {
         self.source
             .should_block_explode(explosion, world, pos, state, power)
+    }
+}
+
+/// Vanilla `AbstractWindCharge.EXPLOSION_DAMAGE_CALCULATOR`: a
+/// `SimpleExplosionDamageCalculator` that triggers blocks, never damages entities,
+/// keeps the default knockback and treats `#blocks_wind_charge_explosions` as immune.
+pub struct WindChargeExplosionDamageCalculator;
+
+impl WindChargeExplosionDamageCalculator {
+    const IMMUNE_RESISTANCE: f32 = 3_600_000.0;
+}
+
+impl ExplosionDamageCalculator for WindChargeExplosionDamageCalculator {
+    fn block_explosion_resistance(
+        &self,
+        _explosion: &dyn Explosion,
+        _world: &World,
+        _pos: BlockPos,
+        state: BlockStateId,
+        _fluid: FluidState,
+    ) -> Option<f32> {
+        state
+            .get_block()
+            .has_tag(&BlockTag::BLOCKS_WIND_CHARGE_EXPLOSIONS)
+            .then_some(Self::IMMUNE_RESISTANCE)
+    }
+
+    fn should_damage_entity(&self, _explosion: &dyn Explosion, _entity: &dyn Entity) -> bool {
+        false
+    }
+
+    fn knockback_multiplier(&self, entity: &dyn Entity) -> f32 {
+        let creative_flying = entity
+            .as_player()
+            .is_some_and(|player| player.abilities.lock().flying);
+        if creative_flying { 0.0 } else { 1.0 }
     }
 }
 
@@ -494,7 +537,6 @@ impl World {
         }
     }
 
-    // TODO: Add trigger branch with windcharges
     fn resolve_block_interaction(&self, interaction: ExplosionInteraction) -> BlockInteraction {
         match interaction {
             ExplosionInteraction::None => BlockInteraction::Keep,
@@ -507,6 +549,7 @@ impl World {
                 }
             }
             ExplosionInteraction::Tnt => self.destroy_interaction(&TNT_EXPLOSION_DROP_DECAY),
+            ExplosionInteraction::Trigger => BlockInteraction::TriggerBlock,
         }
     }
 
