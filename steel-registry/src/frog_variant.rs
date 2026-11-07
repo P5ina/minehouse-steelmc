@@ -1,4 +1,9 @@
-use crate::shared_structs::{SpawnConditionEntry, insert_spawn_conditions};
+use steel_utils::random::Random;
+
+use crate::biome::BiomeRef;
+use crate::shared_structs::{
+    SpawnConditionEntry, insert_spawn_conditions, pick_spawn_conditioned_entry,
+};
 use rustc_hash::FxHashMap;
 use simdnbt::ToNbtTag;
 use simdnbt::owned::NbtTag;
@@ -41,6 +46,22 @@ impl FrogVariantRegistry {
             allows_registering: true,
         }
     }
+
+    /// Vanilla `VariantUtils.selectVariantToSpawn` for frogs: the matching
+    /// variant with the highest spawn condition priority.
+    #[must_use]
+    pub fn select_spawn_variant(
+        &self,
+        biome: BiomeRef,
+        random: &mut impl Random,
+    ) -> Option<FrogVariantRef> {
+        pick_spawn_conditioned_entry(
+            self.iter().map(|(_, variant)| variant),
+            |variant| variant.spawn_conditions,
+            biome,
+            random,
+        )
+    }
 }
 
 crate::impl_standard_methods!(
@@ -58,3 +79,35 @@ crate::impl_registry!(
     frog_variants_by_key,
     frog_variants
 );
+
+#[cfg(test)]
+mod tests {
+    use steel_utils::random::legacy_random::LegacyRandom;
+
+    use crate::{REGISTRY, init_vanilla_registry, vanilla_biomes, vanilla_frog_variants};
+
+    #[test]
+    fn select_spawn_variant_follows_the_biome() {
+        init_vanilla_registry();
+
+        let pick = |biome| {
+            let mut random = LegacyRandom::from_seed(0);
+            REGISTRY
+                .frog_variants
+                .select_spawn_variant(biome, &mut random)
+                .map(|variant| &variant.key)
+        };
+        assert_eq!(
+            pick(&vanilla_biomes::SWAMP),
+            Some(&vanilla_frog_variants::TEMPERATE.key)
+        );
+        assert_eq!(
+            pick(&vanilla_biomes::MANGROVE_SWAMP),
+            Some(&vanilla_frog_variants::WARM.key)
+        );
+        assert_eq!(
+            pick(&vanilla_biomes::SNOWY_PLAINS),
+            Some(&vanilla_frog_variants::COLD.key)
+        );
+    }
+}

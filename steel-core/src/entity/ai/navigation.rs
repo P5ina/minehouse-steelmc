@@ -95,6 +95,9 @@ pub struct PathNavigation {
     wall_climber: bool,
     /// Vanilla `WallClimberNavigation.pathToPosition`.
     climber_path_to_position: Option<BlockPos>,
+    /// Vanilla `Frog.FrogPathNavigation`: an amphibious navigation that keeps
+    /// to the water border and prefers lily pads.
+    frog: bool,
 }
 
 impl PathNavigation {
@@ -129,6 +132,7 @@ impl PathNavigation {
             can_path_to_targets_below_surface: false,
             wall_climber: false,
             climber_path_to_position: None,
+            frog: false,
         }
     }
 
@@ -210,6 +214,22 @@ impl PathNavigation {
             kind: NavigationKind::Amphibious,
             ..Self::new()
         }
+    }
+
+    /// Creates a vanilla `Frog.FrogPathNavigation`.
+    #[must_use]
+    pub fn frog() -> Self {
+        Self {
+            kind: NavigationKind::Amphibious,
+            frog: true,
+            ..Self::new()
+        }
+    }
+
+    /// Returns whether this is a vanilla `Frog.FrogPathNavigation`.
+    #[must_use]
+    pub const fn is_frog(&self) -> bool {
+        self.frog
     }
 
     #[must_use]
@@ -730,14 +750,14 @@ impl PathNavigation {
             let is_close_enough_to_current_node = x_distance < max_distance_to_waypoint
                 && z_distance < max_distance_to_waypoint
                 && y_distance < max_vertical_distance_to_waypoint;
-            let should_cut_corner = path
-                .next_node()
-                .is_some_and(|node| can_cut_corner(node.path_type))
-                && should_target_next_node_in_direction(
-                    path,
-                    context.ground_mob_position,
-                    context.can_move_directly_to_next_node,
-                );
+            let should_cut_corner = path.next_node().is_some_and(|node| {
+                can_cut_corner(node.path_type)
+                    && !(self.frog && node.path_type == PathType::WaterBorder)
+            }) && should_target_next_node_in_direction(
+                path,
+                context.ground_mob_position,
+                context.can_move_directly_to_next_node,
+            );
             if is_close_enough_to_current_node || should_cut_corner {
                 path.advance();
             }
