@@ -167,6 +167,41 @@ impl MobEffectInstance {
         )
     }
 
+    /// Builds runtime state from the registry form, keeping the hidden fallback chain.
+    ///
+    /// Used to restore effects saved with vanilla `MobEffectInstance.CODEC`.
+    #[must_use]
+    pub fn from_registry_instance(instance: &steel_registry::MobEffectInstance) -> Self {
+        Self {
+            effect: instance.effect(),
+            duration: instance.duration(),
+            amplifier: clamp_effect_amplifier(instance.amplifier()),
+            ambient: instance.ambient(),
+            visible: instance.show_particles(),
+            show_icon: instance.show_icon(),
+            hidden_effect: instance
+                .hidden_effect()
+                .map(|hidden| Box::new(Self::from_registry_details(instance.effect(), hidden))),
+        }
+    }
+
+    fn from_registry_details(
+        effect: MobEffectRef,
+        details: &steel_registry::MobEffectInstanceDetails,
+    ) -> Self {
+        Self {
+            effect,
+            duration: details.duration(),
+            amplifier: clamp_effect_amplifier(details.amplifier()),
+            ambient: details.ambient(),
+            visible: details.show_particles(),
+            show_icon: details.show_icon(),
+            hidden_effect: details
+                .hidden_effect()
+                .map(|hidden| Box::new(Self::from_registry_details(effect, hidden))),
+        }
+    }
+
     fn to_registry_details(&self) -> steel_registry::MobEffectInstanceDetails {
         steel_registry::MobEffectInstanceDetails::new(
             self.amplifier,

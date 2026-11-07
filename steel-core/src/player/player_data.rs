@@ -3,6 +3,7 @@
 //! This module defines the data format for saving and loading player state.
 
 use rustc_hash::FxHashSet;
+use steel_registry::RegistryEntry;
 use steel_registry::item_stack::ItemStack;
 use steel_registry::stat::Stat;
 use steel_utils::Identifier;
@@ -18,7 +19,7 @@ use super::{
 use crate::player::stats_counter::StatState;
 use crate::{
     chunk_saver::{ChunkStorage, PersistentEntity},
-    entity::{Entity, EntityFireFreezeState, LivingEntity},
+    entity::{ActiveMobEffect, Entity, EntityFireFreezeState, LivingEntity},
     inventory::{
         container::Container,
         ender_chest::{ENDER_CHEST_SLOTS, PlayerEnderChestContainer},
@@ -27,7 +28,7 @@ use crate::{
 
 /// Current data version for player saves.
 /// Increment when making breaking changes to the format.
-pub const PLAYER_DATA_VERSION: i32 = 8;
+pub const PLAYER_DATA_VERSION: i32 = 9;
 
 /// Persistent player data saved by Steel's storage backend.
 ///
@@ -67,6 +68,9 @@ pub struct PersistentPlayerData {
 
     /// Current health points.
     pub health: f32,
+
+    /// Active mob effects (vanilla `active_effects`), with their hidden fallback chains.
+    pub active_effects: Vec<ActiveMobEffect>,
 
     /// Current game mode (0=survival, 1=creative, 2=adventure, 3=spectator).
     pub game_mode: i32,
@@ -269,6 +273,7 @@ impl PersistentPlayerData {
             was_in_powder_snow: fire_freeze.was_in_powder_snow(),
             has_visual_fire: fire_freeze.has_visual_fire(),
             health: player.get_health(),
+            active_effects: Self::active_effects_from_player(player),
             game_mode: player.game_mode() as i32,
             prev_game_mode: player
                 .previous_game_mode()
@@ -331,6 +336,13 @@ impl PersistentPlayerData {
     }
 
     /// Snapshots the player's tracked stats and their counters for persistence.
+    /// Active effects in registry order, the order vanilla `active_effects` is saved in.
+    fn active_effects_from_player(player: &Player) -> Vec<ActiveMobEffect> {
+        let mut effects = player.living_base().active_mob_effects();
+        effects.sort_by_key(|effect| effect.effect().try_id().unwrap_or(usize::MAX));
+        effects
+    }
+
     fn stats_from_player(player: &Player) -> Vec<PersistentStat> {
         player
             .stats()
@@ -366,6 +378,7 @@ impl Player {
             .set_fire_freeze_state(EntityFireFreezeState::new());
         self.sync_base_fire_freeze_entity_data();
         self.set_health(self.get_max_health());
+        clear_mob_effects(self);
         *self.abilities.lock() = Abilities::default();
         *self.inventory.lock() = PlayerInventory::new();
         *self.ender_chest_inventory.lock() = PlayerEnderChestContainer::new();
@@ -475,6 +488,14 @@ impl PersistentPlayerData {
         // Health
         player.set_health(self.health);
 
+        // Mob effects. Vanilla `LivingEntity.readAdditionalSaveData` puts them back without the
+        // effect-start hooks; their attribute modifiers are applied here because Steel does not
+        // save attributes.
+        clear_mob_effects(player);
+        for effect in &self.active_effects {
+            player.living_base().add_mob_effect(effect.clone());
+        }
+
         // Game mode
         player.restore_game_modes(
             self.game_mode.into(),
@@ -558,5 +579,12 @@ impl PersistentPlayerData {
             .advancements
             .lock()
             .apply_persisted_progress(self.advancements.iter().cloned());
+    }
+}
+
+/// Removes every active mob effect, with its attribute modifiers.
+fn clear_mob_effects(player: &Player) {
+    for effect in player.living_base().active_mob_effects() {
+        player.living_base().remove_mob_effect(effect.effect());
     }
 }
