@@ -23,9 +23,11 @@ use crate::behavior::blocks::redstone::{MAX_REDSTONE_SIGNAL, MIN_REDSTONE_SIGNAL
 use crate::behavior::context::{BlockHitResult, BlockPlaceContext, InteractionResult};
 use crate::entity::{Entity, InsideBlockEffectCollector, SharedEntity};
 use crate::player::Player;
+use crate::world::Explosion;
 use crate::world::{
     LevelReader, ScheduledTickAccess, SignalQueryContext, World, game_event::GameEventContext,
 };
+use steel_registry::item_stack::ItemStack;
 
 /// Behavior for all button block variants.
 ///
@@ -163,6 +165,21 @@ impl ButtonBlock {
 }
 
 impl BlockBehavior for ButtonBlock {
+    /// Vanilla `onExplosionHit`: wind bursts trigger this block.
+    fn on_explosion_hit(
+        &self,
+        state: BlockStateId,
+        world: &Arc<World>,
+        pos: BlockPos,
+        explosion: &dyn Explosion,
+        on_hit: &mut dyn FnMut(ItemStack, BlockPos),
+    ) {
+        if explosion.can_trigger_blocks() && !state.get_value(POWERED) {
+            self.press(state, world, pos, None);
+        }
+        self.default_on_explosion_hit(state, world, pos, explosion, on_hit);
+    }
+
     /// Checks if a button with the given state can survive at the given position.
     fn can_survive(&self, state: BlockStateId, world: &dyn LevelReader, pos: BlockPos) -> bool {
         FaceAttachedHorizontalDirectionalBlock::can_survive(state, world, pos)

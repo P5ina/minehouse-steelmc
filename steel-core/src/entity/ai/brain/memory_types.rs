@@ -320,3 +320,10 @@ impl MemoryValue for Path {
 }
 
 pub static PATH: MemoryModuleType<Path> = MemoryModuleType::new("path");
+
+pub static NEAREST_VISIBLE_ATTACKABLE_PLAYERS: MemoryModuleType<Vec<SharedEntity>> =
+    MemoryModuleType::new("nearest_visible_targetable_players");
+pub static CHARGE_COOLDOWN_TICKS: MemoryModuleType<i32> =
+    MemoryModuleType::with_codec("charge_cooldown_ticks", int_codec());
+pub static ATTACK_TARGET_COOLDOWN: MemoryModuleType<i32> =
+    MemoryModuleType::with_codec("attack_target_cooldown", int_codec());

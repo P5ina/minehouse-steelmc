@@ -1,18 +1,31 @@
 use std::sync::Arc;
 
+use glam::DVec3;
+use steel_registry::blocks::block_state_ext::BlockStateExt as _;
+use steel_registry::vanilla_blocks;
+use steel_utils::{BlockPos, BlockStateId, Identifier};
+
 use super::UniformInt;
 use crate::entity::ai::brain::behavior::OneShot;
 use crate::entity::ai::brain::memory::{MemoryModuleType, MemoryRequirement};
 use crate::entity::ai::brain::memory_types::{
-    LOOK_TARGET, PositionTracker, WALK_TARGET, WalkTarget,
+    ATTACK_TARGET, LOOK_TARGET, PositionTracker, WALK_TARGET, WalkTarget,
 };
 use crate::entity::ai::brain::{BehaviorControl, MemoryStatus};
-use crate::entity::ai::goal::random_pos::land_random_pos;
+use crate::entity::ai::goal::random_pos::{is_restricted, land_random_pos, mob_restricted};
+use crate::entity::ai::goal::random_swimmable_pos_within;
 use crate::entity::{LivingEntity, PathfinderMob, SharedEntity};
 use crate::world::World;
 
 const MAX_XZ_DIST: i32 = 10;
 const MAX_Y_DIST: i32 = 7;
+/// Vanilla `RandomStroll.SWIM_XY_DISTANCE_TIERS`.
+const SWIM_XY_DISTANCE_TIERS: [(i32, i32); 6] = [(1, 1), (3, 3), (5, 5), (6, 5), (7, 7), (10, 7)];
+
+/// Vanilla `TryFindLiquid`: the retry delay while still on cooldown.
+const TRY_FIND_LIQUID_RETRY_TICKS: i64 = 22;
+/// Vanilla `TryFindLiquid`: the cooldown after a search.
+const TRY_FIND_LIQUID_COOLDOWN_TICKS: i64 = 40;
 
 /// Walks to a random land position within 10 blocks; with
 /// `may_stroll_from_water` false it only starts out of water
@@ -41,6 +54,65 @@ pub fn random_stroll<E: PathfinderMob + ?Sized>(
             true
         },
     )
+}
+
+/// Swims to a random water position, reaching further out tier by tier
+/// while each step stays in water (vanilla `RandomStroll.swim`).
+pub fn random_swim<E: PathfinderMob + ?Sized>(speed_modifier: f32) -> impl BehaviorControl<E> {
+    OneShot::new(
+        vec![MemoryRequirement::new(
+            &WALK_TARGET,
+            MemoryStatus::ValueAbsent,
+        )],
+        move |_world: &Arc<World>, body: &E, _time: i64| {
+            let Some(memories) = body.brain_memories() else {
+                return false;
+            };
+            if memories.lock().has_value(&WALK_TARGET) || !body.is_in_water() {
+                return false;
+            }
+            let target = swim_target_pos(body)
+                .map(|position| WalkTarget::to_point(position, speed_modifier, 0));
+            memories.lock().set(&WALK_TARGET, target);
+            true
+        },
+    )
+}
+
+/// Vanilla `RandomStroll.getTargetSwimPos`.
+fn swim_target_pos<E: PathfinderMob + ?Sized>(body: &E) -> Option<DVec3> {
+    let world = body.level()?;
+    let mut fallback: Option<DVec3> = None;
+    let mut target = None;
+    for (horizontal, vertical) in SWIM_XY_DISTANCE_TIERS {
+        target = match fallback {
+            None => random_swimmable_pos_within(body, horizontal, vertical),
+            Some(fallback) => {
+                let direction = (fallback - body.position()).normalize();
+                Some(
+                    body.position()
+                        + direction
+                            * DVec3::new(
+                                f64::from(horizontal),
+                                f64::from(vertical),
+                                f64::from(horizontal),
+                            ),
+                )
+            }
+        };
+        let restrict = mob_restricted(body, f64::from(horizontal));
+        let Some(position) = target else {
+            return fallback;
+        };
+        let block = BlockPos::containing(position.x, position.y, position.z);
+        if world.get_block_state(block).get_fluid_state().is_empty()
+            || is_restricted(restrict, body, block)
+        {
+            return fallback;
+        }
+        fallback = Some(position);
+    }
+    target
 }
 
 /// Walks to whatever the body looks at (vanilla `SetWalkTargetFromLookTarget`).
@@ -134,4 +206,81 @@ pub fn baby_follow_adult<E: LivingEntity + ?Sized>(
             true
         },
     )
+}
+
+/// Walks to a nearby block of `fluid_tag` liquid with air above it, when the
+/// body stands outside that liquid (vanilla `TryFindLiquid.create`).
+pub fn try_find_liquid<E: PathfinderMob + ?Sized>(
+    range: i32,
+    speed_modifier: f32,
+    fluid_tag: &'static Identifier,
+) -> impl BehaviorControl<E> {
+    let mut next_ok_start_time = 0_i64;
+    OneShot::new(
+        vec![
+            MemoryRequirement::new(&ATTACK_TARGET, MemoryStatus::ValueAbsent),
+            MemoryRequirement::new(&WALK_TARGET, MemoryStatus::ValueAbsent),
+            MemoryRequirement::new(&LOOK_TARGET, MemoryStatus::Registered),
+        ],
+        move |world: &Arc<World>, body: &E, time: i64| {
+            let Some(memories) = body.brain_memories() else {
+                return false;
+            };
+            {
+                let memories = memories.lock();
+                if memories.has_value(&ATTACK_TARGET) || memories.has_value(&WALK_TARGET) {
+                    return false;
+                }
+            }
+            let body_pos = body.block_position();
+            if fluid_has_tag(world.get_block_state(body_pos), fluid_tag) {
+                return false;
+            }
+            if time < next_ok_start_time {
+                next_ok_start_time = time + TRY_FIND_LIQUID_RETRY_TICKS;
+                return true;
+            }
+            let position = body.position();
+            let mut found = None;
+            for pos in body_pos.within_manhattan(range, range, range) {
+                if pos.x() == body_pos.x() && pos.z() == body_pos.z() {
+                    continue;
+                }
+                let state = world.get_block_state(pos);
+                let block = state.get_block();
+                let is_liquid_block =
+                    block == &vanilla_blocks::WATER || block == &vanilla_blocks::LAVA;
+                if !is_liquid_block || !fluid_has_tag(state, fluid_tag) {
+                    continue;
+                }
+                if world.get_block_state(pos.above()).is_air() {
+                    found = Some(pos);
+                    break;
+                }
+                if found.is_none() && !pos.closer_to_center_than(position, 1.5) {
+                    found = Some(pos);
+                }
+            }
+            if let Some(pos) = found {
+                let mut memories = memories.lock();
+                memories.set(&LOOK_TARGET, Some(PositionTracker::block(pos)));
+                memories.set(
+                    &WALK_TARGET,
+                    Some(WalkTarget::new(
+                        PositionTracker::block(pos),
+                        speed_modifier,
+                        0,
+                    )),
+                );
+            }
+            next_ok_start_time = time + TRY_FIND_LIQUID_COOLDOWN_TICKS;
+            true
+        },
+    )
+}
+
+/// Vanilla `FluidState.is(tag)`.
+fn fluid_has_tag(state: BlockStateId, fluid_tag: &Identifier) -> bool {
+    let fluid = state.get_fluid_state().fluid_id;
+    !fluid.is_empty && fluid.has_tag(fluid_tag)
 }

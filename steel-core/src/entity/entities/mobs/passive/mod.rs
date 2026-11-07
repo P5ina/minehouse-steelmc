@@ -1,6 +1,7 @@
 //! Passive entity implementations.
 /// Those mobs are passive creatures that run away when attacked by a player.
 mod armadillo;
+mod axolotl;
 mod chicken;
 mod cow;
 mod dolphin;
@@ -10,12 +11,14 @@ mod feline;
 mod fish;
 mod goat;
 mod mooshroom;
+mod nautilus;
 mod parrot;
 mod pig;
 mod sheep;
 mod squid;
 
 pub use armadillo::ArmadilloEntity;
+pub use axolotl::AxolotlEntity;
 pub use chicken::ChickenEntity;
 pub use cow::CowEntity;
 pub use dolphin::DolphinEntity;
@@ -30,6 +33,7 @@ pub use fish::{
 };
 pub use goat::GoatEntity;
 pub use mooshroom::MushroomCowEntity;
+pub use nautilus::{AbstractNautilus, NautilusEntity, ZombieNautilusEntity};
 pub use parrot::ParrotEntity;
 pub use pig::PigEntity;
 pub use sheep::SheepEntity;

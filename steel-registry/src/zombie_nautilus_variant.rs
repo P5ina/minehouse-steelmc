@@ -1,8 +1,12 @@
-use crate::shared_structs::{SpawnConditionEntry, insert_spawn_conditions};
+use crate::biome::BiomeRef;
+use crate::shared_structs::{
+    SpawnConditionEntry, insert_spawn_conditions, pick_spawn_conditioned_entry,
+};
 use rustc_hash::FxHashMap;
 use simdnbt::ToNbtTag;
 use simdnbt::owned::NbtTag;
 use steel_utils::Identifier;
+use steel_utils::random::Random;
 
 /// Represents a full zombie nautilus variant definition from a data pack JSON file.
 #[derive(Debug)]
@@ -44,6 +48,22 @@ impl ZombieNautilusVariantRegistry {
             zombie_nautilus_variants_by_key: FxHashMap::default(),
             allows_registering: true,
         }
+    }
+
+    /// Vanilla `VariantUtils.selectVariantToSpawn`: the highest-priority
+    /// variant whose spawn conditions accept `biome`.
+    #[must_use]
+    pub fn select_spawn_variant(
+        &self,
+        biome: BiomeRef,
+        random: &mut impl Random,
+    ) -> Option<ZombieNautilusVariantRef> {
+        pick_spawn_conditioned_entry(
+            self.iter().map(|(_, variant)| variant),
+            |variant| variant.spawn_conditions,
+            biome,
+            random,
+        )
     }
 }
 

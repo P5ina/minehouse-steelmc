@@ -16,6 +16,7 @@ use steel_utils::{
     types::{InteractionHand, UpdateFlags},
 };
 
+use crate::world::Explosion;
 use crate::{
     behavior::{
         BlockBehavior, BlockPlaceContext, InteractionResult, InventoryAccess,
@@ -28,8 +29,6 @@ use crate::{
 };
 
 /// Behavior for Candle Cakes
-/// TODO:
-/// - [ ] onExplosion
 #[block_behavior]
 pub struct CandleCakeBlock {
     block: BlockRef,
@@ -46,6 +45,21 @@ impl CandleCakeBlock {
 }
 
 impl BlockBehavior for CandleCakeBlock {
+    /// Vanilla `onExplosionHit`: wind bursts trigger this block.
+    fn on_explosion_hit(
+        &self,
+        state: BlockStateId,
+        world: &Arc<World>,
+        pos: BlockPos,
+        explosion: &dyn Explosion,
+        on_hit: &mut dyn FnMut(ItemStack, BlockPos),
+    ) {
+        if explosion.can_trigger_blocks() && CandleBlock::is_lit(state) {
+            CandleBlock::extinguish(None, state, world, pos);
+        }
+        self.default_on_explosion_hit(state, world, pos, explosion, on_hit);
+    }
+
     fn get_state_for_placement(&self, context: &BlockPlaceContext<'_>) -> Option<BlockStateId> {
         if context
             .world

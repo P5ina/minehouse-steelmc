@@ -217,7 +217,7 @@ pub fn horse_inventory_menu(
     mount_inventory: Shared<SimpleContainer>,
     inventory_columns: usize,
 ) -> Menu {
-    let mut builder = MenuBuilder::new(None, container_id);
+    let builder = MenuBuilder::new(None, container_id);
     let living = mount.as_living_entity();
     // Vanilla checks `instanceof Llama`, which trader llamas extend.
     let is_llama = mount.entity_type() == &vanilla_entities::LLAMA
@@ -232,6 +232,62 @@ pub fn horse_inventory_menu(
                 .entity_types
                 .is_in_tag(mount.entity_type(), &EntityTypeTag::CAN_WEAR_HORSE_ARMOR));
 
+    build_mount_menu(
+        MountMenuParts {
+            builder,
+            player_inventory,
+            mount,
+            mount_inventory,
+            inventory_columns,
+        },
+        saddle_active,
+        body_active,
+    )
+}
+
+/// Builds vanilla `NautilusInventoryMenu` for `mount`: the saddle and body
+/// armor slots, active while the nautilus may use them, then the player
+/// inventory. A nautilus has no storage of its own.
+#[must_use]
+pub fn nautilus_inventory_menu(
+    player_inventory: &Shared<PlayerInventory>,
+    container_id: u8,
+    mount: &SharedEntity,
+    mount_inventory: Shared<SimpleContainer>,
+) -> Menu {
+    let living = mount.as_living_entity();
+    let saddle_active = living.is_some_and(|living| living.can_use_slot(EquipmentSlot::Saddle));
+    let body_active = living.is_some_and(|living| living.can_use_slot(EquipmentSlot::Body));
+    build_mount_menu(
+        MountMenuParts {
+            builder: MenuBuilder::new(None, container_id),
+            player_inventory,
+            mount,
+            mount_inventory,
+            inventory_columns: 0,
+        },
+        saddle_active,
+        body_active,
+    )
+}
+
+/// What vanilla `AbstractMountInventoryMenu` is built from.
+struct MountMenuParts<'a> {
+    builder: MenuBuilder,
+    player_inventory: &'a Shared<PlayerInventory>,
+    mount: &'a SharedEntity,
+    mount_inventory: Shared<SimpleContainer>,
+    inventory_columns: usize,
+}
+
+fn build_mount_menu(parts: MountMenuParts<'_>, saddle_active: bool, body_active: bool) -> Menu {
+    let MountMenuParts {
+        mut builder,
+        player_inventory,
+        mount,
+        mount_inventory,
+        inventory_columns,
+    } = parts;
     let (saddle_container, saddle) =
         equipment_section(&mut builder, mount, EquipmentSlot::Saddle, saddle_active);
     let (body_container, body) =
@@ -286,7 +342,8 @@ impl MenuKind for MountMenuKind {
         let Some(mount) = self.mount.upgrade() else {
             return false;
         };
-        let inventory_changed = mount.as_abstract_horse().is_none_or(|horse| {
+        // A nautilus keeps its (empty) inventory for life.
+        let inventory_changed = mount.as_abstract_horse().is_some_and(|horse| {
             horse
                 .horse_base()
                 .has_inventory_changed(&self.mount_inventory)

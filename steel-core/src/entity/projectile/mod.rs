@@ -49,6 +49,7 @@ use super::{
 };
 
 pub use arrow::{ARROW_BASE_DAMAGE, ARROW_GRAVITY, AbstractArrow, ArrowBase, ArrowPickup};
+pub(crate) use hurting::rotate_towards_movement;
 pub use hurting::{
     AbstractHurtingProjectile, HurtingProjectileBase, INITIAL_ACCELERATION_POWER, normalize_or_zero,
 };
@@ -627,14 +628,7 @@ pub trait Projectile: Entity + ProjectileEventSource {
                     &EntityTypeTag::REDIRECTABLE_PROJECTILE,
                 ) && let Some(projectile) = entity_hit.entity.as_projectile()
                 {
-                    let owner_entity = self.get_owner();
-                    let owner = self.projectile_base().state.lock().owner.clone();
-                    projectile.deflect(
-                        ProjectileDeflection::AimDeflect,
-                        owner_entity.as_deref(),
-                        owner,
-                        true,
-                    );
+                    self.on_redirect_projectile(projectile);
                 }
                 Arc::clone(&self).on_hit_entity(&entity_hit.entity, entity_hit.location);
                 if let Some(world) = world {
@@ -657,6 +651,19 @@ pub trait Projectile: Entity + ProjectileEventSource {
                 }
             }
         }
+    }
+
+    /// Vanilla `Projectile.onRedirectProjectile`: a hit redirectable
+    /// projectile is aimed along this projectile owner's look direction.
+    fn on_redirect_projectile(&self, hit_projectile: &dyn Projectile) {
+        let owner_entity = self.get_owner();
+        let owner = self.projectile_base().state.lock().owner.clone();
+        hit_projectile.deflect(
+            ProjectileDeflection::AimDeflect,
+            owner_entity.as_deref(),
+            owner,
+            true,
+        );
     }
 
     /// Vanilla `Projectile.onHitEntity` (no-op by default).
