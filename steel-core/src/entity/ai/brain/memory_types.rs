@@ -378,6 +378,17 @@ pub static CHARGE_COOLDOWN_TICKS: MemoryModuleType<i32> =
     MemoryModuleType::with_codec("charge_cooldown_ticks", int_codec());
 pub static ATTACK_TARGET_COOLDOWN: MemoryModuleType<i32> =
     MemoryModuleType::with_codec("attack_target_cooldown", int_codec());
+pub static NEAREST_REPELLENT: MemoryModuleType<BlockPos> =
+    MemoryModuleType::new("nearest_repellent");
+pub static PACIFIED: MemoryModuleType<bool> = MemoryModuleType::new("pacified");
+pub static NEAREST_VISIBLE_ADULT_PIGLIN: MemoryModuleType<SharedEntity> =
+    MemoryModuleType::new("nearest_visible_adult_piglin");
+pub static NEAREST_VISIBLE_ADULT_HOGLINS: MemoryModuleType<Vec<SharedEntity>> =
+    MemoryModuleType::new("nearest_visible_adult_hoglins");
+pub static VISIBLE_ADULT_PIGLIN_COUNT: MemoryModuleType<i32> =
+    MemoryModuleType::new("visible_adult_piglin_count");
+pub static VISIBLE_ADULT_HOGLIN_COUNT: MemoryModuleType<i32> =
+    MemoryModuleType::new("visible_adult_hoglin_count");
 pub static VISIBLE_VILLAGER_BABIES: MemoryModuleType<Vec<SharedEntity>> =
     MemoryModuleType::new("visible_villager_babies");
 pub static GOLEM_DETECTED_RECENTLY: MemoryModuleType<bool> =

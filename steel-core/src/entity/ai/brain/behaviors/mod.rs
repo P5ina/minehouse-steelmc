@@ -1,6 +1,7 @@
 //! Shared brain behaviors (vanilla `net.minecraft.world.entity.ai.behavior`).
 
 mod attack;
+mod combat;
 mod cooldown;
 mod do_nothing;
 mod fight;
@@ -9,6 +10,7 @@ mod interact;
 mod long_jump;
 mod look;
 mod make_love;
+mod memory_ops;
 mod move_to_target;
 mod panic;
 mod ram;
@@ -19,6 +21,9 @@ pub mod utils;
 mod walk;
 
 pub use attack::{ChargeAttack, start_attacking};
+pub use combat::{
+    get_nearest_target, is_other_target_much_further_away_than_current_attack_target, trigger_if,
+};
 pub use cooldown::CountDownCooldownTicks;
 pub use do_nothing::DoNothing;
 pub use fight::{
@@ -32,6 +37,7 @@ pub use look::{
     LookAtTargetSink, RandomLookAround, set_entity_look_target, set_entity_look_target_sometimes,
 };
 pub use make_love::AnimalMakeLove;
+pub use memory_ops::become_passive_if_memory_present;
 pub use move_to_target::MoveToTargetSink;
 pub use panic::AnimalPanic;
 pub use ram::PrepareRamNearestTarget;
@@ -42,8 +48,8 @@ pub use stroll::{
 pub use swim::Swim;
 pub use temptation::FollowTemptation;
 pub use walk::{
-    baby_follow_adult, random_stroll, random_swim, set_walk_target_from_look_target,
-    try_find_liquid,
+    baby_follow_adult, random_stroll, random_swim, set_walk_target_away_from_pos,
+    set_walk_target_from_look_target, try_find_liquid,
 };
 
 /// An inclusive tick range sampled uniformly (vanilla `UniformInt`).
