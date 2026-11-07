@@ -66,20 +66,31 @@ impl BlockBehavior for AnvilBlock {
         ))
     }
 
-    fn use_without_item(
+    fn open_menu_provider(
         &self,
         _state: BlockStateId,
         _world: &Arc<World>,
         pos: steel_utils::BlockPos,
         player: &Player,
-        _hit_result: &BlockHitResult,
-        _inv: &mut InventoryAccess,
-    ) -> InteractionResult {
+    ) -> bool {
         let inventory = Arc::clone(&player.inventory);
         player.open_menu(
             TextComponent::translated(translations::CONTAINER_REPAIR.msg()),
             move |context| anvil(inventory, context.container_id, pos, context.world),
         );
+        true
+    }
+
+    fn use_without_item(
+        &self,
+        state: BlockStateId,
+        world: &Arc<World>,
+        pos: steel_utils::BlockPos,
+        player: &Player,
+        _hit_result: &BlockHitResult,
+        _inv: &mut InventoryAccess,
+    ) -> InteractionResult {
+        self.open_menu_provider(state, world, pos, player);
         player.award_custom_stat(&vanilla_custom_stats::INTERACT_WITH_ANVIL);
         InteractionResult::Success
     }

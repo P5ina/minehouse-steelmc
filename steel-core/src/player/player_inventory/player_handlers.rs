@@ -25,6 +25,8 @@ use steel_protocol::packets::game::{
 };
 use steel_registry::data_components::vanilla_components::SwingAnimation;
 use steel_registry::item_stack::ItemStack;
+#[cfg(test)]
+use steel_registry::menu_type::MenuTypeRef;
 use steel_registry::mob_effect::MobEffectRef;
 use steel_registry::sound_events;
 use steel_registry::stat::vanilla_stat_types;
@@ -62,16 +64,10 @@ impl Player {
             return Err(OpenMenuUnavailable::Unavailable);
         }
 
-        let container_id = menu.container_id();
-        let overrides_player_slots = menu.overrides_player_slots();
         let Some(menu) = open_menu.menu.take() else {
             return Err(OpenMenuUnavailable::Unavailable);
         };
-        open_menu.dispatch = Some(OpenMenuDispatch {
-            container_id,
-            overrides_player_slots,
-            actions: Vec::new(),
-        });
+        open_menu.dispatch = Some(OpenMenuDispatch::for_menu(&menu));
         Ok(menu)
     }
 
@@ -664,11 +660,12 @@ impl Player {
         let PendingMenuOpen { screen, create } = pending;
         let container_id = self.next_container_counter();
         let world = self.get_world();
-        let menu = create(MenuOpenContext {
+        let mut menu = create(MenuOpenContext {
             container_id,
             player: self,
             world: &world,
         });
+        menu.start_open(self);
         assert_eq!(
             menu.container_id(),
             container_id,
@@ -710,11 +707,7 @@ impl Player {
             if open_menu.menu.is_some() {
                 continue;
             }
-            open_menu.dispatch = Some(OpenMenuDispatch {
-                container_id: menu.container_id(),
-                overrides_player_slots: menu.overrides_player_slots(),
-                actions: Vec::new(),
-            });
+            open_menu.dispatch = Some(OpenMenuDispatch::for_menu(&menu));
             break;
         }
 
@@ -877,6 +870,16 @@ impl Player {
         }
     }
 
+    /// Returns the menu type id of the open external menu, if any.
+    #[cfg(test)]
+    pub(in crate::player) fn open_menu_type_for_test(&self) -> Option<MenuTypeRef> {
+        self.open_menu
+            .lock()
+            .menu
+            .as_ref()
+            .and_then(Menu::menu_type)
+    }
+
     #[cfg(test)]
     pub(in crate::player) fn retry_terminal_menu_removal_for_test(&self) {
         self.try_finish_terminal_menu_removal();
@@ -897,11 +900,7 @@ impl Player {
             let Some(menu) = open_menu.menu.take() else {
                 return;
             };
-            open_menu.dispatch = Some(OpenMenuDispatch {
-                container_id: menu.container_id(),
-                overrides_player_slots: menu.overrides_player_slots(),
-                actions: Vec::new(),
-            });
+            open_menu.dispatch = Some(OpenMenuDispatch::for_menu(&menu));
             menu
         };
 
@@ -926,6 +925,21 @@ impl Player {
                 .behavior_mut()
                 .transfer_state(menu.behavior());
         }
+    }
+
+    /// Whether the player's open menu is a chest menu over `container`, the
+    /// check of Vanilla `ChestBlockEntity`'s and `BarrelBlockEntity`'s
+    /// `isOwnContainer`. A menu busy in a callback still counts as open.
+    #[must_use]
+    pub fn has_chest_menu_open_over(&self, container: ContainerId) -> bool {
+        let open_menu = self.open_menu.lock();
+        if let Some(menu) = open_menu.menu.as_ref() {
+            return menu.chest_menu_containers().contains(&container);
+        }
+        open_menu
+            .dispatch
+            .as_ref()
+            .is_some_and(|dispatch| dispatch.chest_menu_containers.contains(&container))
     }
 
     /// Returns true if the player has an external menu open (not the inventory).

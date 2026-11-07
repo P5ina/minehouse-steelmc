@@ -107,20 +107,18 @@ impl BlockBehavior for EnchantingTableBlock {
         false
     }
 
-    fn use_without_item(
+    fn open_menu_provider(
         &self,
         _state: BlockStateId,
         world: &Arc<World>,
         pos: BlockPos,
         player: &Player,
-        _hit_result: &BlockHitResult,
-        _inv: &mut InventoryAccess,
-    ) -> InteractionResult {
+    ) -> bool {
         let Some(block_entity) = world.get_block_entity(pos) else {
-            return InteractionResult::Success;
+            return false;
         };
         let Some(table) = block_entity.downcast_ref::<EnchantingTableBlockEntity>() else {
-            return InteractionResult::Success;
+            return false;
         };
         let title = table.display_name();
         let inventory = Arc::clone(&player.inventory);
@@ -134,6 +132,19 @@ impl BlockBehavior for EnchantingTableBlock {
                 enchantment_seed,
             )
         });
+        true
+    }
+
+    fn use_without_item(
+        &self,
+        state: BlockStateId,
+        world: &Arc<World>,
+        pos: BlockPos,
+        player: &Player,
+        _hit_result: &BlockHitResult,
+        _inv: &mut InventoryAccess,
+    ) -> InteractionResult {
+        self.open_menu_provider(state, world, pos, player);
         InteractionResult::Success
     }
 }

@@ -12,6 +12,7 @@ const SKY_LIGHT_LEVEL_ATTRIBUTE: &str = "minecraft:gameplay/sky_light_level";
 const SUN_ANGLE_ATTRIBUTE: &str = "minecraft:visual/sun_angle";
 const MONSTERS_BURN_ATTRIBUTE: &str = "minecraft:gameplay/monsters_burn";
 const BEES_STAY_IN_HIVE_ATTRIBUTE: &str = "minecraft:gameplay/bees_stay_in_hive";
+const CREAKING_ACTIVE_ATTRIBUTE: &str = "minecraft:gameplay/creaking_active";
 const MOON_PHASE_ATTRIBUTE: &str = "minecraft:visual/moon_phase";
 const CAT_WAKING_UP_GIFT_CHANCE_ATTRIBUTE: &str = "minecraft:gameplay/cat_waking_up_gift_chance";
 const CAN_PILLAGER_PATROL_SPAWN_ATTRIBUTE: &str = "minecraft:gameplay/can_pillager_patrol_spawn";
@@ -101,6 +102,21 @@ pub(super) fn monsters_burn(
     let mut value = false;
     for_each_timeline(dimension_type, |timeline| {
         value = apply_timeline_bool_track(value, timeline, clock_manager, MONSTERS_BURN_ATTRIBUTE);
+    });
+    value
+}
+
+/// Samples `CREAKING_ACTIVE`: false by default, set by the overworld night
+/// timeline.
+#[must_use]
+pub(super) fn creaking_active(
+    dimension_type: DimensionTypeRef,
+    clock_manager: &WorldClockManager,
+) -> bool {
+    let mut value = false;
+    for_each_timeline(dimension_type, |timeline| {
+        value =
+            apply_timeline_bool_track(value, timeline, clock_manager, CREAKING_ACTIVE_ATTRIBUTE);
     });
     value
 }

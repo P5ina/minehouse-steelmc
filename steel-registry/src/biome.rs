@@ -27,6 +27,8 @@ pub struct Biome {
     pub spawn_costs: FxHashMap<Identifier, SpawnCost>,
     pub carvers: Vec<Identifier>,
     pub features: Vec<Vec<Identifier>>,
+    /// The syncable environment attributes as JSON, as sent to the client.
+    pub network_attributes: &'static str,
     /// Cached registry ID, set during registration for O(1) lookup on hot paths.
     pub id: OnceLock<usize>,
 }
@@ -122,39 +124,38 @@ pub struct ParticleOptions {
     pub particle_type: Identifier,
 }
 
+/// Encodes the biome like vanilla `Biome.NETWORK_CODEC`: climate settings, the syncable
+/// environment attributes and the special effects. Generation settings and spawn data stay
+/// on the server.
 impl ToNbtTag for &Biome {
     fn to_nbt_tag(self) -> NbtTag {
-        use simdnbt::owned::{NbtCompound, NbtList};
+        use simdnbt::owned::NbtCompound;
         let mut compound = NbtCompound::new();
         compound.insert("has_precipitation", self.has_precipitation);
         compound.insert("temperature", self.temperature);
+        if let TemperatureModifier::Frozen = self.temperature_modifier {
+            compound.insert("temperature_modifier", "frozen");
+        }
         compound.insert("downfall", self.downfall);
-        compound.insert(
-            "temperature_modifier",
-            match self.temperature_modifier {
-                TemperatureModifier::None => "none",
-                TemperatureModifier::Frozen => "frozen",
-            },
-        );
-        compound.insert(
-            "creature_spawn_probability",
-            self.creature_spawn_probability,
-        );
 
-        // Effects
+        let attributes: serde_json::Value = serde_json::from_str(self.network_attributes)
+            .expect("generated biome attributes are valid JSON");
+        if let NbtTag::Compound(attributes) = json_to_nbt(&attributes)
+            && !attributes.is_empty()
+        {
+            compound.insert("attributes", NbtTag::Compound(attributes));
+        }
+
         let mut effects = NbtCompound::new();
-        effects.insert("fog_color", self.effects.fog_color);
-        effects.insert("sky_color", self.effects.sky_color);
         effects.insert("water_color", self.effects.water_color);
-        effects.insert("water_fog_color", self.effects.water_fog_color);
         if let Some(fc) = self.effects.foliage_color {
             effects.insert("foliage_color", fc);
         }
-        if let Some(gc) = self.effects.grass_color {
-            effects.insert("grass_color", gc);
-        }
         if let Some(dfc) = self.effects.dry_foliage_color {
             effects.insert("dry_foliage_color", dfc);
+        }
+        if let Some(gc) = self.effects.grass_color {
+            effects.insert("grass_color", gc);
         }
         match self.effects.grass_color_modifier {
             GrassColorModifier::None => {}
@@ -165,111 +166,67 @@ impl ToNbtTag for &Biome {
                 effects.insert("grass_color_modifier", "swamp");
             }
         }
-        if let Some(ambient_sound) = &self.effects.ambient_sound {
-            let s = ambient_sound.key.to_string();
-            effects.insert("ambient_sound", s.as_str());
-        }
-        if let Some(additions) = &self.effects.additions_sound {
-            let mut a = NbtCompound::new();
-            let s = additions.sound.key.to_string();
-            a.insert("sound", s.as_str());
-            a.insert("tick_chance", additions.tick_chance);
-            effects.insert("additions_sound", NbtTag::Compound(a));
-        }
-        if let Some(mood) = &self.effects.mood_sound {
-            let mut m = NbtCompound::new();
-            let s = mood.sound.key.to_string();
-            m.insert("sound", s.as_str());
-            m.insert("tick_delay", mood.tick_delay);
-            m.insert("block_search_extent", mood.block_search_extent);
-            m.insert("offset", mood.offset);
-            effects.insert("mood_sound", NbtTag::Compound(m));
-        }
-        if let Some(particle) = &self.effects.particle {
-            let mut p = NbtCompound::new();
-            let mut opts = NbtCompound::new();
-            let s = particle.options.particle_type.to_string();
-            opts.insert("type", s.as_str());
-            p.insert("options", NbtTag::Compound(opts));
-            p.insert("probability", particle.probability);
-            effects.insert("particle", NbtTag::Compound(p));
-        }
-        if let Some(music_list) = &self.effects.music {
-            let music_nbt: Vec<NbtCompound> = music_list
-                .iter()
-                .map(|wm| {
-                    let mut wmc = NbtCompound::new();
-                    let mut data = NbtCompound::new();
-                    data.insert("replace_current_music", wm.data.replace_current_music);
-                    data.insert("max_delay", wm.data.max_delay);
-                    data.insert("min_delay", wm.data.min_delay);
-                    let s = wm.data.sound.key.to_string();
-                    data.insert("sound", s.as_str());
-                    wmc.insert("data", NbtTag::Compound(data));
-                    wmc.insert("weight", wm.weight);
-                    wmc
-                })
-                .collect();
-            effects.insert("music", NbtTag::List(NbtList::Compound(music_nbt)));
-        }
         compound.insert("effects", NbtTag::Compound(effects));
 
-        // Spawners
-        let mut spawners_compound = NbtCompound::new();
-        for (category, entries) in &self.spawners {
-            let category_entries: Vec<NbtCompound> = entries
-                .iter()
-                .map(|sd| {
-                    let mut e = NbtCompound::new();
-                    let s = sd.entity_type.to_string();
-                    e.insert("type", s.as_str());
-                    e.insert("weight", sd.weight);
-                    e.insert("minCount", sd.min_count);
-                    e.insert("maxCount", sd.max_count);
-                    e
-                })
-                .collect();
-            spawners_compound.insert(
-                category.as_str(),
-                NbtTag::List(NbtList::Compound(category_entries)),
-            );
-        }
-        compound.insert("spawners", NbtTag::Compound(spawners_compound));
-
-        // Spawn costs
-        let mut spawn_costs_compound = NbtCompound::new();
-        for (entity_type, cost) in &self.spawn_costs {
-            let mut cost_compound = NbtCompound::new();
-            cost_compound.insert("charge", cost.charge);
-            cost_compound.insert("energy_budget", cost.energy_budget);
-            let s = entity_type.to_string();
-            spawn_costs_compound.insert(s.as_str(), NbtTag::Compound(cost_compound));
-        }
-        compound.insert("spawn_costs", NbtTag::Compound(spawn_costs_compound));
-
-        // Carvers (all treated as "air" step)
-        let mut carvers_compound = NbtCompound::new();
-        let air_carvers: Vec<String> = self
-            .carvers
-            .iter()
-            .map(std::string::ToString::to_string)
-            .collect();
-        carvers_compound.insert("air", NbtTag::List(NbtList::from(air_carvers)));
-        compound.insert("carvers", NbtTag::Compound(carvers_compound));
-
-        // Features (list of lists)
-        let features_nbt: Vec<NbtList> = self
-            .features
-            .iter()
-            .map(|step| {
-                let step_strings: Vec<String> =
-                    step.iter().map(std::string::ToString::to_string).collect();
-                NbtList::from(step_strings)
-            })
-            .collect();
-        compound.insert("features", NbtTag::List(NbtList::List(features_nbt)));
-
         NbtTag::Compound(compound)
+    }
+}
+
+/// Converts datapack JSON to NBT the way `JsonOps` → `NbtOps` would: booleans become bytes,
+/// integral numbers ints and other numbers floats.
+fn json_to_nbt(value: &serde_json::Value) -> NbtTag {
+    use serde_json::Value;
+    use simdnbt::owned::{NbtCompound, NbtList};
+    match value {
+        Value::Null => NbtTag::Compound(NbtCompound::new()),
+        Value::Bool(b) => NbtTag::Byte(i8::from(*b)),
+        Value::Number(n) => match n.as_i64().and_then(|i| i32::try_from(i).ok()) {
+            Some(i) => NbtTag::Int(i),
+            #[expect(clippy::cast_possible_truncation, reason = "datapack floats are f32")]
+            None => NbtTag::Float(n.as_f64().unwrap_or_default() as f32),
+        },
+        Value::String(s) => NbtTag::String(s.as_str().into()),
+        Value::Array(items) => {
+            let tags: Vec<NbtTag> = items.iter().map(json_to_nbt).collect();
+            NbtTag::List(if tags.iter().all(|t| matches!(t, NbtTag::Compound(_))) {
+                NbtList::Compound(
+                    tags.into_iter()
+                        .filter_map(|t| match t {
+                            NbtTag::Compound(c) => Some(c),
+                            _ => None,
+                        })
+                        .collect(),
+                )
+            } else if tags.iter().all(|t| matches!(t, NbtTag::String(_))) {
+                NbtList::String(
+                    tags.into_iter()
+                        .filter_map(|t| match t {
+                            NbtTag::String(s) => Some(s),
+                            _ => None,
+                        })
+                        .collect(),
+                )
+            } else {
+                // Mixed or numeric lists: wrap each element like NbtOps does for
+                // heterogeneous lists.
+                NbtList::Compound(
+                    tags.into_iter()
+                        .map(|t| {
+                            let mut c = NbtCompound::new();
+                            c.insert("", t);
+                            c
+                        })
+                        .collect(),
+                )
+            })
+        }
+        Value::Object(map) => {
+            let mut compound = NbtCompound::new();
+            for (key, value) in map {
+                compound.insert(key.as_str(), json_to_nbt(value));
+            }
+            NbtTag::Compound(compound)
+        }
     }
 }
 
@@ -334,5 +291,45 @@ impl crate::RegistryEntry for Biome {
 
     fn try_id(&self) -> Option<usize> {
         self.id.get().copied()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use simdnbt::ToNbtTag;
+    use simdnbt::owned::NbtTag;
+
+    use crate::vanilla_biomes;
+
+    fn compound(tag: &NbtTag) -> &simdnbt::owned::NbtCompound {
+        match tag {
+            NbtTag::Compound(c) => c,
+            other => panic!("expected compound, got {other:?}"),
+        }
+    }
+
+    /// Nether fog comes from the biome's `visual/fog_color`; without it the client draws the
+    /// attribute default instead of the vanilla red haze.
+    #[test]
+    fn nether_wastes_sends_fog_color_attribute() {
+        let tag = (&*vanilla_biomes::NETHER_WASTES).to_nbt_tag();
+        let biome = compound(&tag);
+        let attributes = compound(biome.get("attributes").expect("attributes sent"));
+        assert_eq!(
+            attributes
+                .get("minecraft:visual/fog_color")
+                .and_then(NbtTag::string)
+                .map(ToString::to_string),
+            Some("#330808".to_string())
+        );
+        assert!(
+            attributes
+                .get("minecraft:gameplay/natural_mob_spawns")
+                .is_none(),
+            "non-syncable attributes stay on the server"
+        );
+        let effects = compound(biome.get("effects").expect("effects sent"));
+        assert!(effects.get("fog_color").is_none());
+        assert!(biome.get("features").is_none());
     }
 }

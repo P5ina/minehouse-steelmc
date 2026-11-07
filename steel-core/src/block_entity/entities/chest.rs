@@ -8,6 +8,13 @@ use std::{
     sync::{Arc, Weak},
 };
 
+use glam::DVec3;
+use steel_protocol::packets::game::SoundSource;
+use steel_registry::blocks::block_state_ext::BlockStateExt as _;
+use steel_registry::blocks::properties::{BlockStateProperties, ChestType};
+use steel_registry::sound_event::SoundEventRef;
+use steel_registry::{sound_events, vanilla_blocks};
+
 use simdnbt::ToNbtTag;
 use simdnbt::borrow::{BaseNbtCompound as BorrowedNbtCompound, NbtCompound as NbtCompoundView};
 use simdnbt::owned::{NbtCompound, NbtList, NbtTag};
@@ -17,9 +24,15 @@ use steel_registry::vanilla_block_entity_types;
 use steel_utils::{BlockPos, BlockStateId, DowncastType, DowncastTypeKey, locks::SyncMutex};
 use text_components::TextComponent;
 
+use crate::behavior::blocks::connected_direction;
+use crate::block_entity::container_openers::{
+    ContainerOpenersCounter, ContainerOpenersHooks, container_sound_pitch,
+};
 use crate::block_entity::{BlockEntity, BlockEntityBase};
+use crate::entity::Entity as _;
 use crate::inventory::container::Container;
 use crate::inventory::lock::{ContainerRef, SharedContainer};
+use crate::player::Player;
 use crate::world::World;
 
 /// Number of slots in one chest half (3 rows of 9).
@@ -27,7 +40,7 @@ pub const CHEST_SLOTS: usize = 27;
 
 /// Chest block entity.
 ///
-/// Steel does not yet unpack loot tables, apply container locks or count viewers.
+/// Steel does not yet unpack loot tables or apply container locks.
 /// `LootTable`, `LootTableSeed`, `lock` and `CustomName` are kept as loaded so
 /// generated loot chests survive a save until those systems exist.
 pub struct ChestBlockEntity {
@@ -36,6 +49,8 @@ pub struct ChestBlockEntity {
     container_ref: ContainerRef,
     /// Saved fields other than `Items`, written back unchanged.
     preserved: SyncMutex<NbtCompound>,
+    /// Viewers, for the lid, the sounds and a trapped chest's power.
+    openers: ContainerOpenersCounter,
 }
 
 struct ChestContainer {
@@ -87,6 +102,7 @@ impl ChestBlockEntity {
             base,
             container,
             preserved: SyncMutex::new(NbtCompound::new()),
+            openers: ContainerOpenersCounter::new(),
         }
     }
 
@@ -97,6 +113,89 @@ impl ChestBlockEntity {
         let tag = preserved.get("CustomName")?;
         TextComponent::from_nbt(tag)
     }
+
+    /// The number of players viewing this half. Vanilla `getOpenCount`, a
+    /// trapped chest's redstone power.
+    #[must_use]
+    pub fn opener_count(&self) -> i32 {
+        self.openers.opener_count()
+    }
+
+    fn is_trapped(&self) -> bool {
+        self.base.block_entity_type() == &vanilla_block_entity_types::TRAPPED_CHEST
+    }
+
+    /// Vanilla `ChestBlockEntity.playSound`: a double chest sounds once, from
+    /// its `RIGHT` half, halfway towards the `LEFT` one.
+    fn play_sound(world: &World, pos: BlockPos, state: BlockStateId, sound: SoundEventRef) {
+        let chest_type = state.get_value(&BlockStateProperties::CHEST_TYPE);
+        if chest_type == ChestType::Left {
+            return;
+        }
+        let mut x = f64::from(pos.x()) + 0.5;
+        let y = f64::from(pos.y()) + 0.5;
+        let mut z = f64::from(pos.z()) + 0.5;
+        if chest_type == ChestType::Right {
+            let (step_x, _, step_z) = connected_direction(state).offset();
+            x += f64::from(step_x) * 0.5;
+            z += f64::from(step_z) * 0.5;
+        }
+        world.play_sound_at(
+            sound,
+            SoundSource::Blocks,
+            DVec3::new(x, y, z),
+            0.5,
+            container_sound_pitch(),
+            None,
+        );
+    }
+}
+
+impl ContainerOpenersHooks for ChestBlockEntity {
+    /// Only blocks that are a Vanilla `ChestBlock` have a chest sound.
+    fn on_open(&self, world: &Arc<World>, pos: BlockPos, state: BlockStateId) {
+        if is_chest_block(state) {
+            Self::play_sound(world, pos, state, &sound_events::BLOCK_CHEST_OPEN);
+        }
+    }
+
+    fn on_close(&self, world: &Arc<World>, pos: BlockPos, state: BlockStateId) {
+        if is_chest_block(state) {
+            Self::play_sound(world, pos, state, &sound_events::BLOCK_CHEST_CLOSE);
+        }
+    }
+
+    /// `signalOpenCount`: block event 1 carries the count to clients' lids. A
+    /// trapped chest then updates its neighbors and the block below for its
+    /// power, Vanilla `TrappedChestBlockEntity.signalOpenCount`.
+    fn opener_count_changed(
+        &self,
+        world: &Arc<World>,
+        pos: BlockPos,
+        state: BlockStateId,
+        previous: i32,
+        current: i32,
+    ) {
+        let block = state.get_block();
+        world.block_event(pos, block, EVENT_SET_OPEN_COUNT, current);
+        if self.is_trapped() && previous != current {
+            world.update_neighbors_at(pos, block);
+            world.update_neighbors_at(pos.below(), block);
+        }
+    }
+
+    /// The player's chest menu shows this half, alone or in a double chest.
+    fn is_own_container(&self, player: &Player) -> bool {
+        player.has_chest_menu_open_over(self.container_ref.container_id())
+    }
+}
+
+/// Block event that sets a chest's open count on clients.
+const EVENT_SET_OPEN_COUNT: i32 = 1;
+
+fn is_chest_block(state: BlockStateId) -> bool {
+    let block = state.get_block();
+    block == &vanilla_blocks::CHEST || block == &vanilla_blocks::TRAPPED_CHEST
 }
 
 impl BlockEntity for ChestBlockEntity {
@@ -164,6 +263,55 @@ impl BlockEntity for ChestBlockEntity {
 
     fn get_update_tag(&self) -> Option<NbtCompound> {
         None
+    }
+
+    /// Clients animate the lid from this event; the server only accepts it.
+    fn trigger_event(&self, param_a: i32, _param_b: i32) -> bool {
+        param_a == EVENT_SET_OPEN_COUNT
+    }
+
+    fn start_open(&self, player: &Player) {
+        if self.base.is_removed() || player.is_spectator() {
+            return;
+        }
+        let Some(world) = self.get_level() else {
+            return;
+        };
+        self.openers.increment_openers(
+            self,
+            player,
+            &world,
+            self.base.pos(),
+            self.base.block_state(),
+            player.block_interaction_range(),
+        );
+    }
+
+    fn stop_open(&self, player: &Player) {
+        if self.base.is_removed() || player.is_spectator() {
+            return;
+        }
+        let Some(world) = self.get_level() else {
+            return;
+        };
+        self.openers.decrement_openers(
+            self,
+            player,
+            &world,
+            self.base.pos(),
+            self.base.block_state(),
+        );
+    }
+
+    fn recheck_open(&self) {
+        if self.base.is_removed() {
+            return;
+        }
+        let Some(world) = self.get_level() else {
+            return;
+        };
+        self.openers
+            .recheck_openers(self, &world, self.base.pos(), self.base.block_state());
     }
 
     fn container_ref(&self) -> Option<ContainerRef> {

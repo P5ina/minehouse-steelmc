@@ -199,7 +199,7 @@ impl RaidGardenGoal {
         }
 
         self.can_raid.store(false, Ordering::Relaxed);
-        self.move_to.set_start_delay(10);
+        *self.move_to.next_start_tick_mut() = 10;
     }
 }
 
@@ -239,7 +239,7 @@ impl Goal for RaidGardenGoal {
     }
 
     fn can_use(&mut self, mob: &dyn PathfinderMob) -> bool {
-        if self.move_to.start_delay() <= 0 {
+        if *self.move_to.next_start_tick_mut() <= 0 {
             let Some(world) = mob.level() else {
                 return false;
             };

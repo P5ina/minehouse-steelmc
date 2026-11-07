@@ -168,6 +168,27 @@ impl ContainerRef {
             .is_none_or(|owner| owner.block_entity.is_valid_container_for(player))
     }
 
+    /// Vanilla `Container.startOpen` for a menu opened over this container.
+    ///
+    /// Reaches the owning block entity, if it is still the live one at its
+    /// position. Containers without an owner have nothing to count.
+    pub fn start_open(&self, player: &Player) {
+        if let Some(block_entity) = self.owner_block_entity() {
+            block_entity.start_open(player);
+        }
+    }
+
+    /// Vanilla `Container.stopOpen` for a menu closed over this container.
+    pub fn stop_open(&self, player: &Player) {
+        if let Some(block_entity) = self.owner_block_entity() {
+            block_entity.stop_open(player);
+        }
+    }
+
+    fn owner_block_entity(&self) -> Option<SharedBlockEntity> {
+        self.owner.as_ref()?.block_entity.live_block_entity()
+    }
+
     /// Locks this container and returns a guard.
     fn lock(&self) -> LockedContainer {
         LockedContainer(SyncMutex::lock_arc(&self.source))

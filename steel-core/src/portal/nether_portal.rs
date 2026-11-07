@@ -88,6 +88,10 @@ pub(crate) fn calculate_transition(
             largest_portal_rectangle_at(target_world, pos)?,
             PortalTicketTarget::Block(pos),
         )
+    } else if entity.is_spectator() {
+        // Vanilla `getExitPortal`: spectators never build an exit portal, so
+        // with no existing portal in range the destination is null.
+        return None;
     } else {
         let source_portal_axis = source_world
             .get_block_state(portal_entry_pos)
@@ -221,12 +225,40 @@ fn create_dimension_transition(
 
 #[cfg(test)]
 mod tests {
-    use super::{prewarm_chunk_radius, search_radius};
+    use std::sync::Arc;
+
+    use glam::DVec3;
+    use steel_registry::init_vanilla_registry;
+    use steel_utils::types::GameType;
+    use steel_utils::{BlockPos, ChunkPos};
+
+    use steel_registry::blocks::block_state_ext::BlockStateExt as _;
+
+    use super::{calculate_transition, prewarm_chunk_radius, search_radius};
+    use crate::behavior::init_behaviors;
+    use crate::entity::Entity as _;
+    use crate::test_support::{TestPlayerBuilder, fresh_test_world, insert_ready_full_chunk};
 
     #[test]
     fn search_radius_matches_vanilla_portal_forcer_targets() {
         assert_eq!(search_radius(true), 16);
         assert_eq!(search_radius(false), 128);
+    }
+
+    #[test]
+    fn spectators_never_build_an_exit_portal() {
+        init_vanilla_registry();
+        init_behaviors();
+        let world_fixture = fresh_test_world("spectator-nether-exit-portal");
+        let world = &world_fixture.world;
+        insert_ready_full_chunk(world, ChunkPos::new(0, 0));
+        let player = TestPlayerBuilder::new(Arc::clone(world), "Spectator", 1).build();
+        player.restore_game_modes(GameType::Spectator, None);
+        player.base().set_position_local(DVec3::new(8.5, 70.0, 8.5));
+        let exit = BlockPos::new(8, 70, 8);
+
+        assert!(calculate_transition(world, world, player.as_ref(), exit, exit, true).is_none());
+        assert!(world.get_block_state(exit).is_air());
     }
 
     #[test]

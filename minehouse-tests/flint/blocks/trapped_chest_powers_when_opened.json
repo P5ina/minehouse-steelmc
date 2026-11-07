@@ -1,0 +1,121 @@
+{
+  "$schema": "https://raw.githubusercontent.com/FlintTestMC/flint-core/refs/heads/main/flint-content/test_spec_schema.json",
+  "flintVersion": "1.0.0",
+  "name": "minehouse_trapped_chest_powers_when_opened",
+  "description": "A player opens a trapped chest; it powers the lamp beside it.",
+  "tags": [
+    "minehouse",
+    "container",
+    "player",
+    "redstone"
+  ],
+  "minecraftIds": [
+    "minecraft:redstone_lamp",
+    "minecraft:stone",
+    "minecraft:trapped_chest"
+  ],
+  "dependencies": [],
+  "setup": {
+    "cleanup": {
+      "region": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          3,
+          2,
+          4
+        ]
+      ]
+    }
+  },
+  "timeline": [
+    {
+      "at": 0,
+      "do": "fill",
+      "region": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          3,
+          0,
+          4
+        ]
+      ],
+      "with": {
+        "id": "minecraft:stone"
+      }
+    },
+    {
+      "at": 0,
+      "do": "place_each",
+      "blocks": [
+        {
+          "pos": [
+            1,
+            1,
+            1
+          ],
+          "block": {
+            "id": "minecraft:trapped_chest",
+            "facing": "south",
+            "type": "single",
+            "waterlogged": false
+          }
+        },
+        {
+          "pos": [
+            2,
+            1,
+            1
+          ],
+          "block": {
+            "id": "minecraft:redstone_lamp",
+            "lit": false
+          }
+        }
+      ]
+    },
+    {
+      "at": 1,
+      "do": "tp",
+      "entity_alias": "player",
+      "pos": [
+        1.5,
+        1,
+        3.5
+      ],
+      "rot": [
+        180,
+        29
+      ]
+    },
+    {
+      "at": 1,
+      "do": "interact"
+    },
+    {
+      "at": 3,
+      "do": "assert",
+      "checks": [
+        {
+          "pos": [
+            2,
+            1,
+            1
+          ],
+          "is": {
+            "id": "minecraft:redstone_lamp",
+            "lit": true
+          }
+        }
+      ]
+    }
+  ],
+  "breakpoints": []
+}

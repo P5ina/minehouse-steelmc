@@ -8,7 +8,10 @@ use steel_utils::{BlockPos, ErasedType};
 use crate::inventory::container::DEFAULT_DISTANCE_BUFFER;
 use crate::inventory::menu::behavior::MenuBehavior;
 use crate::world::World;
-use crate::{inventory::lock::ContainerLockGuard, player::Player};
+use crate::{
+    inventory::lock::{ContainerId, ContainerLockGuard},
+    player::Player,
+};
 
 use crate::inventory::click::{Click, ClickOutcome, QuickCraft};
 
@@ -28,6 +31,18 @@ pub trait MenuKind: ErasedType + Send + Sync {
         _guard: &mut ContainerLockGuard,
         _player: &Player,
     ) {
+    }
+
+    /// Vanilla menu constructors calling `container.startOpen(player)`: runs
+    /// once, right after the menu is created for `player` and before its screen
+    /// is sent. Pair with closing in [`Self::removed`].
+    fn start_open(&mut self, _player: &Player) {}
+
+    /// The containers this menu shows if it is a Vanilla `ChestMenu` over
+    /// block entity containers (chests, barrels), so their viewer recheck can
+    /// find it (`ChestMenu.getContainer` identity). Empty for every other menu.
+    fn chest_menu_containers(&self) -> Vec<ContainerId> {
+        Vec::new()
     }
 
     /// Extra cleanup on close beyond [`Menu::removed`].

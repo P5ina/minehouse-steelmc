@@ -32,12 +32,19 @@ pub fn shulker_box(
     builder.route(shulker_box, player.all(), FillDirection::Backward);
     builder.route(player.all(), shulker_box, FillDirection::Forward);
 
-    builder.build(ShulkerBoxKind { container })
+    builder.build(ShulkerBoxKind {
+        container,
+        opened: false,
+    })
 }
 
-/// Per-menu shulker box state: just the backing container for the validity check.
+/// Per-menu shulker box state: the backing container, for the validity check
+/// and the box's viewer count.
 pub struct ShulkerBoxKind {
     container: ContainerRef,
+    /// Whether `startOpen` reached the box, so `stopOpen` is never sent for a
+    /// menu that was not opened.
+    opened: bool,
 }
 
 // SAFETY: This Steel-owned key uniquely identifies the concrete menu kind
@@ -49,5 +56,21 @@ unsafe impl DowncastType for ShulkerBoxKind {
 impl MenuKind for ShulkerBoxKind {
     fn still_valid(&self, _behavior: &MenuBehavior, player: &Player) -> bool {
         self.container.still_valid(player)
+    }
+
+    /// `ShulkerBoxMenu`'s constructor: `container.startOpen(player)`.
+    fn start_open(&mut self, player: &Player) {
+        if !self.opened {
+            self.opened = true;
+            self.container.start_open(player);
+        }
+    }
+
+    /// `ShulkerBoxMenu.removed`: `container.stopOpen(player)`.
+    fn removed(&mut self, _behavior: &mut MenuBehavior, player: &Player) {
+        if self.opened {
+            self.opened = false;
+            self.container.stop_open(player);
+        }
     }
 }

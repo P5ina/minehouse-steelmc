@@ -9,13 +9,14 @@ use steel_registry::blocks::BlockRef;
 use steel_registry::blocks::block_state_ext::BlockStateExt;
 use steel_registry::blocks::properties::{BlockStateProperties, Direction, EnumProperty};
 use steel_registry::{vanilla_block_entity_types, vanilla_custom_stats};
-use steel_utils::{BlockPos, BlockStateId, translations};
+use steel_utils::{BlockPos, BlockStateId, Downcast as _, translations};
 use text_components::TextComponent;
 
 use crate::behavior::InventoryAccess;
 use crate::behavior::block::{BlockBehavior, BlockEntityCreation};
 use crate::behavior::context::{BlockHitResult, BlockPlaceContext, InteractionResult};
 use crate::block_entity::BLOCK_ENTITIES;
+use crate::block_entity::entities::BarrelBlockEntity;
 use crate::inventory::container::calculate_redstone_signal_from_container;
 use crate::inventory::lock::{ContainerLockGuard, ContainerRef};
 use crate::inventory::menu::kinds::chest;
@@ -49,39 +50,56 @@ impl BlockBehavior for BarrelBlock {
         Some(self.block.default_state().set_value(FACING, facing))
     }
 
-    fn use_without_item(
+    fn open_menu_provider(
         &self,
         _state: BlockStateId,
+        world: &Arc<World>,
+        pos: BlockPos,
+        player: &Player,
+    ) -> bool {
+        let Some(block_entity) = world.get_block_entity(pos) else {
+            return false;
+        };
+        let Some(container_ref) = ContainerRef::from_block_entity(block_entity) else {
+            return false;
+        };
+
+        // Barrels open a 3-row chest menu.
+        let inventory = Arc::clone(&player.inventory);
+        player.open_menu(
+            TextComponent::translated(translations::CONTAINER_BARREL.msg()),
+            move |context| chest(inventory, context.container_id, container_ref, 3),
+        );
+        true
+    }
+
+    fn use_without_item(
+        &self,
+        state: BlockStateId,
         world: &Arc<World>,
         pos: BlockPos,
         player: &Player,
         _hit_result: &BlockHitResult,
         _inv: &mut InventoryAccess,
     ) -> InteractionResult {
-        // Get the block entity
-        let Some(block_entity) = world.get_block_entity(pos) else {
+        if !self.open_menu_provider(state, world, pos, player) {
             return InteractionResult::Pass;
-        };
-
-        // Create a container reference from the block entity
-        let Some(container_ref) = ContainerRef::from_block_entity(block_entity) else {
-            return InteractionResult::Pass;
-        };
-
-        // Open the chest menu (3 rows for barrel)
-        let inventory = Arc::clone(&player.inventory);
-        player.open_menu(
-            TextComponent::translated(translations::CONTAINER_BARREL.msg()),
-            move |context| chest(inventory, context.container_id, container_ref, 3),
-        );
+        }
 
         player.award_custom_stat(&vanilla_custom_stats::OPEN_BARREL);
         // TODO: Anger nearby piglins (PiglinAi.angerNearbyPiglins)
-        // TODO: Implement ContainerOpenersCounter to track open state, play sounds,
-        //       and update OPEN block property. Requires scheduled block ticks (scheduleTick)
-        //       for recheck functionality. See vanilla BarrelBlockEntity and ContainerOpenersCounter.
 
         InteractionResult::Success
+    }
+
+    /// Vanilla `BarrelBlock.tick`: the viewer recheck scheduled while the
+    /// barrel is open.
+    fn tick(&self, _state: BlockStateId, world: &Arc<World>, pos: BlockPos) {
+        if let Some(barrel) = world.get_block_entity(pos)
+            && barrel.downcast_ref::<BarrelBlockEntity>().is_some()
+        {
+            barrel.recheck_open();
+        }
     }
 
     fn new_block_entity(

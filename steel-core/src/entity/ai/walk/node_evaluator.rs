@@ -13,6 +13,9 @@ pub struct WalkNodeEvaluator {
     /// Vanilla's overridable `getPathType`; subclasses such as
     /// `FlyNodeEvaluator` classify single blocks differently.
     block_path_type: BlockPathTypeFn,
+    /// Vanilla `Creaking.HomeNodeEvaluator`: the home a heart-bound creaking
+    /// may not stray more than 32 blocks from.
+    home_bound: Option<BlockPos>,
 }
 
 /// Classifies the single block at `x, y, z` for a node evaluator.
@@ -25,6 +28,17 @@ pub struct AcceptedNodeRequest {
     pub node_height: f64,
     pub travel_direction: Direction,
     pub current_path_type: PathType,
+}
+
+/// Vanilla `Creaking.HomeNodeEvaluator.MAX_DISTANCE_TO_HOME_SQ`.
+const HOME_MAX_DISTANCE_SQR: f64 = 1024.0;
+
+/// Vanilla `Vec3i.distSqr`.
+fn block_dist_sqr(a: BlockPos, b: BlockPos) -> f64 {
+    let dx = f64::from(a.x() - b.x());
+    let dy = f64::from(a.y() - b.y());
+    let dz = f64::from(a.z() - b.z());
+    dx.mul_add(dx, dy.mul_add(dy, dz * dz))
 }
 
 const VANILLA_HORIZONTAL_DIRECTIONS: [Direction; 4] = [
@@ -49,6 +63,7 @@ impl WalkNodeEvaluator {
             amphibious: None,
             frog: false,
             block_path_type: path_type,
+            home_bound: None,
         }
     }
 
@@ -66,6 +81,7 @@ impl WalkNodeEvaluator {
             amphibious: Some(prefers_shallow_swimming),
             frog: false,
             block_path_type: WalkPathEvaluator::path_type,
+            home_bound: None,
         }
     }
 
@@ -77,6 +93,14 @@ impl WalkNodeEvaluator {
             frog: true,
             ..Self::amphibious(settings, true)
         }
+    }
+
+    /// Blocks nodes farther than 32 blocks from `home` that do not lead back
+    /// toward it (vanilla `Creaking.HomeNodeEvaluator`).
+    #[must_use]
+    pub const fn with_home_bound(mut self, home: Option<BlockPos>) -> Self {
+        self.home_bound = home;
+        self
     }
 
     /// Vanilla `WalkNodeEvaluator.isAmphibious`.
@@ -94,6 +118,14 @@ impl WalkNodeEvaluator {
         y: i32,
         z: i32,
     ) -> PathType {
+        if let Some(home) = self.home_bound {
+            let home_distance = block_dist_sqr(home, BlockPos::new(x, y, z));
+            if home_distance > HOME_MAX_DISTANCE_SQR
+                && home_distance >= block_dist_sqr(home, context.mob_position())
+            {
+                return PathType::Blocked;
+            }
+        }
         if self.frog
             && context
                 .get_block_state(BlockPos::new(x, y - 1, z))

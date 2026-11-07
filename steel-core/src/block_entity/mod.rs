@@ -25,6 +25,7 @@
 
 pub(crate) mod block_state_nbt;
 mod components;
+pub mod container_openers;
 pub mod entities;
 mod registry;
 mod storage;
@@ -323,6 +324,16 @@ impl BlockEntityBase {
         *self.components.write() = components;
     }
 
+    /// The live block entity this base belongs to, unless it was removed or
+    /// replaced at its position.
+    pub(crate) fn live_block_entity(&self) -> Option<SharedBlockEntity> {
+        if self.is_removed() {
+            return None;
+        }
+        let current = self.level()?.get_block_entity(self.pos)?;
+        ptr::eq(current.base(), self).then_some(current)
+    }
+
     pub(crate) fn is_valid_container_for(&self, player: &Player) -> bool {
         if self.is_removed() {
             return false;
@@ -407,6 +418,18 @@ pub trait BlockEntity: ErasedType + Send + Sync {
     fn trigger_event(&self, _param_a: i32, _param_b: i32) -> bool {
         false
     }
+
+    /// A player opened a menu over this block entity's container. Vanilla
+    /// `Container.startOpen`, called from the menu constructor.
+    fn start_open(&self, _player: &Player) {}
+
+    /// A player closed a menu over this block entity's container. Vanilla
+    /// `Container.stopOpen`, called from `AbstractContainerMenu.removed`.
+    fn stop_open(&self, _player: &Player) {}
+
+    /// Recounts the viewers from the block's scheduled tick. Vanilla
+    /// `recheckOpen` of chests, ender chests and barrels.
+    fn recheck_open(&self) {}
 
     /// Returns this block entity as a spawner.
     fn as_spawner(&self) -> Option<&dyn Spawner> {

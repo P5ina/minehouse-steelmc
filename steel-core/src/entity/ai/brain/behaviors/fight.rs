@@ -69,6 +69,17 @@ fn attack_target_of(body: &(impl LivingEntity + ?Sized)) -> Option<SharedEntity>
 /// attackable, or out of reach for too long (vanilla
 /// `StopAttackingIfTargetInvalid.create(onTargetErased)`).
 pub fn stop_attacking_if_target_invalid<E: Mob + ?Sized>(
+    on_target_erased: impl FnMut(&Arc<World>, &E, &SharedEntity) + Send + 'static,
+) -> impl BehaviorControl<E> {
+    stop_attacking_if_target_invalid_when(|_, _, _| false, on_target_erased)
+}
+
+/// [`stop_attacking_if_target_invalid`] that also drops the target when
+/// `stop_attacking_when` holds; it is only asked once every other check
+/// passed (vanilla `StopAttackingIfTargetInvalid.create(stopAttackingWhen,
+/// onTargetErased, true)`).
+pub fn stop_attacking_if_target_invalid_when<E: Mob + ?Sized>(
+    mut stop_attacking_when: impl FnMut(&Arc<World>, &E, &dyn LivingEntity) -> bool + Send + 'static,
     mut on_target_erased: impl FnMut(&Arc<World>, &E, &SharedEntity) + Send + 'static,
 ) -> impl BehaviorControl<E> {
     OneShot::new(
@@ -92,8 +103,12 @@ pub fn stop_attacking_if_target_invalid<E: Mob + ?Sized>(
                 _ => false,
             };
             let valid = target.as_living_entity().is_some_and(|living| {
-                Mob::can_attack(body, living) && !tired && LivingEntity::is_alive(living)
-            }) && same_level;
+                Mob::can_attack(body, living)
+                    && !tired
+                    && LivingEntity::is_alive(living)
+                    && same_level
+                    && !stop_attacking_when(world, body, living)
+            });
             if !valid {
                 on_target_erased(world, body, &target);
                 memories.lock().erase(&ATTACK_TARGET);
@@ -149,6 +164,15 @@ pub fn set_walk_target_from_attack_target_if_target_out_of_reach<E: Mob + ?Sized
 /// Hits a visible attack target in melee range, then cools down for
 /// `cooldown_between_attacks` ticks (vanilla `MeleeAttack.create`).
 pub fn melee_attack<E: Mob + ?Sized>(cooldown_between_attacks: i32) -> impl BehaviorControl<E> {
+    melee_attack_when(|_: &E| true, cooldown_between_attacks)
+}
+
+/// [`melee_attack`] that only swings while `can_attack` holds (vanilla
+/// `MeleeAttack.create(Predicate, int)`).
+pub fn melee_attack_when<E: Mob + ?Sized>(
+    can_attack: impl Fn(&E) -> bool + Send + 'static,
+    cooldown_between_attacks: i32,
+) -> impl BehaviorControl<E> {
     OneShot::new(
         vec![
             MemoryRequirement::new(&LOOK_TARGET, MemoryStatus::Registered),
@@ -166,6 +190,9 @@ pub fn melee_attack<E: Mob + ?Sized>(cooldown_between_attacks: i32) -> impl Beha
             let Some(living) = target.as_living_entity() else {
                 return false;
             };
+            if !can_attack(body) {
+                return false;
+            }
             let holding_usable_non_melee_weapon =
                 body.is_holding(&mut |item| body.can_use_non_melee_weapon(item));
             // Clone the memory out first: the lazy visibility test locks the

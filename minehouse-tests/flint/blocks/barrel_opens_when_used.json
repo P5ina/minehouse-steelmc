@@ -1,0 +1,107 @@
+{
+  "$schema": "https://raw.githubusercontent.com/FlintTestMC/flint-core/refs/heads/main/flint-content/test_spec_schema.json",
+  "flintVersion": "1.0.0",
+  "name": "minehouse_barrel_opens_when_used",
+  "description": "A player opens a barrel; the barrel shows open.",
+  "tags": [
+    "minehouse",
+    "container",
+    "player"
+  ],
+  "minecraftIds": [
+    "minecraft:barrel",
+    "minecraft:stone"
+  ],
+  "dependencies": [],
+  "setup": {
+    "cleanup": {
+      "region": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          2,
+          2,
+          4
+        ]
+      ]
+    }
+  },
+  "timeline": [
+    {
+      "at": 0,
+      "do": "fill",
+      "region": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          2,
+          0,
+          4
+        ]
+      ],
+      "with": {
+        "id": "minecraft:stone"
+      }
+    },
+    {
+      "at": 0,
+      "do": "place_each",
+      "blocks": [
+        {
+          "pos": [
+            1,
+            1,
+            1
+          ],
+          "block": {
+            "id": "minecraft:barrel",
+            "facing": "up",
+            "open": false
+          }
+        }
+      ]
+    },
+    {
+      "at": 1,
+      "do": "tp",
+      "entity_alias": "player",
+      "pos": [
+        1.5,
+        1,
+        3.5
+      ],
+      "rot": [
+        180,
+        29
+      ]
+    },
+    {
+      "at": 1,
+      "do": "interact"
+    },
+    {
+      "at": 3,
+      "do": "assert",
+      "checks": [
+        {
+          "pos": [
+            1,
+            1,
+            1
+          ],
+          "is": {
+            "id": "minecraft:barrel",
+            "open": true
+          }
+        }
+      ]
+    }
+  ],
+  "breakpoints": []
+}

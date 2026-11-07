@@ -4,7 +4,11 @@ use std::sync::Arc;
 
 use text_components::TextComponent;
 
-use crate::{inventory::menu::Menu, player::Player, world::World};
+use crate::{
+    inventory::{lock::ContainerId, menu::Menu},
+    player::Player,
+    world::World,
+};
 
 mod container;
 mod core;
@@ -108,7 +112,21 @@ impl PlayerInventorySyncState {
 struct OpenMenuDispatch {
     container_id: u8,
     overrides_player_slots: bool,
+    /// The dispatched menu's [`Menu::chest_menu_containers`], so container
+    /// viewer rechecks still see it while it is taken out for a callback.
+    chest_menu_containers: Vec<ContainerId>,
     actions: Vec<DeferredMenuAction>,
+}
+
+impl OpenMenuDispatch {
+    fn for_menu(menu: &Menu) -> Self {
+        Self {
+            container_id: menu.container_id(),
+            overrides_player_slots: menu.overrides_player_slots(),
+            chest_menu_containers: menu.chest_menu_containers(),
+            actions: Vec::new(),
+        }
+    }
 }
 
 struct TerminalMenuRemoval {

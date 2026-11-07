@@ -25,5 +25,11 @@ Mob behavior happens at a random tick, so mob specs use `within: N` on the
 assert, which our flint-core fork (P5ina/flint-core) adds: the assert is
 retried every tick until it passes or N ticks have run.
 
+`barrel_opens_when_used` and `trapped_chest_powers_when_opened` have no
+GameTest twin: a block-based GameTest has no player to open a container. They
+follow Vanilla's `ContainerOpenersCounter` code and check right after the use,
+before the 5-tick viewer recheck, because Flint's backing player is not an
+entity of the test world and the recheck would not find it.
+
 Flint has no `kill` command and no "outside this area" check, so slime,
 magma cube and enderman only get the landing spec, not split / teleport.

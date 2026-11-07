@@ -58,6 +58,10 @@ impl EndPortalBlock {
 }
 
 impl BlockBehavior for EndPortalBlock {
+    fn portal_kind(&self) -> Option<PortalKind> {
+        Some(PortalKind::End)
+    }
+
     fn get_entity_inside_collision_shape(
         &self,
         state: BlockStateId,
@@ -146,6 +150,10 @@ impl EndGatewayBlock {
 }
 
 impl BlockBehavior for EndGatewayBlock {
+    fn portal_kind(&self) -> Option<PortalKind> {
+        Some(PortalKind::EndGateway)
+    }
+
     fn get_state_for_placement(&self, _context: &BlockPlaceContext<'_>) -> Option<BlockStateId> {
         Some(self.block.default_state())
     }

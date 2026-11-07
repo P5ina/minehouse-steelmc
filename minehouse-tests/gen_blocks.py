@@ -38,6 +38,12 @@ class Spec:
         # the GameTest start block pulses here; a redstone block powers the same spot
         self.later.append({"at": 1, "do": "place", "pos": list(pos), "block": b("redstone_block")})
 
+    def use_block(self, at, pos, rot):
+        # the GameTest makes a mock player use the block; here the backing player
+        # stands at pos, looks at it and uses it with an empty hand
+        self.later.append({"at": at, "do": "tp", "entity_alias": "player", "pos": list(pos), "rot": list(rot)})
+        self.later.append({"at": at, "do": "interact"})
+
     def check(self, pos, block):
         self.checks.append({"pos": list(pos), "is": block})
 
@@ -177,6 +183,23 @@ def specs():
     s.set((1, 2, 0), dispenser("south", "flint_and_steel"))
     s.power((2, 2, 0))
     s.check((1, 3, 1), b("nether_portal"))
+    yield s
+
+    # Flint's backing player is not an entity of the test world, so the viewer
+    # recheck 5 ticks after opening drops it; these check before that recheck.
+    s = Spec("barrel_opens_when_used", "A player opens a barrel; the barrel shows open.",
+             (3, 3, 5), 3, ["container", "player"])
+    s.set((1, 1, 1), b("barrel", facing="up", open=False))
+    s.use_block(1, (1.5, 1, 3.5), (180, 29))
+    s.check((1, 1, 1), b("barrel", open=True))
+    yield s
+
+    s = Spec("trapped_chest_powers_when_opened", "A player opens a trapped chest; it powers the lamp beside it.",
+             (4, 3, 5), 3, ["container", "player", "redstone"])
+    s.set((1, 1, 1), b("trapped_chest", facing="south", type="single", waterlogged=False))
+    s.set((2, 1, 1), b("redstone_lamp", lit=False))
+    s.use_block(1, (1.5, 1, 3.5), (180, 29))
+    s.check((2, 1, 1), b("redstone_lamp", lit=True))
     yield s
 
 
