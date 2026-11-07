@@ -5,6 +5,7 @@ mod cooldown;
 mod do_nothing;
 mod fight;
 pub mod gate;
+mod items;
 mod long_jump;
 mod look;
 mod make_love;
@@ -24,6 +25,7 @@ pub use fight::{
     set_walk_target_from_attack_target_if_target_out_of_reach, stop_attacking_if_target_invalid,
 };
 pub use gate::run_one;
+pub use items::{GoAndGiveItemsToTarget, go_to_wanted_item, stay_close_to_target};
 pub use long_jump::{LongJumpMidJump, LongJumpToRandomPos};
 pub use look::{
     LookAtTargetSink, RandomLookAround, set_entity_look_target, set_entity_look_target_sometimes,
@@ -35,7 +37,7 @@ pub use ram::PrepareRamNearestTarget;
 pub use swim::Swim;
 pub use temptation::FollowTemptation;
 pub use walk::{
-    baby_follow_adult, random_stroll, random_swim, set_walk_target_from_look_target,
+    baby_follow_adult, random_fly, random_stroll, random_swim, set_walk_target_from_look_target,
     try_find_liquid,
 };
 

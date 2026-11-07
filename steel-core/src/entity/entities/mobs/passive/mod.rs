@@ -46,3 +46,5 @@ mod panda;
 pub use panda::{PandaEntity, PandaGene};
 mod fox;
 pub use fox::FoxEntity;
+mod allay;
+pub use allay::{AllayEntity, hear_noteblock as allay_hear_noteblock};

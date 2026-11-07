@@ -386,3 +386,40 @@ pub static SNIFFER_SNIFFING_TARGET: MemoryModuleType<BlockPos> =
     MemoryModuleType::new("sniffer_sniffing_target");
 pub static SNIFFER_DIGGING: MemoryModuleType<bool> = MemoryModuleType::new("sniffer_digging");
 pub static SNIFFER_HAPPY: MemoryModuleType<bool> = MemoryModuleType::new("sniffer_happy");
+
+impl MemoryValue for GlobalPos {
+    const KEY: DowncastTypeKey = DowncastTypeKey::new("steel:brain_memory/global_pos");
+}
+
+/// Vanilla `GlobalPos.CODEC`: `{dimension: "<key>", pos: [I; x, y, z]}`.
+const fn global_pos_codec() -> MemoryCodec<GlobalPos> {
+    MemoryCodec {
+        save: |value| {
+            let mut compound = NbtCompound::new();
+            compound.insert("dimension", value.dimension.to_string());
+            compound.insert(
+                "pos",
+                NbtTag::IntArray(vec![value.pos.x(), value.pos.y(), value.pos.z()]),
+            );
+            NbtTag::Compound(compound)
+        },
+        load: |tag| {
+            let compound = tag.compound()?;
+            let dimension = compound
+                .string("dimension")?
+                .to_str()
+                .parse::<Identifier>()
+                .ok()?;
+            let pos = compound.int_array("pos")?;
+            (pos.len() == 3)
+                .then(|| GlobalPos::new(dimension, BlockPos::new(pos[0], pos[1], pos[2])))
+        },
+    }
+}
+
+pub static LIKED_PLAYER: MemoryModuleType<Uuid> =
+    MemoryModuleType::with_codec("liked_player", uuid_codec());
+pub static LIKED_NOTEBLOCK_POSITION: MemoryModuleType<GlobalPos> =
+    MemoryModuleType::with_codec("liked_noteblock", global_pos_codec());
+pub static LIKED_NOTEBLOCK_COOLDOWN_TICKS: MemoryModuleType<i32> =
+    MemoryModuleType::with_codec("liked_noteblock_cooldown_ticks", int_codec());

@@ -1,3 +1,4 @@
+use std::f32::consts::FRAC_PI_2;
 use std::sync::Arc;
 
 use glam::DVec3;
@@ -12,7 +13,9 @@ use crate::entity::ai::brain::memory_types::{
     ATTACK_TARGET, LOOK_TARGET, PositionTracker, WALK_TARGET, WalkTarget,
 };
 use crate::entity::ai::brain::{BehaviorControl, MemoryStatus};
-use crate::entity::ai::goal::random_pos::{is_restricted, land_random_pos, mob_restricted};
+use crate::entity::ai::goal::random_pos::{
+    air_and_water_random_pos, is_restricted, land_random_pos, mob_restricted,
+};
 use crate::entity::ai::goal::random_swimmable_pos_within;
 use crate::entity::{LivingEntity, PathfinderMob, SharedEntity};
 use crate::world::World;
@@ -50,6 +53,38 @@ pub fn random_stroll<E: PathfinderMob + ?Sized>(
             }
             let target = land_random_pos(body, MAX_XZ_DIST, MAX_Y_DIST)
                 .map(|position| WalkTarget::to_point(position, speed_modifier, 0));
+            memories.lock().set(&WALK_TARGET, target);
+            true
+        },
+    )
+}
+
+/// Flies to a random air or water position ahead of the body
+/// (vanilla `RandomStroll.fly`).
+pub fn random_fly<E: PathfinderMob + ?Sized>(speed_modifier: f32) -> impl BehaviorControl<E> {
+    OneShot::new(
+        vec![MemoryRequirement::new(
+            &WALK_TARGET,
+            MemoryStatus::ValueAbsent,
+        )],
+        move |_world: &Arc<World>, body: &E, _time: i64| {
+            let Some(memories) = body.brain_memories() else {
+                return false;
+            };
+            if memories.lock().has_value(&WALK_TARGET) {
+                return false;
+            }
+            let wander_direction = body.look_angle();
+            let target = air_and_water_random_pos(
+                body,
+                MAX_XZ_DIST,
+                MAX_Y_DIST,
+                -2,
+                wander_direction.x,
+                wander_direction.z,
+                f64::from(FRAC_PI_2),
+            )
+            .map(|position| WalkTarget::to_point(position, speed_modifier, 0));
             memories.lock().set(&WALK_TARGET, target);
             true
         },
