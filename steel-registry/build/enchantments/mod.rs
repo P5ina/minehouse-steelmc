@@ -7,6 +7,7 @@ use quote::quote;
 use serde::{Deserialize, de};
 use steel_utils::Identifier;
 use steel_utils::types::GameType;
+use steel_utils::value_providers::FloatProvider;
 
 mod effects;
 mod generation;
@@ -27,7 +28,7 @@ use parsing::{
     parse_location_effect_json, parse_requirements_json, slot_to_tokens,
 };
 
-use crate::features::BlockPredicate;
+use crate::features::{BlockPredicate, generate_float_provider};
 use crate::shared_structs::BlockStateData;
 
 #[derive(Deserialize, Debug)]
@@ -78,7 +79,7 @@ struct EnchantmentEffectsJson {
     #[serde(rename = "minecraft:location_changed", default)]
     location_changed: Vec<ConditionalLocationEffectJson>,
     #[serde(rename = "minecraft:tick", default)]
-    tick: Vec<serde_json::Value>,
+    tick: Vec<ConditionalEntityEffectJson>,
     #[serde(rename = "minecraft:ammo_use", default)]
     ammo_use: Vec<ConditionalValueEffectJson>,
     #[serde(rename = "minecraft:projectile_piercing", default)]
@@ -257,8 +258,16 @@ enum EntityEffectJson {
     },
     PlaySound {
         sounds: Vec<Identifier>,
-        volume: f32,
-        pitch: f32,
+        volume: FloatProvider,
+        pitch: FloatProvider,
+    },
+    SpawnParticles {
+        particle: Identifier,
+        horizontal_position: ParticlePositionSourceJson,
+        vertical_position: ParticlePositionSourceJson,
+        horizontal_velocity: ParticleVelocitySourceJson,
+        vertical_velocity: ParticleVelocitySourceJson,
+        speed: FloatProvider,
     },
     DamageEntity {
         min_damage: LevelBasedValueJson,
@@ -296,6 +305,19 @@ impl<'de> Deserialize<'de> for EntityEffectJson {
         let value = serde_json::Value::deserialize(deserializer)?;
         parse_entity_effect_json(&value).map_err(de::Error::custom)
     }
+}
+
+#[derive(Debug)]
+struct ParticlePositionSourceJson {
+    in_bounding_box: bool,
+    offset: f32,
+    scale: f32,
+}
+
+#[derive(Debug)]
+struct ParticleVelocitySourceJson {
+    movement_scale: f32,
+    base: FloatProvider,
 }
 
 #[derive(Debug)]
@@ -356,9 +378,25 @@ struct EntityPredicateJson {
     entity_type: EntityTypePredicateJson,
     vehicle: EntityVehiclePredicateJson,
     flags: EntityFlagsPredicateJson,
+    movement: Option<Box<MovementPredicateJson>>,
     movement_affected_by: MovementAffectedByJson,
+    periodic_tick: Option<i32>,
     type_specific: EntityTypeSpecificPredicateJson,
     unsupported: bool,
+}
+
+/// `[min, max]` of a vanilla `MinMaxBounds.Doubles`.
+type DoubleBoundsJson = [Option<f64>; 2];
+
+#[derive(Debug, Default)]
+struct MovementPredicateJson {
+    x: DoubleBoundsJson,
+    y: DoubleBoundsJson,
+    z: DoubleBoundsJson,
+    speed: DoubleBoundsJson,
+    horizontal_speed: DoubleBoundsJson,
+    vertical_speed: DoubleBoundsJson,
+    fall_distance: DoubleBoundsJson,
 }
 
 #[derive(Debug)]
@@ -543,8 +581,9 @@ pub(crate) fn build() -> TokenStream {
             EnchantmentAttributeEffect, EnchantmentEffectRequirements, EnchantmentEffects,
             EnchantmentBlockSet, EnchantmentEntityEffect, EnchantmentEntityTarget,
             EnchantmentItemSet, EnchantmentLocationBasedEffect, EnchantmentTarget,
-            EnchantmentValueEffect, EntityFlagsPredicate, EntityPredicate,
-            MovementAffectedByPredicate,
+            EnchantmentDoubleBounds, EnchantmentValueEffect, EntityFlagsPredicate,
+            EntityMovementPredicate, EntityPredicate, MovementAffectedByPredicate,
+            ParticlePositionSource, ParticlePositionSourceType, ParticleVelocitySource,
             EntityTypePredicate, EntityTypeSpecificPredicate, EntityVehiclePredicate,
             LevelBasedValue, MobEffectSelection, PlayerPredicate,
             TargetedConditionalEnchantmentEffect,
@@ -553,9 +592,11 @@ pub(crate) fn build() -> TokenStream {
         use crate::equipment::EquipmentSlotGroup;
         use crate::vanilla_attributes;
         use crate::vanilla_mob_effects;
+        use crate::vanilla_particle_types;
         use simdnbt::owned::{NbtCompound, NbtList, NbtTag};
         use steel_utils::Identifier;
         use steel_utils::types::GameType;
+        use steel_utils::value_providers::FloatProvider;
     });
 
     let mut register_stream = TokenStream::new();

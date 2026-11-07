@@ -551,6 +551,69 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn soul_speed_tick_generates_particles_and_sound() {
+        use crate::enchantment_effect::{EnchantmentEffectComponent, ParticlePositionSourceType};
+        use steel_utils::value_providers::FloatProvider;
+
+        let soul_speed = &vanilla_enchantments::SOUL_SPEED.effects;
+        assert!(soul_speed.has(EnchantmentEffectComponent::Tick));
+        assert_eq!(soul_speed.tick.len(), 2);
+
+        let EnchantmentEntityEffect::SpawnParticles {
+            particle,
+            horizontal_position,
+            vertical_position,
+            horizontal_velocity,
+            vertical_velocity,
+            speed,
+        } = &soul_speed.tick[0].effect
+        else {
+            panic!("soul speed tick[0] should spawn particles");
+        };
+        assert_eq!(particle.key, Identifier::vanilla_static("soul"));
+        assert_eq!(
+            horizontal_position.source_type,
+            ParticlePositionSourceType::InBoundingBox
+        );
+        assert_eq!(
+            vertical_position.source_type,
+            ParticlePositionSourceType::EntityPosition
+        );
+        assert!((vertical_position.offset - 0.1).abs() < f32::EPSILON);
+        assert!((horizontal_velocity.movement_scale + 0.2).abs() < f32::EPSILON);
+        assert!(
+            matches!(vertical_velocity.base, FloatProvider::Constant(base) if (base - 0.1).abs() < f32::EPSILON)
+        );
+        assert!(
+            matches!(speed, FloatProvider::Constant(speed) if (*speed - 1.0).abs() < f32::EPSILON)
+        );
+
+        let Some(EnchantmentEffectRequirements::EntityProperties { predicate, .. }) =
+            soul_speed.tick[0].requirements
+        else {
+            panic!("soul speed particles should check entity properties");
+        };
+        assert!(!predicate.unsupported);
+        assert_eq!(predicate.periodic_tick, Some(5));
+        let movement = predicate
+            .movement
+            .as_ref()
+            .unwrap_or_else(|| panic!("soul speed particles need a movement predicate"));
+        assert!(movement.horizontal_speed.min.is_some());
+        assert!(!movement.matches(0.0, 0.0, 0.0, 0.0));
+        assert!(movement.matches(1.0, 0.0, 0.0, 0.0));
+
+        assert!(matches!(
+            soul_speed.tick[1].effect,
+            EnchantmentEntityEffect::PlaySound {
+                pitch: FloatProvider::Uniform { .. },
+                volume: FloatProvider::Constant(_),
+                ..
+            }
+        ));
+    }
+
     fn requirements_contain_random_chance(requirements: &EnchantmentEffectRequirements) -> bool {
         match requirements {
             EnchantmentEffectRequirements::AllOf(children)
@@ -579,6 +642,7 @@ mod tests {
             | EnchantmentEntityEffect::ApplyExhaustion { .. }
             | EnchantmentEntityEffect::ApplyImpulse { .. }
             | EnchantmentEntityEffect::PlaySound { .. }
+            | EnchantmentEntityEffect::SpawnParticles { .. }
             | EnchantmentEntityEffect::Ignite { .. }
             | EnchantmentEntityEffect::ApplyMobEffect { .. }
             | EnchantmentEntityEffect::ReplaceDisk { .. }
@@ -595,6 +659,7 @@ mod tests {
             EnchantmentEntityEffect::ApplyExhaustion { .. }
             | EnchantmentEntityEffect::ApplyImpulse { .. }
             | EnchantmentEntityEffect::PlaySound { .. }
+            | EnchantmentEntityEffect::SpawnParticles { .. }
             | EnchantmentEntityEffect::DamageEntity { .. }
             | EnchantmentEntityEffect::Ignite { .. }
             | EnchantmentEntityEffect::ApplyMobEffect { .. }

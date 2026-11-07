@@ -4,8 +4,31 @@ use super::{
     EntityFlagsPredicateJson, EntityPredicateJson, EntityTargetJson, EntityTypePredicateJson,
     EntityTypeSpecificPredicateJson, EntityVehiclePredicateJson, GameType, Ident, Identifier,
     ItemHolderSetJson, LevelBasedValueJson, LocationEffectJson, MobEffectSelectionJson,
-    MovementAffectedByJson, PlayerPredicateJson, RequirementsJson, Span, TokenStream, quote,
+    MovementAffectedByJson, MovementPredicateJson, ParticlePositionSourceJson,
+    ParticleVelocitySourceJson, PlayerPredicateJson, RequirementsJson, Span, TokenStream, quote,
 };
+use std::sync::LazyLock;
+
+use rustc_hash::FxHashSet;
+use steel_utils::value_providers::FloatProvider;
+
+use crate::generator_functions::read_json_asset;
+
+/// Keys of particle types whose options are `SimpleParticleOptions`.
+static SIMPLE_PARTICLE_TYPES: LazyLock<FxHashSet<String>> = LazyLock::new(|| {
+    let entries: Vec<serde_json::Value> = read_json_asset("build_assets/particle_types.json");
+    entries
+        .iter()
+        .filter(|entry| {
+            entry
+                .get("options_type")
+                .and_then(serde_json::Value::as_str)
+                == Some("simple")
+        })
+        .filter_map(|entry| entry.get("key").and_then(serde_json::Value::as_str))
+        .map(str::to_owned)
+        .collect()
+});
 
 pub(super) fn slot_to_tokens(slot: &str) -> TokenStream {
     match slot {
@@ -235,10 +258,11 @@ pub(super) fn parse_entity_effect_json(
             }
             Ok(EntityEffectJson::PlaySound {
                 sounds: parse_sound_list_json(object_field(object, "sound")?)?,
-                volume: parse_f32_field(object, "volume")?,
-                pitch: parse_f32_field(object, "pitch")?,
+                volume: parse_float_provider_json(object_field(object, "volume")?)?,
+                pitch: parse_float_provider_json(object_field(object, "pitch")?)?,
             })
         }
+        "minecraft:spawn_particles" => parse_spawn_particles_json(object, &effect_type),
         "minecraft:ignite" => {
             for key in object.keys() {
                 if key != "type" && key != "duration" {
@@ -282,6 +306,134 @@ pub(super) fn parse_entity_effect_json(
             effect_type: parse_identifier(&effect_type)?,
         }),
     }
+}
+
+pub(super) fn parse_float_provider_json(
+    value: &serde_json::Value,
+) -> Result<FloatProvider, String> {
+    serde_json::from_value(value.to_owned())
+        .map_err(|error| format!("invalid float provider: {error}"))
+}
+
+fn optional_f32_field(
+    object: &serde_json::Map<String, serde_json::Value>,
+    field: &str,
+    default: f32,
+) -> Result<f32, String> {
+    match object.get(field) {
+        Some(value) => value
+            .as_f64()
+            .map(|number| number as f32)
+            .ok_or_else(|| format!("`{field}` must be a number")),
+        None => Ok(default),
+    }
+}
+
+fn parse_spawn_particles_json(
+    object: &serde_json::Map<String, serde_json::Value>,
+    effect_type: &str,
+) -> Result<EntityEffectJson, String> {
+    for key in object.keys() {
+        if !matches!(
+            key.as_str(),
+            "type"
+                | "particle"
+                | "horizontal_position"
+                | "vertical_position"
+                | "horizontal_velocity"
+                | "vertical_velocity"
+                | "speed"
+        ) {
+            return Err(format!("unsupported spawn_particles effect field `{key}`"));
+        }
+    }
+    let Some(particle) = object_field(object, "particle")?.as_object() else {
+        return Err("spawn_particles `particle` must be an object".to_owned());
+    };
+    let particle_type = string_field(particle, "type")?;
+    let particle_type = parse_identifier(&particle_type)?;
+    // Only option-less particles have a static runtime representation.
+    if particle.len() != 1 || !SIMPLE_PARTICLE_TYPES.contains(&particle_type.to_string()) {
+        return Ok(EntityEffectJson::Unsupported {
+            effect_type: parse_identifier(effect_type)?,
+        });
+    }
+    Ok(EntityEffectJson::SpawnParticles {
+        particle: particle_type,
+        horizontal_position: parse_particle_position_source_json(object_field(
+            object,
+            "horizontal_position",
+        )?)?,
+        vertical_position: parse_particle_position_source_json(object_field(
+            object,
+            "vertical_position",
+        )?)?,
+        horizontal_velocity: parse_particle_velocity_source_json(object_field(
+            object,
+            "horizontal_velocity",
+        )?)?,
+        vertical_velocity: parse_particle_velocity_source_json(object_field(
+            object,
+            "vertical_velocity",
+        )?)?,
+        speed: object
+            .get("speed")
+            .map(parse_float_provider_json)
+            .transpose()?
+            .unwrap_or(FloatProvider::Constant(0.0)),
+    })
+}
+
+fn parse_particle_position_source_json(
+    value: &serde_json::Value,
+) -> Result<ParticlePositionSourceJson, String> {
+    let Some(object) = value.as_object() else {
+        return Err("particle position source must be an object".to_owned());
+    };
+    for key in object.keys() {
+        if !matches!(key.as_str(), "type" | "offset" | "scale") {
+            return Err(format!(
+                "unsupported particle position source field `{key}`"
+            ));
+        }
+    }
+    let in_bounding_box = match string_field(object, "type")?.as_str() {
+        "entity_position" => false,
+        "in_bounding_box" => true,
+        other => return Err(format!("unknown particle position source type `{other}`")),
+    };
+    let scale = optional_f32_field(object, "scale", 1.0)?;
+    if !in_bounding_box && scale != 1.0 {
+        return Err("Cannot scale an entity position coordinate source".to_owned());
+    }
+    Ok(ParticlePositionSourceJson {
+        in_bounding_box,
+        offset: optional_f32_field(object, "offset", 0.0)?,
+        scale,
+    })
+}
+
+fn parse_particle_velocity_source_json(
+    value: &serde_json::Value,
+) -> Result<ParticleVelocitySourceJson, String> {
+    let Some(object) = value.as_object() else {
+        return Err("particle velocity source must be an object".to_owned());
+    };
+    for key in object.keys() {
+        if !matches!(key.as_str(), "movement_scale" | "base") {
+            return Err(format!(
+                "unsupported particle velocity source field `{key}`"
+            ));
+        }
+    }
+    Ok(ParticleVelocitySourceJson {
+        movement_scale: optional_f32_field(object, "movement_scale", 0.0)?,
+        base: object
+            .get("base")
+            .map(parse_float_provider_json)
+            .transpose()?
+            .unwrap_or(FloatProvider::Constant(0.0)),
+    })
 }
 
 fn parse_replace_disk_json(
@@ -380,17 +532,6 @@ pub(super) fn parse_sound_list_json(value: &serde_json::Value) -> Result<Vec<Ide
     }
 }
 
-pub(super) fn parse_f32_field(
-    object: &serde_json::Map<String, serde_json::Value>,
-    field: &str,
-) -> Result<f32, String> {
-    let value = object_field(object, field)?;
-    let number = value
-        .as_f64()
-        .ok_or_else(|| format!("`{field}` must be a number"))?;
-    Ok(number as f32)
-}
-
 pub(super) fn parse_entity_type_predicate(raw: &str) -> Result<EntityTypePredicateJson, String> {
     let Some(tag) = raw.strip_prefix('#') else {
         return Ok(EntityTypePredicateJson::Type(parse_identifier(raw)?));
@@ -414,7 +555,9 @@ pub(super) fn parse_entity_predicate_json(
                 | "minecraft:vehicle"
                 | "flags"
                 | "minecraft:flags"
+                | "minecraft:movement"
                 | "minecraft:movement_affected_by"
+                | "minecraft:periodic_tick"
                 | "type_specific"
                 | "minecraft:type_specific/player"
         )
@@ -441,6 +584,21 @@ pub(super) fn parse_entity_predicate_json(
         .map(parse_movement_affected_by_json)
         .transpose()?
         .unwrap_or(MovementAffectedByJson::Any);
+    let movement = object
+        .get("minecraft:movement")
+        .map(parse_movement_predicate_json)
+        .transpose()?
+        .map(Box::new);
+    let periodic_tick = match object.get("minecraft:periodic_tick") {
+        Some(value) => Some(
+            value
+                .as_i64()
+                .and_then(|period| i32::try_from(period).ok())
+                .filter(|period| *period > 0)
+                .ok_or_else(|| "`minecraft:periodic_tick` must be a positive int".to_owned())?,
+        ),
+        None => None,
+    };
     let type_specific =
         match aliased_object_field(object, &["type_specific", "minecraft:type_specific/player"])? {
             Some(value) if object.contains_key("minecraft:type_specific/player") => {
@@ -454,10 +612,65 @@ pub(super) fn parse_entity_predicate_json(
         entity_type,
         vehicle,
         flags,
+        movement,
         movement_affected_by,
+        periodic_tick,
         type_specific,
         unsupported,
     })
+}
+
+/// Parses a vanilla `MovementPredicate`, whose fields are all optional
+/// `MinMaxBounds.Doubles`.
+fn parse_movement_predicate_json(
+    value: &serde_json::Value,
+) -> Result<MovementPredicateJson, String> {
+    let Some(object) = value.as_object() else {
+        return Err("movement predicate must be an object".to_owned());
+    };
+    let mut predicate = MovementPredicateJson::default();
+    for (key, bounds) in object {
+        let slot = match key.as_str() {
+            "x" => &mut predicate.x,
+            "y" => &mut predicate.y,
+            "z" => &mut predicate.z,
+            "speed" => &mut predicate.speed,
+            "horizontal_speed" => &mut predicate.horizontal_speed,
+            "vertical_speed" => &mut predicate.vertical_speed,
+            "fall_distance" => &mut predicate.fall_distance,
+            other => return Err(format!("unsupported movement predicate field `{other}`")),
+        };
+        *slot = parse_double_bounds_json(bounds)?;
+    }
+    Ok(predicate)
+}
+
+fn parse_double_bounds_json(value: &serde_json::Value) -> Result<[Option<f64>; 2], String> {
+    if let Some(exact) = value.as_f64() {
+        return Ok([Some(exact), Some(exact)]);
+    }
+    let Some(object) = value.as_object() else {
+        return Err("double bounds must be a number or an object".to_owned());
+    };
+    let mut bounds = [None, None];
+    for (key, number) in object {
+        let index = match key.as_str() {
+            "min" => 0,
+            "max" => 1,
+            other => return Err(format!("unsupported double bounds field `{other}`")),
+        };
+        bounds[index] = Some(
+            number
+                .as_f64()
+                .ok_or_else(|| format!("double bounds `{key}` must be a number"))?,
+        );
+    }
+    if let [Some(min), Some(max)] = bounds
+        && min > max
+    {
+        return Err("double bounds min must not exceed max".to_owned());
+    }
+    Ok(bounds)
 }
 
 /// Parses a `minecraft:movement_affected_by` location predicate. Only the
