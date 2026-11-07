@@ -552,6 +552,28 @@ pub trait BlockBehavior: Send + Sync {
         InteractionResult::Pass
     }
 
+    /// Opens the menu this block provides, mirroring vanilla
+    /// `getMenuProvider` followed by `player.openMenu`.
+    ///
+    /// This is only the menu itself: use statistics, piglin anger and other
+    /// `useWithoutItem` side effects stay in [`Self::use_without_item`].
+    /// Spectators right-clicking a block go through this directly
+    /// (`ServerPlayerGameMode.useItemOn`). Returns `false` when the block has
+    /// no menu provider at this position.
+    #[expect(
+        unused_variables,
+        reason = "default trait implementation ignores all params"
+    )]
+    fn open_menu_provider(
+        &self,
+        state: BlockStateId,
+        world: &Arc<World>,
+        pos: BlockPos,
+        player: &Player,
+    ) -> bool {
+        false
+    }
+
     /// Called when a neighboring block changes (not shape-related).
     ///
     /// This is the Rust equivalent of vanilla's `BlockState.handleNeighborChanged()`.

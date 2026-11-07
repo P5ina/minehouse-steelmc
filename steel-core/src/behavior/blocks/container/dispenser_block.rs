@@ -119,15 +119,17 @@ impl Kind {
         entity.set_item(slot, rest);
     }
 
-    fn open(self, world: &World, pos: BlockPos, player: &Player) -> InteractionResult {
+    /// Opens the dispenser menu (vanilla `getMenuProvider` + `openMenu`),
+    /// returning whether the block entity provided one.
+    fn open_menu(self, world: &World, pos: BlockPos, player: &Player) -> bool {
         let Some(block_entity) = world.get_block_entity(pos) else {
-            return InteractionResult::Success;
+            return false;
         };
         let Some(entity) = block_entity.downcast_ref::<DispenserBlockEntity>() else {
-            return InteractionResult::Success;
+            return false;
         };
         let Some(container) = block_entity.container_ref() else {
-            return InteractionResult::Success;
+            return false;
         };
         let title = entity
             .custom_name()
@@ -136,7 +138,13 @@ impl Kind {
         player.open_menu(title, move |context| {
             dispenser(inventory, context.container_id, container)
         });
-        player.award_custom_stat(self.inspect_stat);
+        true
+    }
+
+    fn open(self, world: &World, pos: BlockPos, player: &Player) -> InteractionResult {
+        if self.open_menu(world, pos, player) {
+            player.award_custom_stat(self.inspect_stat);
+        }
         InteractionResult::Success
     }
 
@@ -249,6 +257,16 @@ macro_rules! impl_dispenser_block {
 
             fn tick(&self, state: BlockStateId, world: &Arc<World>, pos: BlockPos) {
                 self.kind().dispense_from(state, world, pos);
+            }
+
+            fn open_menu_provider(
+                &self,
+                _state: BlockStateId,
+                world: &Arc<World>,
+                pos: BlockPos,
+                player: &Player,
+            ) -> bool {
+                self.kind().open_menu(world, pos, player)
             }
 
             fn use_without_item(

@@ -25,6 +25,8 @@ use steel_protocol::packets::game::{
 };
 use steel_registry::data_components::vanilla_components::SwingAnimation;
 use steel_registry::item_stack::ItemStack;
+#[cfg(test)]
+use steel_registry::menu_type::MenuTypeRef;
 use steel_registry::mob_effect::MobEffectRef;
 use steel_registry::sound_events;
 use steel_registry::stat::vanilla_stat_types;
@@ -875,6 +877,16 @@ impl Player {
             };
             terminal_removal.pending_cleanup_in_progress = false;
         }
+    }
+
+    /// Returns the menu type id of the open external menu, if any.
+    #[cfg(test)]
+    pub(in crate::player) fn open_menu_type_for_test(&self) -> Option<MenuTypeRef> {
+        self.open_menu
+            .lock()
+            .menu
+            .as_ref()
+            .and_then(Menu::menu_type)
     }
 
     #[cfg(test)]

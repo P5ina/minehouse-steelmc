@@ -39,20 +39,18 @@ impl BlockBehavior for BeaconBlock {
         Some(self.block.default_state())
     }
 
-    fn use_without_item(
+    fn open_menu_provider(
         &self,
         _state: BlockStateId,
         world: &Arc<World>,
         pos: BlockPos,
         player: &Player,
-        _hit_result: &BlockHitResult,
-        _inv: &mut InventoryAccess,
-    ) -> InteractionResult {
+    ) -> bool {
         let Some(block_entity) = world.get_block_entity(pos) else {
-            return InteractionResult::Success;
+            return false;
         };
         let Some(beacon_entity) = block_entity.downcast_ref::<BeaconBlockEntity>() else {
-            return InteractionResult::Success;
+            return false;
         };
         let state = beacon_entity.state();
         let base = beacon_entity.base_handle();
@@ -63,8 +61,21 @@ impl BlockBehavior for BeaconBlock {
             TextComponent::translated(translations::CONTAINER_BEACON.msg()),
             move |context| beacon(inventory, context.container_id, pos, &world, state, base),
         );
+        true
+    }
 
-        player.award_custom_stat(&vanilla_custom_stats::INTERACT_WITH_BEACON);
+    fn use_without_item(
+        &self,
+        state: BlockStateId,
+        world: &Arc<World>,
+        pos: BlockPos,
+        player: &Player,
+        _hit_result: &BlockHitResult,
+        _inv: &mut InventoryAccess,
+    ) -> InteractionResult {
+        if self.open_menu_provider(state, world, pos, player) {
+            player.award_custom_stat(&vanilla_custom_stats::INTERACT_WITH_BEACON);
+        }
         InteractionResult::Success
     }
 

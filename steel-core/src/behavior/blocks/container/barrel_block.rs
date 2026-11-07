@@ -49,31 +49,41 @@ impl BlockBehavior for BarrelBlock {
         Some(self.block.default_state().set_value(FACING, facing))
     }
 
-    fn use_without_item(
+    fn open_menu_provider(
         &self,
         _state: BlockStateId,
+        world: &Arc<World>,
+        pos: BlockPos,
+        player: &Player,
+    ) -> bool {
+        let Some(block_entity) = world.get_block_entity(pos) else {
+            return false;
+        };
+        let Some(container_ref) = ContainerRef::from_block_entity(block_entity) else {
+            return false;
+        };
+
+        // Barrels open a 3-row chest menu.
+        let inventory = Arc::clone(&player.inventory);
+        player.open_menu(
+            TextComponent::translated(translations::CONTAINER_BARREL.msg()),
+            move |context| chest(inventory, context.container_id, container_ref, 3),
+        );
+        true
+    }
+
+    fn use_without_item(
+        &self,
+        state: BlockStateId,
         world: &Arc<World>,
         pos: BlockPos,
         player: &Player,
         _hit_result: &BlockHitResult,
         _inv: &mut InventoryAccess,
     ) -> InteractionResult {
-        // Get the block entity
-        let Some(block_entity) = world.get_block_entity(pos) else {
+        if !self.open_menu_provider(state, world, pos, player) {
             return InteractionResult::Pass;
-        };
-
-        // Create a container reference from the block entity
-        let Some(container_ref) = ContainerRef::from_block_entity(block_entity) else {
-            return InteractionResult::Pass;
-        };
-
-        // Open the chest menu (3 rows for barrel)
-        let inventory = Arc::clone(&player.inventory);
-        player.open_menu(
-            TextComponent::translated(translations::CONTAINER_BARREL.msg()),
-            move |context| chest(inventory, context.container_id, container_ref, 3),
-        );
+        }
 
         player.award_custom_stat(&vanilla_custom_stats::OPEN_BARREL);
         // TODO: Anger nearby piglins (PiglinAi.angerNearbyPiglins)

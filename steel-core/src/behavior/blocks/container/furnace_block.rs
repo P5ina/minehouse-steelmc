@@ -7,7 +7,6 @@ use steel_registry::block_entity_type::BlockEntityTypeRef;
 use steel_registry::blocks::BlockRef;
 use steel_registry::blocks::block_state_ext::BlockStateExt as _;
 use steel_registry::blocks::properties::{BlockStateProperties, Direction, EnumProperty};
-use steel_registry::stat::custom::CustomStatRef;
 use steel_registry::{vanilla_block_entity_types, vanilla_custom_stats};
 use steel_utils::{BlockPos, BlockStateId, translations};
 use text_components::TextComponent;
@@ -48,6 +47,8 @@ fn placement_state(block: BlockRef, context: &BlockPlaceContext<'_>) -> BlockSta
         .set_value(FACING, context.horizontal_direction().opposite())
 }
 
+/// Opens a furnace menu (vanilla `getMenuProvider` + `openMenu`), returning
+/// whether the block entity provided one.
 fn open_furnace(
     world: &Arc<World>,
     pos: BlockPos,
@@ -55,23 +56,21 @@ fn open_furnace(
     expected_type: BlockEntityTypeRef,
     kind: FurnaceKind,
     title: TextComponent,
-    stat: CustomStatRef,
-) -> InteractionResult {
+) -> bool {
     let Some(block_entity) = world.get_block_entity(pos) else {
-        return InteractionResult::Success;
+        return false;
     };
     if block_entity.get_type() != expected_type {
-        return InteractionResult::Success;
+        return false;
     }
     let Some(container) = ContainerRef::from_block_entity(block_entity) else {
-        return InteractionResult::Success;
+        return false;
     };
     let inventory = Arc::clone(&player.inventory);
     player.open_menu(title, move |context| {
         furnace_menu(inventory, context.container_id, container, kind)
     });
-    player.award_custom_stat(stat);
-    InteractionResult::Success
+    true
 }
 
 fn analog_output(world: &(impl LevelReader + ?Sized), pos: BlockPos) -> i32 {
@@ -105,15 +104,13 @@ macro_rules! impl_furnace_block {
                 Some(placement_state(self.block, context))
             }
 
-            fn use_without_item(
+            fn open_menu_provider(
                 &self,
                 _state: BlockStateId,
                 world: &Arc<World>,
                 pos: BlockPos,
                 player: &Player,
-                _hit_result: &BlockHitResult,
-                _inv: &mut InventoryAccess,
-            ) -> InteractionResult {
+            ) -> bool {
                 open_furnace(
                     world,
                     pos,
@@ -121,8 +118,22 @@ macro_rules! impl_furnace_block {
                     &vanilla_block_entity_types::$entity_type,
                     FurnaceKind::$kind,
                     TextComponent::translated(translations::$title.msg()),
-                    &vanilla_custom_stats::$stat,
                 )
+            }
+
+            fn use_without_item(
+                &self,
+                state: BlockStateId,
+                world: &Arc<World>,
+                pos: BlockPos,
+                player: &Player,
+                _hit_result: &BlockHitResult,
+                _inv: &mut InventoryAccess,
+            ) -> InteractionResult {
+                if self.open_menu_provider(state, world, pos, player) {
+                    player.award_custom_stat(&vanilla_custom_stats::$stat);
+                }
+                InteractionResult::Success
             }
 
             fn new_block_entity(

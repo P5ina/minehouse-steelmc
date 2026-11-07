@@ -5,6 +5,33 @@ use super::{
 };
 use steel_registry::data_components::vanilla_components::USE_REMAINDER;
 use steel_registry::stat::vanilla_stat_types;
+use steel_utils::{BlockPos, BlockStateId};
+
+/// The spectator branch of vanilla `ServerPlayerGameMode.useItemOn`: open
+/// the block's menu provider, or teleport through a right-clicked portal block.
+///
+/// Spectators only look: no use statistics, no lid animation or sound
+/// (vanilla openers counters skip spectators), and every container click is
+/// rejected while in spectator mode.
+fn spectator_use_item_on(
+    player: &Arc<Player>,
+    world: &Arc<World>,
+    pos: BlockPos,
+    state: BlockStateId,
+) -> InteractionResult {
+    let Some(block) = REGISTRY.blocks.by_state_id(state) else {
+        return InteractionResult::Pass;
+    };
+    let behavior = BLOCK_BEHAVIORS.get_behavior(block);
+    if behavior.open_menu_provider(state, world, pos, player) {
+        return InteractionResult::Consume;
+    }
+    if let Some(portal) = behavior.portal_kind() {
+        player.use_portal_as_spectator(world, portal, pos);
+        return InteractionResult::Consume;
+    }
+    InteractionResult::Pass
+}
 
 /// Handles using an item on a block.
 ///
@@ -26,18 +53,8 @@ pub fn use_item_on(
     let pos = hit_result.block_pos;
     let state = world.get_block_state(pos);
 
-    // Spectator mode: vanilla opens the block's menu provider, or teleports
-    // through a right-clicked portal block, and passes otherwise.
     if player.game_mode() == GameType::Spectator {
-        // TODO: Open block menu providers (chests, furnaces...) for spectators.
-        let Some(block) = REGISTRY.blocks.by_state_id(state) else {
-            return InteractionResult::Pass;
-        };
-        if let Some(portal) = BLOCK_BEHAVIORS.get_behavior(block).portal_kind() {
-            player.use_portal_as_spectator(world, portal, pos);
-            return InteractionResult::Consume;
-        }
-        return InteractionResult::Pass;
+        return spectator_use_item_on(player, world, pos, state);
     }
 
     // Check if block interaction should be suppressed (sneaking + holding items in either hand)

@@ -206,10 +206,18 @@ impl ChestBehavior {
             .filter(|entity| entity.get_type() == self.block_entity_type)
     }
 
-    fn use_without_item(&self, state: BlockStateId, world: &World, pos: BlockPos, player: &Player) {
+    /// Opens the chest menu (vanilla `getMenuProvider` + `openMenu`), returning
+    /// whether the chest provided one. A blocked chest provides none.
+    fn open_menu(
+        &self,
+        state: BlockStateId,
+        world: &World,
+        pos: BlockPos,
+        player: &Player,
+    ) -> bool {
         let combined = self.combine(state, world, pos, false);
         let (title, rows) = match &combined {
-            ChestCombineResult::None => return,
+            ChestCombineResult::None => return false,
             ChestCombineResult::Single(chest) => (
                 custom_name(chest).unwrap_or_else(|| {
                     TextComponent::translated(translations::CONTAINER_CHEST.msg())
@@ -227,13 +235,20 @@ impl ChestBehavior {
         };
         let containers = combined.containers();
         if containers.is_empty() {
-            return;
+            return false;
         }
 
         let inventory = Arc::clone(&player.inventory);
         player.open_menu(title, move |context| {
             chest_halves(inventory, context.container_id, &containers, rows)
         });
+        true
+    }
+
+    fn use_without_item(&self, state: BlockStateId, world: &World, pos: BlockPos, player: &Player) {
+        if !self.open_menu(state, world, pos, player) {
+            return;
+        }
         player.award_custom_stat(self.open_stat);
         // TODO: Anger nearby piglins (PiglinAi.angerNearbyPiglins)
         // TODO: Count viewers (ContainerOpenersCounter) for the lid, sounds and trapped chest power.
@@ -353,6 +368,16 @@ macro_rules! impl_chest_block {
             ) -> BlockStateId {
                 self.chest()
                     .update_shape(state, world, pos, direction, neighbor_state)
+            }
+
+            fn open_menu_provider(
+                &self,
+                state: BlockStateId,
+                world: &Arc<World>,
+                pos: BlockPos,
+                player: &Player,
+            ) -> bool {
+                self.chest().open_menu(state, world, pos, player)
             }
 
             fn use_without_item(
