@@ -472,7 +472,18 @@ impl LivingEntity for RavagerEntity {
         Mob::mob_server_ai_step(self, entity);
     }
 
+    fn die(&self, source: &DamageSource) {
+        self.die_raider(source);
+        self.default_die(source);
+    }
+
+    fn hurt_server(&self, world: &World, source: &DamageSource, amount: f32) -> bool {
+        self.hurt_server_raider(world);
+        self.default_hurt_server(world, source, amount)
+    }
+
     fn ai_step(&self, entity: &SharedEntity) -> Option<MoveResult> {
+        self.raider_ai_step(entity);
         let result = Monster::monster_ai_step(self, entity);
         if LivingEntity::is_alive(self) {
             self.update_movement_speed();
@@ -542,6 +553,10 @@ impl Mob for RavagerEntity {
 
     fn remove_when_far_away(&self, dist_sqr: f64) -> bool {
         self.remove_when_far_away_raider(dist_sqr)
+    }
+
+    fn requires_custom_persistence(&self) -> bool {
+        self.requires_custom_persistence_raider()
     }
 
     fn finalize_spawn(

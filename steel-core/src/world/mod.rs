@@ -130,6 +130,7 @@ mod player_index;
 pub(crate) mod player_spawn_finder;
 mod portals;
 mod properties;
+pub mod raid;
 mod raycast;
 mod redstone;
 mod signal_getter;
@@ -329,6 +330,8 @@ pub struct World {
     pub poi_storage: SyncMutex<PointOfInterestStorage>,
     /// Vanilla `ServerLevel.customSpawners`, ticked after natural spawning.
     custom_spawners: SyncMutex<Vec<Box<dyn custom_spawner::CustomSpawner>>>,
+    /// Vanilla `ServerLevel.raids`.
+    raids: raid::Raids,
     /// Vanilla `WanderingTraderData`, read by the wandering trader spawner.
     pub(crate) wandering_trader_data: SyncMutex<custom_spawner::WanderingTraderData>,
     /// World-change requests queued by world-local ticks for server safe-point processing.
@@ -368,6 +371,10 @@ impl World {
         .await
     }
 
+    #[expect(
+        clippy::too_many_lines,
+        reason = "world construction lists every per-world subsystem in one place"
+    )]
     pub(crate) async fn new_with_config_and_encoding_pool(
         chunk_runtime: Arc<Runtime>,
         key: Identifier,
@@ -410,6 +417,7 @@ impl World {
             level_data.save().await?;
         }
         let ticket_storage = ChunkTicketStorage::load(&saved_data, &key).await;
+        let raids = raid::Raids::load(&saved_data, &key).await;
         let wandering_trader_data =
             custom_spawner::WanderingTraderData::load(&saved_data, &key).await;
         let world_border = WorldBorder::new(level_data.data().world_border)
@@ -487,6 +495,7 @@ impl World {
                 custom_spawners: SyncMutex::new(custom_spawner::custom_spawners_for(
                     dimension_type,
                 )),
+                raids,
                 pending_world_changes: SyncMutex::new(Vec::new()),
                 wandering_trader_data: SyncMutex::new(wandering_trader_data),
             }
@@ -525,6 +534,12 @@ impl World {
                 Ok(()) => self.wandering_trader_data.lock().mark_saved(),
                 Err(e) => log::error!("Failed to save world wandering trader data: {e}"),
             }
+        }
+
+        let raids = self.raids.to_saved();
+        match self.saved_data.save(saved_data_names::RAIDS, &raids).await {
+            Ok(()) => log::info!("World {} saved raid data successfully", self.key),
+            Err(e) => log::error!("Failed to save world raid data: {e}"),
         }
 
         match self.save_all_chunks().await {
@@ -584,6 +599,11 @@ impl World {
         }
 
         let random_tick_speed = self.get_game_rule(&RANDOM_TICK_SPEED) as u32;
+
+        if runs_normally {
+            let _span = tracing::trace_span!("raid").entered();
+            self.raids.tick(self);
+        }
 
         let early_lookup_stats = lookup_cache_scope.finish();
         let mut chunk_map_timings =

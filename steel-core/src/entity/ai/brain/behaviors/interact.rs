@@ -1,5 +1,5 @@
-//! Picking something nearby to look at or walk up to (vanilla `InteractWith`,
-//! `SetLookAndInteract` and `SetEntityLookTarget`).
+//! Picking something nearby to walk up to or interact with (vanilla
+//! `InteractWith` and `SetLookAndInteract`).
 
 use std::sync::Arc;
 
@@ -12,8 +12,6 @@ use crate::entity::ai::brain::memory_types::{
 use crate::entity::ai::brain::{BehaviorControl, MemoryStatus};
 use crate::entity::{LivingEntity, SharedEntity};
 use crate::world::World;
-
-type EntityTest = Box<dyn Fn(&SharedEntity) -> bool + Send>;
 
 /// Walks up to the closest visible entity passing `target_filter` within
 /// `interaction_range`, remembering it in `interaction_target`, while
@@ -126,44 +124,6 @@ pub fn set_look_and_interact<E: LivingEntity + ?Sized>(
                 return false;
             };
             memories.set(&INTERACTION_TARGET, Some(Arc::clone(&target)));
-            memories.set(&LOOK_TARGET, Some(PositionTracker::entity(target, true)));
-            true
-        },
-    )
-}
-
-/// Looks at the closest visible entity passing `predicate` within `max_dist`
-/// that does not ride the body (vanilla `SetEntityLookTarget.create`).
-pub fn set_entity_look_target<E: LivingEntity + ?Sized>(
-    predicate: impl Fn(&SharedEntity) -> bool + Send + 'static,
-    max_dist: f32,
-) -> impl BehaviorControl<E> {
-    let predicate: EntityTest = Box::new(predicate);
-    let max_dist_sqr = f64::from(max_dist * max_dist);
-    OneShot::new(
-        vec![
-            MemoryRequirement::new(&LOOK_TARGET, MemoryStatus::ValueAbsent),
-            MemoryRequirement::new(&NEAREST_VISIBLE_LIVING_ENTITIES, MemoryStatus::ValuePresent),
-        ],
-        move |_world: &Arc<World>, body: &E, _time: i64| {
-            let Some(memories) = body.brain_memories() else {
-                return false;
-            };
-            let mut memories = memories.lock();
-            if memories.has_value(&LOOK_TARGET) {
-                return false;
-            }
-            let Some(visible) = memories.get_ref(&NEAREST_VISIBLE_LIVING_ENTITIES) else {
-                return false;
-            };
-            let position = body.position();
-            let Some(target) = visible.find_closest(|entity| {
-                predicate(entity)
-                    && entity.position().distance_squared(position) <= max_dist_sqr
-                    && !body.has_passenger(entity.as_ref())
-            }) else {
-                return false;
-            };
             memories.set(&LOOK_TARGET, Some(PositionTracker::entity(target, true)));
             true
         },

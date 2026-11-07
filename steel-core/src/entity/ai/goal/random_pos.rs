@@ -91,28 +91,33 @@ pub(crate) fn land_random_pos(
     })
 }
 
-/// Vanilla `LandRandomPos.getPos` with a custom `position_weight` in place of
-/// the mob's walk target value.
+/// Vanilla `LandRandomPos.getPos(mob, h, v, weight)`: like
+/// [`land_random_pos`], but ranks candidates by `weight` instead of the mob's
+/// walk target value.
 pub(crate) fn land_random_pos_weighted(
     mob: &(impl PathfinderMob + ?Sized),
     horizontal_dist: i32,
     vertical_dist: i32,
-    position_weight: impl Fn(BlockPos) -> f64,
+    weight: impl Fn(BlockPos) -> f64,
 ) -> Option<DVec3> {
     let restrict = mob_restricted(mob, f64::from(horizontal_dist));
-    generate_random_pos_weighted(
-        || {
-            let direction = generate_random_direction(mob, horizontal_dist, vertical_dist);
-            let pos = land_random_pos_toward_direction(
-                mob,
-                f64::from(horizontal_dist),
-                restrict,
-                direction,
-            )?;
-            land_move_pos_up_out_of_solid(mob, pos)
-        },
-        position_weight,
-    )
+    let mut best_weight = f64::NEG_INFINITY;
+    let mut best_pos = None;
+    for _ in 0..RANDOM_POS_ATTEMPTS {
+        let direction = generate_random_direction(mob, horizontal_dist, vertical_dist);
+        let Some(pos) =
+            land_random_pos_toward_direction(mob, f64::from(horizontal_dist), restrict, direction)
+                .and_then(|pos| land_move_pos_up_out_of_solid(mob, pos))
+        else {
+            continue;
+        };
+        let value = weight(pos);
+        if value > best_weight {
+            best_weight = value;
+            best_pos = Some(pos);
+        }
+    }
+    best_pos.map(block_bottom_center)
 }
 
 /// Vanilla `LandRandomPos.getPosAway`: a land position up to

@@ -347,6 +347,12 @@ fn convert_player_data(
         advancements: Vec::new(),
         shoulder_entity_left: shoulder_bytes(root, "ShoulderEntityLeft"),
         shoulder_entity_right: shoulder_bytes(root, "ShoulderEntityRight"),
+        raid_omen_position: root
+            .int_array("raid_omen_position")
+            .and_then(|pos| match *pos {
+                [x, y, z] => Some(BlockPos::new(x, y, z)),
+                _ => None,
+            }),
     })
 }
 

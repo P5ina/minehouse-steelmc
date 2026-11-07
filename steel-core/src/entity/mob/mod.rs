@@ -701,6 +701,10 @@ pub trait Mob: LivingEntity + Leashable {
         InteractionResult::Pass
     }
 
+    /// Vanilla `Mob.onOffspringSpawnedFromEgg`: runs after a spawn egg used on
+    /// this mob made `offspring`.
+    fn on_offspring_spawned_from_egg(&self, _spawner: &Player, _offspring: &dyn Mob) {}
+
     /// Mob-specific interaction hook for concrete mobs to override; does
     /// nothing by default.
     fn mob_interact(&self, _player: &Player, _hand: InteractionHand) -> InteractionResult {
@@ -1364,6 +1368,14 @@ pub trait Mob: LivingEntity + Leashable {
             .set(path_type, malus);
     }
 
+    /// Vanilla `Mob.onPathfindingStart`, called when a walk or fly node
+    /// evaluator prepares for this mob.
+    fn on_pathfinding_start(&self) {}
+
+    /// Vanilla `Mob.onPathfindingDone`, called when a walk or fly node
+    /// evaluator finishes for this mob.
+    fn on_pathfinding_done(&self) {}
+
     fn is_no_ai(&self) -> bool {
         self.mob_flags() & MOB_FLAG_NO_AI != 0
     }
@@ -1908,6 +1920,12 @@ pub trait Mob: LivingEntity + Leashable {
         }
     }
 
+    /// Vanilla `LookControl.resetXRotOnTick`: whether the look control levels
+    /// the head before turning it each tick.
+    fn look_control_resets_x_rot(&self) -> bool {
+        true
+    }
+
     fn tick_look_control(&self) {
         self.default_tick_look_control();
     }
@@ -1922,7 +1940,9 @@ pub trait Mob: LivingEntity + Leashable {
         };
 
         let mut rotation = self.rotation();
-        rotation.1 = 0.0;
+        if self.look_control_resets_x_rot() {
+            rotation.1 = 0.0;
+        }
         if look_control.is_looking_at_target() {
             let position = self.position();
             let wanted_position = look_control.wanted_position();

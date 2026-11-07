@@ -288,17 +288,15 @@ fn panic_package() -> ActivityData<VillagerEntity> {
 }
 
 fn look_at_type(entity_type: EntityTypeRef) -> Box<dyn BehaviorControl<VillagerEntity>> {
-    Box::new(set_entity_look_target(
-        move |entity| is_type(entity, entity_type),
-        8.0,
-    ))
+    Box::new(set_entity_look_target(8.0, move |entity| {
+        entity.entity_type() == entity_type
+    }))
 }
 
 fn look_at_category(category: MobCategory) -> Box<dyn BehaviorControl<VillagerEntity>> {
-    Box::new(set_entity_look_target(
-        move |entity| entity.entity_type().mob_category == category,
-        8.0,
-    ))
+    Box::new(set_entity_look_target(8.0, move |entity| {
+        entity.entity_type().mob_category == category
+    }))
 }
 
 /// Vanilla `VillagerGoalPackages.getFullLookBehavior`.
