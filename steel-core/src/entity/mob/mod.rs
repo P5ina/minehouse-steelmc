@@ -43,7 +43,8 @@ use crate::behavior::items::SpawnEggItem;
 use crate::behavior::{BLOCK_BEHAVIORS, BlockCollisionContext, ITEM_BEHAVIORS, InteractionResult};
 use crate::enchantment_helper::{self, EnchantmentDamageContext, EnchantmentPostAttackContext};
 use crate::entity::ai::control::{
-    BodyRotationInput, MobControls, MoveControlOperation, rotate_if_necessary, rotate_towards,
+    BodyRotationInput, DEFAULT_LOOK_Y_MAX_ROT_SPEED, MobControls, MoveControlOperation,
+    rotate_if_necessary, rotate_towards,
 };
 use crate::entity::ai::goal::{GoalControl, GoalSelector};
 use crate::entity::ai::navigation::PathNavigation;
@@ -1404,6 +1405,12 @@ pub trait Mob: LivingEntity + Leashable {
     /// Maximum degrees the head may yaw left or right independently of the body.
     fn max_head_y_rot(&self) -> f32 {
         75.0
+    }
+
+    /// Degrees per tick the head turns toward a look target
+    /// (vanilla `Mob.getHeadRotSpeed`).
+    fn head_rot_speed(&self) -> f32 {
+        DEFAULT_LOOK_Y_MAX_ROT_SPEED
     }
 
     /// Performs this mob's melee attack against `target`: computes weapon

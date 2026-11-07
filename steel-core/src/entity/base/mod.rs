@@ -248,6 +248,9 @@ pub struct EntityBaseState {
     needs_velocity_sync: bool,
     hurt_marked: bool,
     requires_precise_position: bool,
+    /// Vertical shift of the default box below the position (vanilla wind
+    /// charges sit 0.15 lower).
+    bounding_box_y_offset: f64,
 }
 
 impl EntityBaseState {
@@ -267,7 +270,7 @@ impl EntityBaseState {
             old_rotation: (0.0, 0.0),
             pose: EntityPose::Standing,
             dimensions,
-            bounding_box: Self::make_bounding_box(position, dimensions),
+            bounding_box: Self::make_bounding_box(position, dimensions, 0.0),
             movement_flags: EntityMovementFlags::new(),
             ground_contact: EntityGroundContact::airborne(),
             movement_progress: EntityMovementProgress::new(),
@@ -283,6 +286,7 @@ impl EntityBaseState {
             needs_velocity_sync: false,
             hurt_marked: false,
             requires_precise_position: false,
+            bounding_box_y_offset: 0.0,
         }
     }
 
@@ -303,10 +307,14 @@ impl EntityBaseState {
     }
 
     #[must_use]
-    fn make_bounding_box(position: DVec3, dimensions: EntityDimensions) -> WorldAabb {
+    fn make_bounding_box(
+        position: DVec3,
+        dimensions: EntityDimensions,
+        y_offset: f64,
+    ) -> WorldAabb {
         WorldAabb::entity_box(
             position.x,
-            position.y,
+            position.y - y_offset,
             position.z,
             f64::from(dimensions.half_width()),
             f64::from(dimensions.height),
@@ -1164,7 +1172,11 @@ impl EntityBase {
             let mut state = self.state.lock();
             let old = state.position;
             state.position = pos;
-            state.bounding_box = EntityBaseState::make_bounding_box(pos, state.dimensions);
+            state.bounding_box = EntityBaseState::make_bounding_box(
+                pos,
+                state.dimensions,
+                state.bounding_box_y_offset,
+            );
             if BlockPos::containing(old.x, old.y, old.z)
                 != BlockPos::containing(pos.x, pos.y, pos.z)
             {
@@ -1243,13 +1255,30 @@ impl EntityBase {
         self.notify_bounding_box_changed(bounding_box);
     }
 
+    /// Shifts the default box `offset` blocks below the position from now on
+    /// (vanilla `AbstractWindCharge.makeBoundingBox`).
+    pub fn set_bounding_box_y_offset(&self, offset: f64) {
+        let bounding_box = {
+            let mut state = self.state.lock();
+            state.bounding_box_y_offset = offset;
+            state.bounding_box =
+                EntityBaseState::make_bounding_box(state.position, state.dimensions, offset);
+            state.bounding_box
+        };
+        self.notify_bounding_box_changed(bounding_box);
+    }
+
     /// Sets pose and dimensions, then rebuilds the default position-centered box.
     pub fn set_pose_and_dimensions(&self, pose: EntityPose, dimensions: EntityDimensions) {
         let bounding_box = {
             let mut state = self.state.lock();
             state.pose = pose;
             state.dimensions = dimensions;
-            state.bounding_box = EntityBaseState::make_bounding_box(state.position, dimensions);
+            state.bounding_box = EntityBaseState::make_bounding_box(
+                state.position,
+                dimensions,
+                state.bounding_box_y_offset,
+            );
             state.bounding_box
         };
         self.notify_bounding_box_changed(bounding_box);

@@ -69,6 +69,17 @@ fn attack_target_of(body: &(impl LivingEntity + ?Sized)) -> Option<SharedEntity>
 /// attackable, or out of reach for too long (vanilla
 /// `StopAttackingIfTargetInvalid.create(onTargetErased)`).
 pub fn stop_attacking_if_target_invalid<E: Mob + ?Sized>(
+    on_target_erased: impl FnMut(&Arc<World>, &E, &SharedEntity) + Send + 'static,
+) -> impl BehaviorControl<E> {
+    stop_attacking_if_target_invalid_when(|_, _, _| false, on_target_erased)
+}
+
+/// [`stop_attacking_if_target_invalid`] that also drops the target when
+/// `stop_attacking_when` holds; it is only asked once every other check
+/// passed (vanilla `StopAttackingIfTargetInvalid.create(stopAttackingWhen,
+/// onTargetErased, true)`).
+pub fn stop_attacking_if_target_invalid_when<E: Mob + ?Sized>(
+    mut stop_attacking_when: impl FnMut(&Arc<World>, &E, &dyn LivingEntity) -> bool + Send + 'static,
     mut on_target_erased: impl FnMut(&Arc<World>, &E, &SharedEntity) + Send + 'static,
 ) -> impl BehaviorControl<E> {
     OneShot::new(
@@ -92,8 +103,12 @@ pub fn stop_attacking_if_target_invalid<E: Mob + ?Sized>(
                 _ => false,
             };
             let valid = target.as_living_entity().is_some_and(|living| {
-                Mob::can_attack(body, living) && !tired && LivingEntity::is_alive(living)
-            }) && same_level;
+                Mob::can_attack(body, living)
+                    && !tired
+                    && LivingEntity::is_alive(living)
+                    && same_level
+                    && !stop_attacking_when(world, body, living)
+            });
             if !valid {
                 on_target_erased(world, body, &target);
                 memories.lock().erase(&ATTACK_TARGET);

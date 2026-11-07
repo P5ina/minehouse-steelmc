@@ -13,6 +13,7 @@ mod snowball;
 mod splash_potion;
 mod thrown_egg;
 mod thrown_trident;
+mod wind_charge;
 
 pub use arrow::{ArrowEntity, SpectralArrowEntity};
 pub use ender_pearl::EnderPearlEntity;
@@ -29,3 +30,4 @@ pub use thrown_egg::ThrownEggEntity;
 pub use thrown_trident::ThrownTridentEntity;
 mod shulker_bullet;
 pub use shulker_bullet::ShulkerBulletEntity;
+pub use wind_charge::{AbstractWindCharge, BreezeWindChargeEntity, WindChargeEntity};

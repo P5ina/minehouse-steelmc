@@ -29,7 +29,7 @@ use steel_registry::blocks::block_state_ext::BlockStateExt as _;
 use steel_registry::item_stack::ItemStack;
 use steel_registry::vanilla_entity_type_tags::EntityTypeTag;
 use steel_registry::vanilla_game_rules::{MOB_GRIEFING, PROJECTILES_CAN_BREAK_BLOCKS};
-use steel_registry::{REGISTRY, TaggedRegistryExt as _, vanilla_game_events};
+use steel_registry::{REGISTRY, TaggedRegistryExt as _, sound_events, vanilla_game_events};
 use steel_utils::axis::Axis;
 use steel_utils::locks::SyncMutex;
 use steel_utils::{BlockPos, WorldAabb};
@@ -118,6 +118,9 @@ pub enum ProjectileDeflection {
     AimDeflect,
     /// Redirect the projectile along the deflecting entity's movement direction.
     MomentumDeflect,
+    /// Vanilla `Breeze.PROJECTILE_DEFLECTION`: the deflecting entity plays the
+    /// breeze deflect sound, then the projectile reverses.
+    BreezeReverse,
 }
 
 impl ProjectileDeflection {
@@ -129,6 +132,21 @@ impl ProjectileDeflection {
     ) {
         match self {
             Self::None => {}
+            Self::BreezeReverse => {
+                if let Some(entity) = deflecting_entity
+                    && let Some(world) = entity.level()
+                {
+                    world.play_sound_at(
+                        &sound_events::ENTITY_BREEZE_DEFLECT,
+                        entity.sound_source(),
+                        entity.position(),
+                        1.0,
+                        1.0,
+                        None,
+                    );
+                }
+                Self::Reverse.apply(projectile, deflecting_entity, power);
+            }
             Self::Reverse => {
                 let rotation = rand::random_range(170.0..190.0);
                 projectile.set_velocity(projectile.velocity() * (-power * 0.5));
@@ -492,6 +510,12 @@ pub trait Projectile: Entity + ProjectileEventSource {
         )
     }
 
+    /// Whether a deflection may currently turn this projectile (vanilla
+    /// `WindCharge.deflect` refuses for its first ticks).
+    fn can_be_deflected(&self) -> bool {
+        true
+    }
+
     /// Vanilla `Projectile.deflect(..., Vec3 power)`: the deflected
     /// movement is scaled by `power` per axis.
     fn deflect_with_power(
@@ -502,6 +526,9 @@ pub trait Projectile: Entity + ProjectileEventSource {
         by_attack: bool,
         power: DVec3,
     ) -> bool {
+        if !self.can_be_deflected() {
+            return false;
+        }
         deflection.apply(self.as_projectile_event_source(), deflecting_entity, power);
         self.projectile_base().state.lock().owner = new_owner;
         self.on_deflection(by_attack);
