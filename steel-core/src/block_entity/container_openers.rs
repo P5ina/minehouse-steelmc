@@ -225,7 +225,7 @@ mod tests {
     use steel_utils::{BlockPos, BlockStateId, ChunkPos, Downcast as _, translations};
     use text_components::TextComponent;
 
-    use crate::behavior::blocks::{ChestBlock, TrappedChestBlock, connected_direction};
+    use crate::behavior::blocks::{chest_container, chest_lid_sounds, connected_direction};
     use crate::behavior::{BLOCK_BEHAVIORS, init_behaviors};
     use crate::block_entity::entities::{
         BarrelBlockEntity, ChestBlockEntity, EnderChestBlockEntity, ShulkerBoxBlockEntity,
@@ -275,12 +275,7 @@ mod tests {
     /// Opens the chest menu the way `ChestBlock.useWithoutItem` does.
     fn open_chest(world: &Arc<World>, player: &Player, pos: BlockPos) {
         let state = world.get_block_state(pos);
-        let containers = if state.get_block() == &vanilla_blocks::TRAPPED_CHEST {
-            TrappedChestBlock::new(state.get_block()).combine(state, world, pos, false)
-        } else {
-            ChestBlock::new(state.get_block()).combine(state, world, pos, false)
-        }
-        .containers();
+        let containers = chest_container(state, world, pos, false).expect("a chest block");
         let rows = containers.len() * 3;
         let inventory = Arc::clone(&player.inventory);
         player.open_menu(
@@ -543,5 +538,79 @@ mod tests {
         first.close_container();
         second.close_container();
         assert_eq!(events_at(world, POS), vec![(1, 1), (1, 2), (1, 0)]);
+    }
+
+    #[test]
+    fn copper_chest_opens_like_a_chest() {
+        let fixture = arena("copper_chest_opens");
+        let world = &fixture.world;
+        place(
+            world,
+            POS,
+            chest_state(&vanilla_blocks::WEATHERED_COPPER_CHEST, ChestType::Single),
+        );
+        let player = viewer(world, "Copper", 41);
+
+        open_chest(world, &player, POS);
+        assert_eq!(chest_viewers(world, POS), 1);
+        assert_eq!(events_at(world, POS), vec![(1, 1)]);
+
+        player.close_container();
+        assert_eq!(chest_viewers(world, POS), 0);
+    }
+
+    #[test]
+    fn copper_chests_sound_by_oxidation() {
+        init_vanilla_registry();
+        let open = |block| chest_lid_sounds(block).map(|(open, _)| open.key.path.to_string());
+        assert_eq!(
+            open(&vanilla_blocks::CHEST).as_deref(),
+            Some("block.chest.open")
+        );
+        assert_eq!(
+            open(&vanilla_blocks::EXPOSED_COPPER_CHEST).as_deref(),
+            Some("block.copper_chest.open")
+        );
+        assert_eq!(
+            open(&vanilla_blocks::WAXED_WEATHERED_COPPER_CHEST).as_deref(),
+            Some("block.copper_chest_weathered.open")
+        );
+        assert_eq!(
+            open(&vanilla_blocks::OXIDIZED_COPPER_CHEST).as_deref(),
+            Some("block.copper_chest_oxidized.open")
+        );
+        assert_eq!(open(&vanilla_blocks::BARREL), None);
+    }
+
+    #[test]
+    fn copper_chests_of_any_oxidation_join_into_one() {
+        let fixture = arena("copper_chest_double");
+        let world = &fixture.world;
+        // A south-facing LEFT half has its partner to the west.
+        let left = chest_state(&vanilla_blocks::COPPER_CHEST, ChestType::Left);
+        assert_eq!(connected_direction(left), Direction::West);
+        place(world, POS, left);
+        place(
+            world,
+            POS.west(),
+            chest_state(&vanilla_blocks::OXIDIZED_COPPER_CHEST, ChestType::Right),
+        );
+        // The joined half takes its new partner's look, Vanilla
+        // `CopperChestBlock.updateShape`.
+        let state = world.get_block_state(POS);
+        assert_eq!(state.get_block(), &vanilla_blocks::OXIDIZED_COPPER_CHEST);
+        assert_eq!(
+            state.get_value(&BlockStateProperties::CHEST_TYPE),
+            ChestType::Left
+        );
+
+        let containers =
+            chest_container(state, world, POS, false).expect("copper chests are chests");
+        assert_eq!(containers.len(), 2, "both halves form one container");
+
+        let player = viewer(world, "Copper", 42);
+        open_chest(world, &player, POS);
+        assert_eq!(chest_viewers(world, POS), 1);
+        assert_eq!(chest_viewers(world, POS.west()), 1);
     }
 }

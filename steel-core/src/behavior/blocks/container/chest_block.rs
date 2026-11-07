@@ -1,8 +1,9 @@
-//! Chest and trapped chest behavior.
+//! Chest, trapped chest and copper chest behavior.
 //!
 //! Two chests facing the same way side by side join into a double chest. Each half
 //! keeps its own block entity; menus, comparators and hoppers see the halves as one
-//! container, `RIGHT` half first.
+//! container, `RIGHT` half first. Copper chests of any oxidation join each other and
+//! share the least oxidized look, Vanilla `CopperChestBlock`.
 
 use std::sync::{Arc, Weak};
 
@@ -11,16 +12,24 @@ use steel_registry::block_entity_type::BlockEntityTypeRef;
 use steel_registry::blocks::BlockRef;
 use steel_registry::blocks::block_state_ext::BlockStateExt;
 use steel_registry::blocks::properties::{BlockStateProperties, ChestType};
+use steel_registry::sound_event::SoundEventRef;
 use steel_registry::stat::custom::CustomStatRef;
-use steel_registry::{vanilla_block_entity_types, vanilla_blocks, vanilla_custom_stats};
+use steel_registry::vanilla_block_tags::BlockTag;
+use steel_registry::{
+    REGISTRY, sound_events, vanilla_block_entity_types, vanilla_blocks, vanilla_custom_stats,
+};
 use steel_utils::{BlockPos, BlockStateId, Direction, Downcast as _, translations};
 use text_components::TextComponent;
 
+use super::anger_nearby_piglins;
 use crate::behavior::InventoryAccess;
 use crate::behavior::block::{
     BlockBehavior, BlockEntityCreation, schedule_water_tick_if_waterlogged,
 };
+use crate::behavior::blocks::{WeatherState, WeatheringCopper};
 use crate::behavior::context::{BlockHitResult, BlockPlaceContext, InteractionResult};
+use crate::behavior::waxables::get_normal_from_waxed_variant;
+use crate::behavior::weathering::get_weather_state;
 use crate::block_entity::entities::ChestBlockEntity;
 use crate::block_entity::{BLOCK_ENTITIES, SharedBlockEntity};
 use crate::inventory::container::calculate_redstone_signal_from_containers;
@@ -56,11 +65,14 @@ impl ChestCombineResult {
     }
 }
 
-/// Shared chest logic for [`ChestBlock`] and [`TrappedChestBlock`].
+/// Shared chest logic for [`ChestBlock`], [`TrappedChestBlock`],
+/// [`CopperChestBlock`] and [`WeatheringCopperChestBlock`].
 struct ChestBehavior {
     block: BlockRef,
     block_entity_type: BlockEntityTypeRef,
     open_stat: CustomStatRef,
+    /// Joins any copper chest instead of only its own block.
+    copper: bool,
 }
 
 impl ChestBehavior {
@@ -90,14 +102,20 @@ impl ChestBehavior {
             chest_type = self.chest_type(world.as_ref(), pos, facing);
         }
 
-        self.block
+        let state = self
+            .block
             .default_state()
             .set_value(&BlockStateProperties::FACING, facing)
             .set_value(&BlockStateProperties::CHEST_TYPE, chest_type)
             .set_value(
                 &BlockStateProperties::WATERLOGGED,
                 context.is_water_source(),
-            )
+            );
+        if self.copper {
+            least_oxidized_chest_of_connected_blocks(state, world.as_ref(), pos)
+        } else {
+            state
+        }
     }
 
     fn chest_type(&self, world: &dyn LevelReader, pos: BlockPos, facing: Direction) -> ChestType {
@@ -125,11 +143,44 @@ impl ChestBehavior {
             .then(|| state.get_value(&BlockStateProperties::FACING))
     }
 
+    /// Vanilla `chestCanConnectTo`; `CopperChestBlock` accepts any block in
+    /// `#copper_chests` that has a chest type.
     fn chest_can_connect_to(&self, state: BlockStateId) -> bool {
-        state.get_block() == self.block
+        if self.copper {
+            state.get_block().has_tag(&BlockTag::COPPER_CHESTS)
+                && state
+                    .try_get_value(&BlockStateProperties::CHEST_TYPE)
+                    .is_some()
+        } else {
+            state.get_block() == self.block
+        }
     }
 
+    /// Vanilla `ChestBlock.updateShape`, then for copper chests
+    /// `CopperChestBlock.updateShape`: a joined half takes its partner's
+    /// oxidation, so both halves weather and get waxed together.
     fn update_shape(
+        &self,
+        state: BlockStateId,
+        world: &dyn ScheduledTickAccess,
+        pos: BlockPos,
+        direction: Direction,
+        neighbor_state: BlockStateId,
+    ) -> BlockStateId {
+        let state = self.chest_update_shape(state, world, pos, direction, neighbor_state);
+        if self.copper
+            && self.chest_can_connect_to(neighbor_state)
+            && state.get_value(&BlockStateProperties::CHEST_TYPE) != ChestType::Single
+            && connected_direction(state) == direction
+        {
+            return REGISTRY
+                .blocks
+                .copy_matching_properties(state, neighbor_state.get_block());
+        }
+        state
+    }
+
+    fn chest_update_shape(
         &self,
         state: BlockStateId,
         world: &dyn ScheduledTickAccess,
@@ -252,7 +303,7 @@ impl ChestBehavior {
             return;
         }
         player.award_custom_stat(self.open_stat);
-        // TODO: Anger nearby piglins (PiglinAi.angerNearbyPiglins)
+        anger_nearby_piglins(world, player, true);
     }
 
     fn get_analog_output_signal(&self, state: BlockStateId, world: &World, pos: BlockPos) -> i32 {
@@ -302,6 +353,84 @@ pub fn is_chest_blocked_at(world: &World, pos: BlockPos) -> bool {
     is_redstone_conductor(world, world.get_block_state(above), above)
 }
 
+/// A copper chest block's oxidation and whether it is waxed, from Vanilla
+/// `CopperChestBlock.getState` and `isWaxed`.
+fn copper_chest_weather(block: BlockRef) -> Option<(WeatherState, bool)> {
+    if !block.has_tag(&BlockTag::COPPER_CHESTS) {
+        return None;
+    }
+    let unwaxed = get_normal_from_waxed_variant(block);
+    let weather = get_weather_state(unwaxed.unwrap_or(block))?;
+    Some((weather, unwaxed.is_some()))
+}
+
+/// The unwaxed copy of a copper chest state, Vanilla `CopperChestBlock.unwaxBlock`.
+fn unwax(state: BlockStateId) -> BlockStateId {
+    get_normal_from_waxed_variant(state.get_block()).map_or(state, |unwaxed| {
+        REGISTRY.blocks.copy_matching_properties(state, unwaxed)
+    })
+}
+
+/// Vanilla `CopperChestBlock.getLeastOxidizedChestOfConnectedBlocks`: a
+/// copper chest placed against another takes the less oxidized of the two
+/// looks, and loses its wax when only one of them is waxed.
+fn least_oxidized_chest_of_connected_blocks(
+    state: BlockStateId,
+    world: &dyn LevelReader,
+    pos: BlockPos,
+) -> BlockStateId {
+    if state.get_value(&BlockStateProperties::CHEST_TYPE) == ChestType::Single {
+        return state;
+    }
+    let neighbor = world.get_block_state(pos.relative(connected_direction(state)));
+    let (Some((own_weather, own_waxed)), Some((neighbor_weather, neighbor_waxed))) = (
+        copper_chest_weather(state.get_block()),
+        copper_chest_weather(neighbor.get_block()),
+    ) else {
+        return state;
+    };
+    let (own, partner) = if own_waxed == neighbor_waxed {
+        (state, neighbor)
+    } else {
+        (unwax(state), unwax(neighbor))
+    };
+    let block = if own_weather <= neighbor_weather {
+        own.get_block()
+    } else {
+        partner.get_block()
+    };
+    REGISTRY.blocks.copy_matching_properties(own, block)
+}
+
+/// The sounds a chest block opens and closes with, Vanilla
+/// `ChestBlock.getOpenChestSound` / `getCloseChestSound`, or `None` for a
+/// block that is not a chest. Copper chests sound by oxidation, Vanilla
+/// `CopperChestBlock.getHingeSound`.
+#[must_use]
+pub fn chest_lid_sounds(block: BlockRef) -> Option<(SoundEventRef, SoundEventRef)> {
+    if block == &vanilla_blocks::CHEST || block == &vanilla_blocks::TRAPPED_CHEST {
+        return Some((
+            &sound_events::BLOCK_CHEST_OPEN,
+            &sound_events::BLOCK_CHEST_CLOSE,
+        ));
+    }
+    let (weather, _) = copper_chest_weather(block)?;
+    Some(match weather {
+        WeatherState::Weathered => (
+            &sound_events::BLOCK_COPPER_CHEST_WEATHERED_OPEN,
+            &sound_events::BLOCK_COPPER_CHEST_WEATHERED_CLOSE,
+        ),
+        WeatherState::Oxidized => (
+            &sound_events::BLOCK_COPPER_CHEST_OXIDIZED_OPEN,
+            &sound_events::BLOCK_COPPER_CHEST_OXIDIZED_CLOSE,
+        ),
+        WeatherState::Unaffected | WeatherState::Exposed => (
+            &sound_events::BLOCK_COPPER_CHEST_OPEN,
+            &sound_events::BLOCK_COPPER_CHEST_CLOSE,
+        ),
+    })
+}
+
 fn custom_name(chest: &SharedBlockEntity) -> Option<TextComponent> {
     chest
         .downcast_ref::<ChestBlockEntity>()
@@ -320,8 +449,21 @@ pub struct TrappedChestBlock {
     block: BlockRef,
 }
 
+#[block_behavior]
+/// Waxed copper chest behavior, Vanilla `CopperChestBlock`.
+pub struct CopperChestBlock {
+    block: BlockRef,
+}
+
+#[block_behavior]
+/// Unwaxed copper chest behavior that oxidizes over time, Vanilla
+/// `WeatheringCopperChestBlock`.
+pub struct WeatheringCopperChestBlock {
+    block: BlockRef,
+}
+
 macro_rules! impl_chest_block {
-    ($name:ident, $entity_type:ident, $stat:ident, $trapped:expr) => {
+    ($name:ident, $entity_type:ident, $stat:ident, $trapped:expr, $copper:expr, $weathering:expr) => {
         impl $name {
             /// Creates the chest behavior for `block`.
             #[must_use]
@@ -334,6 +476,7 @@ macro_rules! impl_chest_block {
                     block: self.block,
                     block_entity_type: &vanilla_block_entity_types::$entity_type,
                     open_stat: &vanilla_custom_stats::$stat,
+                    copper: $copper,
                 }
             }
 
@@ -437,6 +580,29 @@ macro_rules! impl_chest_block {
                 }
             }
 
+            /// Vanilla `WeatheringCopperChestBlock.randomTick`: the `LEFT` or
+            /// single half oxidizes while nobody has it open; the `RIGHT` half
+            /// follows through `update_shape`.
+            fn random_tick(&self, state: BlockStateId, world: &Arc<World>, pos: BlockPos) {
+                if !$weathering
+                    || state.get_value(&BlockStateProperties::CHEST_TYPE) == ChestType::Right
+                {
+                    return;
+                }
+                let Some(chest) = world.get_block_entity(pos) else {
+                    return;
+                };
+                let Some(chest_entity) = chest.downcast_ref::<ChestBlockEntity>() else {
+                    return;
+                };
+                if chest_entity.has_viewers(world) {
+                    return;
+                }
+                if let Some(weather) = get_weather_state(self.block) {
+                    WeatheringCopper::new(weather).change_over_time(state, world, pos);
+                }
+            }
+
             /// Vanilla `BaseEntityBlock.triggerEvent`: the block entity decides.
             fn trigger_event(
                 &self,
@@ -504,11 +670,22 @@ fn trapped_chest_signal(world: &dyn LevelReader, pos: BlockPos) -> i32 {
         .clamp(0, 15)
 }
 
-impl_chest_block!(ChestBlock, CHEST, OPEN_CHEST, false);
+impl_chest_block!(ChestBlock, CHEST, OPEN_CHEST, false, false, false);
 impl_chest_block!(
     TrappedChestBlock,
     TRAPPED_CHEST,
     TRIGGER_TRAPPED_CHEST,
+    true,
+    false,
+    false
+);
+impl_chest_block!(CopperChestBlock, CHEST, OPEN_CHEST, false, true, false);
+impl_chest_block!(
+    WeatheringCopperChestBlock,
+    CHEST,
+    OPEN_CHEST,
+    false,
+    true,
     true
 );
 
@@ -526,6 +703,8 @@ pub fn chest_container(
         ChestBlock::new(block).chest()
     } else if block == &vanilla_blocks::TRAPPED_CHEST {
         TrappedChestBlock::new(block).chest()
+    } else if block.has_tag(&BlockTag::COPPER_CHESTS) {
+        CopperChestBlock::new(block).chest()
     } else {
         return None;
     };
@@ -534,4 +713,95 @@ pub fn chest_container(
             .combine(state, world, pos, ignore_blocked)
             .containers(),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use steel_registry::init_vanilla_registry;
+    use steel_utils::ChunkPos;
+    use steel_utils::types::UpdateFlags;
+
+    use super::*;
+    use crate::behavior::init_behaviors;
+    use crate::block_entity::init_block_entities;
+    use crate::test_support::{fresh_test_world, insert_ready_full_chunk};
+
+    const POS: BlockPos = BlockPos::new(8, 64, 8);
+
+    fn half(block: BlockRef, chest_type: ChestType) -> BlockStateId {
+        block
+            .default_state()
+            .set_value(&BlockStateProperties::FACING, Direction::South)
+            .set_value(&BlockStateProperties::CHEST_TYPE, chest_type)
+    }
+
+    /// The block a `LEFT` copper half of `placed` becomes next to a single
+    /// `partner`, Vanilla `getLeastOxidizedChestOfConnectedBlocks`.
+    fn placed_next_to(placed: BlockRef, partner: BlockRef) -> BlockRef {
+        init_vanilla_registry();
+        init_behaviors();
+        init_block_entities();
+        let fixture = fresh_test_world("copper_chest_placement");
+        let world = &fixture.world;
+        insert_ready_full_chunk(world, ChunkPos::from_block_pos(POS));
+        let state = half(placed, ChestType::Left);
+        assert!(world.set_block(
+            POS.relative(connected_direction(state)),
+            half(partner, ChestType::Single),
+            UpdateFlags::UPDATE_NONE,
+        ));
+        let result = least_oxidized_chest_of_connected_blocks(state, world.as_ref(), POS);
+        assert_eq!(
+            result.get_value(&BlockStateProperties::CHEST_TYPE),
+            ChestType::Left
+        );
+        result.get_block()
+    }
+
+    #[test]
+    fn placed_copper_chest_takes_the_least_oxidized_look() {
+        assert_eq!(
+            placed_next_to(
+                &vanilla_blocks::OXIDIZED_COPPER_CHEST,
+                &vanilla_blocks::EXPOSED_COPPER_CHEST
+            ),
+            &vanilla_blocks::EXPOSED_COPPER_CHEST
+        );
+        assert_eq!(
+            placed_next_to(
+                &vanilla_blocks::COPPER_CHEST,
+                &vanilla_blocks::WEATHERED_COPPER_CHEST
+            ),
+            &vanilla_blocks::COPPER_CHEST
+        );
+    }
+
+    #[test]
+    fn placed_copper_chest_loses_wax_unless_both_halves_are_waxed() {
+        assert_eq!(
+            placed_next_to(
+                &vanilla_blocks::WAXED_WEATHERED_COPPER_CHEST,
+                &vanilla_blocks::OXIDIZED_COPPER_CHEST
+            ),
+            &vanilla_blocks::WEATHERED_COPPER_CHEST
+        );
+        assert_eq!(
+            placed_next_to(
+                &vanilla_blocks::WAXED_OXIDIZED_COPPER_CHEST,
+                &vanilla_blocks::WAXED_EXPOSED_COPPER_CHEST
+            ),
+            &vanilla_blocks::WAXED_EXPOSED_COPPER_CHEST
+        );
+    }
+
+    #[test]
+    fn plain_chests_only_join_their_own_block() {
+        init_vanilla_registry();
+        let chest = ChestBlock::new(&vanilla_blocks::CHEST).chest();
+        assert!(chest.chest_can_connect_to(vanilla_blocks::CHEST.default_state()));
+        assert!(!chest.chest_can_connect_to(vanilla_blocks::COPPER_CHEST.default_state()));
+        let copper = CopperChestBlock::new(&vanilla_blocks::WAXED_COPPER_CHEST).chest();
+        assert!(copper.chest_can_connect_to(vanilla_blocks::OXIDIZED_COPPER_CHEST.default_state()));
+        assert!(!copper.chest_can_connect_to(vanilla_blocks::CHEST.default_state()));
+    }
 }

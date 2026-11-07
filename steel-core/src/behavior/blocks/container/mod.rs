@@ -4,7 +4,6 @@ mod beacon_block;
 mod beehive_block;
 mod chest_block;
 mod chiseled_bookshelf_block;
-mod copper_chest_block;
 mod crafting_table_block;
 mod dispenser_block;
 mod enchanting_table_block;
@@ -20,7 +19,6 @@ pub use beacon_block::*;
 pub use beehive_block::*;
 pub use chest_block::*;
 pub use chiseled_bookshelf_block::*;
-pub use copper_chest_block::*;
 pub use crafting_table_block::*;
 pub use dispenser_block::*;
 pub use enchanting_table_block::*;
@@ -29,3 +27,11 @@ pub use furnace_block::*;
 pub use grindstone_block::*;
 pub use hopper_block::*;
 pub use shulker_box_block::*;
+
+use crate::player::Player;
+use crate::world::World;
+
+/// Vanilla `PiglinAi.angerNearbyPiglins`, called when a player opens a
+/// container. `require_line_of_sight` is Vanilla's `onlyIfSeen`.
+// TODO: Steel has no piglins yet; anger the piglins near `player` once they exist.
+pub const fn anger_nearby_piglins(_world: &World, _player: &Player, _require_line_of_sight: bool) {}

@@ -16,6 +16,7 @@ use steel_registry::{
 use steel_utils::{BlockLocalAabb, BlockPos, BlockStateId, Direction, Downcast, translations};
 use text_components::TextComponent;
 
+use super::anger_nearby_piglins;
 use crate::{
     behavior::{
         BlockBehavior, BlockCollisionBoxes, BlockCollisionContext, BlockEntityCreation,
@@ -133,7 +134,7 @@ impl BlockBehavior for ShulkerBoxBlock {
             && self.open_menu_provider(state, world, pos, player)
         {
             player.award_custom_stat(&vanilla_custom_stats::OPEN_SHULKER_BOX);
-            // TODO: Anger nearby piglins (PiglinAi.angerNearbyPiglins)
+            anger_nearby_piglins(world, player, true);
         }
         InteractionResult::Success
     }

@@ -202,6 +202,14 @@ def specs():
     s.check((2, 1, 1), b("redstone_lamp", lit=True))
     yield s
 
+    s = Spec("hopper_fills_copper_chest", "A hopper moves its diamond into the weathered copper chest below.",
+             (1, 4, 1), 40, ["container", "hopper", "copper"])
+    s.set((0, 1, 0), b("weathered_copper_chest", facing="north", type="single", waterlogged=False))
+    s.set((0, 2, 0), b("hopper", facing="down", enabled=True,
+                       nbt={"Items": items((0, "diamond", 1)), "TransferCooldown": 0}))
+    s.check((0, 1, 0), b("weathered_copper_chest", nbt={"Items[0].id": "minecraft:diamond"}))
+    yield s
+
 
 if __name__ == "__main__":
     OUT.mkdir(parents=True, exist_ok=True)
