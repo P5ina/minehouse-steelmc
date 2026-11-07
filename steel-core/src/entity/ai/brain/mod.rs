@@ -4,8 +4,8 @@
 //! Memories live behind their own lock so sensors and behaviors can read
 //! and write them while the brain ticks its behavior list.
 //!
-//! Not yet ported: schedules (`Brain.setSchedule` and
-//! `updateActivityFromSchedule`), which villagers need.
+//! Schedules (`Brain.setSchedule`) name an activity environment attribute,
+//! sampled from the world's timelines by `updateActivityFromSchedule`.
 
 pub mod activity;
 pub mod behavior;
@@ -19,7 +19,10 @@ pub mod sensors;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use std::io::Cursor;
+
 use simdnbt::borrow::NbtCompound as BorrowedNbtCompound;
+use simdnbt::borrow::read_compound;
 use simdnbt::owned::NbtCompound;
 use steel_utils::locks::SyncMutex;
 
@@ -150,12 +153,33 @@ struct PriorityGroup<E: ?Sized> {
     activities: Vec<ActivityBehaviors<E>>,
 }
 
+/// Vanilla `Brain.lastScheduleUpdate` before the first update.
+const NO_SCHEDULE_UPDATE: i64 = -9999;
+/// Vanilla `updateActivityFromSchedule`: ticks between two schedule checks.
+const SCHEDULE_UPDATE_INTERVAL: i64 = 20;
+
+/// Vanilla `Brain.schedule` and `lastScheduleUpdate`.
+struct ScheduleState {
+    /// The activity environment attribute, such as
+    /// `minecraft:gameplay/villager_activity`.
+    attribute: Option<&'static str>,
+    last_update: i64,
+}
+
 /// A mob's brain (vanilla `Brain`).
 pub struct Brain<E: ?Sized> {
     memories: SyncMutex<Memories>,
     activities: SyncMutex<ActivityState>,
     sensors: SyncMutex<Vec<SensorSlot<E>>>,
     behaviors: SyncMutex<Vec<PriorityGroup<E>>>,
+    schedule: SyncMutex<ScheduleState>,
+}
+
+const fn no_schedule() -> SyncMutex<ScheduleState> {
+    SyncMutex::new(ScheduleState {
+        attribute: None,
+        last_update: NO_SCHEDULE_UPDATE,
+    })
 }
 
 impl<E: ?Sized> Brain<E> {
@@ -167,6 +191,7 @@ impl<E: ?Sized> Brain<E> {
             activities: SyncMutex::new(ActivityState::new()),
             sensors: SyncMutex::new(Vec::new()),
             behaviors: SyncMutex::new(Vec::new()),
+            schedule: no_schedule(),
         };
         brain.use_default_activity();
         brain
@@ -240,9 +265,53 @@ impl<E: ?Sized> Brain<E> {
             activities: SyncMutex::new(state),
             sensors: SyncMutex::new(sensors),
             behaviors: SyncMutex::new(groups),
+            schedule: no_schedule(),
         };
         brain.use_default_activity();
         brain
+    }
+
+    /// Takes over everything `other` holds, as vanilla does when a mob
+    /// replaces its brain (`Villager.refreshBrain`). Must not be called while
+    /// this brain ticks.
+    pub fn replace_with(&self, other: Self) {
+        let Self {
+            memories,
+            activities,
+            sensors,
+            behaviors,
+            schedule,
+        } = other;
+        *self.memories.lock() = memories.into_inner();
+        *self.activities.lock() = activities.into_inner();
+        *self.sensors.lock() = sensors.into_inner();
+        *self.behaviors.lock() = behaviors.into_inner();
+        *self.schedule.lock() = schedule.into_inner();
+    }
+
+    /// Vanilla `Brain.setSchedule`: the activity attribute the schedule follows.
+    pub fn set_schedule(&self, attribute: &'static str) {
+        self.schedule.lock().attribute = Some(attribute);
+    }
+
+    /// Vanilla `Brain.updateActivityFromSchedule`: at most once a second,
+    /// switches to the activity the schedule names at `world`'s current time.
+    pub fn update_activity_from_schedule(&self, world: &World) {
+        let game_time = world.game_time();
+        let attribute = {
+            let mut schedule = self.schedule.lock();
+            if game_time - schedule.last_update <= SCHEDULE_UPDATE_INTERVAL {
+                return;
+            }
+            schedule.last_update = game_time;
+            schedule.attribute
+        };
+        let scheduled = attribute.map_or(Activity::IDLE, |attribute| {
+            world.scheduled_activity(attribute)
+        });
+        if !self.is_active(scheduled) {
+            self.set_active_activity_if_possible(scheduled);
+        }
     }
 
     /// The brain's memories.
@@ -255,6 +324,17 @@ impl<E: ?Sized> Brain<E> {
     #[must_use]
     pub fn save(&self) -> NbtCompound {
         self.memories.lock().save()
+    }
+
+    /// Restores the saved memories in `packed`, as written by [`Self::save`]
+    /// (vanilla `Brain.Provider.makeBrain(body, packed)`).
+    pub fn load_packed(&self, packed: &NbtCompound) {
+        let mut bytes = Vec::new();
+        packed.write(&mut bytes);
+        match read_compound(&mut Cursor::new(bytes.as_slice())) {
+            Ok(borrowed) => self.memories.lock().load((&borrowed).into()),
+            Err(error) => log::warn!("failed to reload packed brain memories: {error}"),
+        }
     }
 
     /// Clears every memory.

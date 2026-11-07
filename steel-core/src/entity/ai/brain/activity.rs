@@ -39,4 +39,42 @@ impl Activity {
     pub const fn name(self) -> &'static str {
         self.0
     }
+
+    /// Every activity Steel knows, for lookups by key.
+    const ALL: [Self; 26] = [
+        Self::CORE,
+        Self::IDLE,
+        Self::WORK,
+        Self::PLAY,
+        Self::REST,
+        Self::MEET,
+        Self::PANIC,
+        Self::RAID,
+        Self::PRE_RAID,
+        Self::HIDE,
+        Self::FIGHT,
+        Self::CELEBRATE,
+        Self::ADMIRE_ITEM,
+        Self::AVOID,
+        Self::RIDE,
+        Self::PLAY_DEAD,
+        Self::LONG_JUMP,
+        Self::RAM,
+        Self::TONGUE,
+        Self::SWIM,
+        Self::LAY_SPAWN,
+        Self::SNIFF,
+        Self::INVESTIGATE,
+        Self::ROAR,
+        Self::EMERGE,
+        Self::DIG,
+    ];
+
+    /// The activity a registry key such as `minecraft:work` names
+    /// (vanilla `BuiltInRegistries.ACTIVITY.getValue`).
+    #[must_use]
+    pub fn from_key(key: &str) -> Option<Self> {
+        let name = key.strip_prefix("minecraft:").unwrap_or(key);
+        Self::ALL.into_iter().find(|activity| activity.0 == name)
+    }
 }
