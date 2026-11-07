@@ -27,8 +27,10 @@ use crate::entity::Entity;
 use crate::entity::ai::path::PathComputationType;
 use crate::entity::projectile::Projectile;
 use crate::player::Player;
+use crate::world::Explosion;
 use crate::world::game_event::GameEventContext;
 use crate::world::{ClipHitResult, LevelReader, ScheduledTickAccess, SignalGetter as _, World};
+use steel_registry::item_stack::ItemStack;
 
 const MAX_HIT_HEIGHT: f64 = 0.8125;
 const FACING: &EnumProperty<Direction> = &BlockStateProperties::FACING;
@@ -137,6 +139,21 @@ impl BellBlock {
 }
 
 impl BlockBehavior for BellBlock {
+    /// Vanilla `onExplosionHit`: wind bursts trigger this block.
+    fn on_explosion_hit(
+        &self,
+        state: BlockStateId,
+        world: &Arc<World>,
+        pos: BlockPos,
+        explosion: &dyn Explosion,
+        on_hit: &mut dyn FnMut(ItemStack, BlockPos),
+    ) {
+        if explosion.can_trigger_blocks() {
+            Self::ring(None, world, pos, state.get_value(FACING));
+        }
+        self.default_on_explosion_hit(state, world, pos, explosion, on_hit);
+    }
+
     fn get_state_for_placement(&self, context: &BlockPlaceContext<'_>) -> Option<BlockStateId> {
         let pos = context.place_pos();
         let clicked_face = context.clicked_face();

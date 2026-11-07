@@ -21,6 +21,7 @@ use steel_utils::{
     types::{self, UpdateFlags},
 };
 
+use crate::world::Explosion;
 use crate::{
     behavior::{
         BlockBehavior, BlockPlaceContext, InteractionResult, InventoryAccess,
@@ -36,6 +37,7 @@ use crate::{
         game_event::GameEventContext,
     },
 };
+use steel_registry::item_stack::ItemStack;
 
 const CANDLES_PROPERTY: &IntProperty = &BlockStateProperties::CANDLES;
 const LIT_PROPERTY: &BoolProperty = &BlockStateProperties::LIT;
@@ -95,6 +97,21 @@ impl CandleBlock {
 }
 
 impl BlockBehavior for CandleBlock {
+    /// Vanilla `onExplosionHit`: wind bursts trigger this block.
+    fn on_explosion_hit(
+        &self,
+        state: steel_utils::BlockStateId,
+        world: &Arc<World>,
+        pos: BlockPos,
+        explosion: &dyn Explosion,
+        on_hit: &mut dyn FnMut(ItemStack, BlockPos),
+    ) {
+        if explosion.can_trigger_blocks() && Self::is_lit(state) {
+            CandleBlock::extinguish(None, state, world, pos);
+        }
+        self.default_on_explosion_hit(state, world, pos, explosion, on_hit);
+    }
+
     /// Checks if the candle block can survive at the given position.
     fn can_survive(
         &self,

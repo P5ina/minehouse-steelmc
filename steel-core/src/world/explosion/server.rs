@@ -141,6 +141,17 @@ impl Explosion for ServerExplosion<'_> {
         self.center
     }
 
+    fn can_trigger_blocks(&self) -> bool {
+        if self.block_interaction != BlockInteraction::TriggerBlock {
+            return false;
+        }
+        let breeze_charge = self
+            .source
+            .as_ref()
+            .is_some_and(|source| source.entity_type() == &vanilla_entities::BREEZE_WIND_CHARGE);
+        !breeze_charge || self.world.get_game_rule(&MOB_GRIEFING)
+    }
+
     fn should_affect_blocklike_entities(&self) -> bool {
         let is_wind_charge = self.source.as_ref().is_some_and(|source| {
             source.entity_type() == &vanilla_entities::BREEZE_WIND_CHARGE

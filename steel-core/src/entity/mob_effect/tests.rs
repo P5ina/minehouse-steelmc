@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use glam::DVec3;
 use steel_registry::blocks::block_state_ext::BlockStateExt;
+use steel_registry::blocks::properties::{BlockStateProperties, BoolProperty, DoubleBlockHalf};
 use steel_registry::entity_type::EntityTypeRef;
 use steel_registry::mob_effect::MobEffectRef;
 use steel_registry::vanilla_game_rules::MOB_GRIEFING;
@@ -149,4 +150,105 @@ fn weaving_needs_mob_griefing_for_non_players() {
     pig.set_removed(RemovalReason::Killed);
 
     assert_eq!(cobwebs_around(world), 0);
+}
+
+const OAK_DOOR_POS: BlockPos = BlockPos::new(10, 64, 8);
+const IRON_DOOR_POS: BlockPos = BlockPos::new(6, 64, 8);
+const LEVER_POS: BlockPos = BlockPos::new(8, 64, 10);
+const BUTTON_POS: BlockPos = BlockPos::new(9, 64, 10);
+const CANDLE_POS: BlockPos = BlockPos::new(7, 64, 10);
+const STONE_POS: BlockPos = BlockPos::new(8, 64, 6);
+
+/// Places blocks a wind burst at (8.5, 64, 8.5) reaches, without neighbour updates.
+fn place_wind_triggerables(world: &Arc<World>) {
+    let half = &BlockStateProperties::DOUBLE_BLOCK_HALF;
+    for (door, pos) in [
+        (&vanilla_blocks::OAK_DOOR, OAK_DOOR_POS),
+        (&vanilla_blocks::IRON_DOOR, IRON_DOOR_POS),
+    ] {
+        let lower = door.default_state().set_value(half, DoubleBlockHalf::Lower);
+        world.set_block(pos, lower, UpdateFlags::UPDATE_CLIENTS);
+        world.set_block(
+            pos.above(),
+            lower.set_value(half, DoubleBlockHalf::Upper),
+            UpdateFlags::UPDATE_CLIENTS,
+        );
+    }
+    world.set_block(
+        LEVER_POS,
+        vanilla_blocks::LEVER.default_state(),
+        UpdateFlags::UPDATE_CLIENTS,
+    );
+    world.set_block(
+        BUTTON_POS,
+        vanilla_blocks::STONE_BUTTON.default_state(),
+        UpdateFlags::UPDATE_CLIENTS,
+    );
+    world.set_block(
+        CANDLE_POS,
+        vanilla_blocks::CANDLE
+            .default_state()
+            .set_value(&BlockStateProperties::LIT, true),
+        UpdateFlags::UPDATE_CLIENTS,
+    );
+    world.set_block(
+        STONE_POS,
+        vanilla_blocks::STONE.default_state(),
+        UpdateFlags::UPDATE_CLIENTS,
+    );
+}
+
+fn flag(world: &Arc<World>, pos: BlockPos, property: &BoolProperty) -> bool {
+    world.get_block_state(pos).get_value(property)
+}
+
+#[test]
+fn wind_charged_death_bursts_triggering_blocks_and_pushing_without_damage() {
+    let fixture = world_with_floor("wind_charged_death");
+    let world = &fixture.world;
+    place_wind_triggerables(world);
+    let bystander =
+        create_entity_instance(world, &vanilla_entities::PIG, DVec3::new(9.5, 64.0, 8.5))
+            .expect("pig factory");
+    world
+        .try_add_entity(Arc::clone(&bystander))
+        .expect("pig added");
+    let health = bystander.as_living_entity().expect("living").get_health();
+    let pig = spawn_pig_with(world, vanilla_mob_effects::WIND_CHARGED);
+
+    pig.set_removed(RemovalReason::Killed);
+
+    let open = &BlockStateProperties::OPEN;
+    let powered = &BlockStateProperties::POWERED;
+    assert!(flag(world, OAK_DOOR_POS, open), "wooden door opens");
+    assert!(!flag(world, IRON_DOOR_POS, open), "iron door ignores wind");
+    assert!(flag(world, LEVER_POS, powered), "lever is pulled");
+    assert!(flag(world, BUTTON_POS, powered), "button is pressed");
+    assert!(
+        !flag(world, CANDLE_POS, &BlockStateProperties::LIT),
+        "candle is blown out"
+    );
+    assert_eq!(
+        world.get_block_state(STONE_POS),
+        vanilla_blocks::STONE.default_state(),
+        "wind never destroys blocks"
+    );
+    assert!(bystander.velocity().x > 0.0, "bystander is pushed away");
+    assert!(
+        (bystander.as_living_entity().expect("living").get_health() - health).abs() < f32::EPSILON,
+        "wind burst deals no damage"
+    );
+}
+
+#[test]
+fn discarded_wind_charged_mob_does_not_burst() {
+    let fixture = world_with_floor("wind_charged_discard");
+    let world = &fixture.world;
+    place_wind_triggerables(world);
+    let pig = spawn_pig_with(world, vanilla_mob_effects::WIND_CHARGED);
+
+    pig.set_removed(RemovalReason::Discarded);
+
+    assert!(!flag(world, OAK_DOOR_POS, &BlockStateProperties::OPEN));
+    assert!(!flag(world, LEVER_POS, &BlockStateProperties::POWERED));
 }
