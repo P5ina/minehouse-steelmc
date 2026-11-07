@@ -7,13 +7,14 @@ use steel_registry::blocks::BlockRef;
 use steel_registry::blocks::block_state_ext::BlockStateExt;
 use steel_registry::blocks::properties::BlockStateProperties;
 use steel_registry::{vanilla_block_entity_types, vanilla_custom_stats};
-use steel_utils::{BlockPos, BlockStateId, translations};
+use steel_utils::{BlockPos, BlockStateId, Downcast as _, translations};
 use text_components::TextComponent;
 
 use crate::behavior::InventoryAccess;
 use crate::behavior::block::{BlockBehavior, BlockEntityCreation};
 use crate::behavior::context::{BlockHitResult, BlockPlaceContext, InteractionResult};
 use crate::block_entity::BLOCK_ENTITIES;
+use crate::block_entity::entities::EnderChestBlockEntity;
 use crate::inventory::menu::kinds::ender_chest;
 use crate::player::Player;
 use crate::world::{World, is_redstone_conductor};
@@ -85,6 +86,30 @@ impl BlockBehavior for EnderChestBlock {
         // TODO: Anger nearby piglins
 
         InteractionResult::Success
+    }
+
+    /// Vanilla `EnderChestBlock.tick`: the viewer recheck scheduled while the
+    /// chest is open.
+    fn tick(&self, _state: BlockStateId, world: &Arc<World>, pos: BlockPos) {
+        if let Some(chest) = world.get_block_entity(pos)
+            && chest.downcast_ref::<EnderChestBlockEntity>().is_some()
+        {
+            chest.recheck_open();
+        }
+    }
+
+    /// Vanilla `BaseEntityBlock.triggerEvent`: the block entity decides.
+    fn trigger_event(
+        &self,
+        _state: BlockStateId,
+        world: &Arc<World>,
+        pos: BlockPos,
+        param_a: i32,
+        param_b: i32,
+    ) -> bool {
+        world
+            .get_block_entity(pos)
+            .is_some_and(|chest| chest.trigger_event(param_a, param_b))
     }
 
     fn new_block_entity(

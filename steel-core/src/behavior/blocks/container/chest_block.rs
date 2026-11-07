@@ -27,7 +27,9 @@ use crate::inventory::container::calculate_redstone_signal_from_containers;
 use crate::inventory::lock::{ContainerLockGuard, ContainerRef};
 use crate::inventory::menu::kinds::chest_halves;
 use crate::player::Player;
-use crate::world::{LevelReader, ScheduledTickAccess, World, is_redstone_conductor};
+use crate::world::{
+    LevelReader, ScheduledTickAccess, SignalQueryContext, World, is_redstone_conductor,
+};
 
 /// The block entities a chest resolves to.
 pub enum ChestCombineResult {
@@ -251,7 +253,6 @@ impl ChestBehavior {
         }
         player.award_custom_stat(self.open_stat);
         // TODO: Anger nearby piglins (PiglinAi.angerNearbyPiglins)
-        // TODO: Count viewers (ContainerOpenersCounter) for the lid, sounds and trapped chest power.
     }
 
     fn get_analog_output_signal(&self, state: BlockStateId, world: &World, pos: BlockPos) -> i32 {
@@ -314,13 +315,13 @@ pub struct ChestBlock {
 }
 
 #[block_behavior]
-/// Trapped chest block behavior. Its redstone output needs viewer counting, which Steel lacks.
+/// Trapped chest block behavior: a chest whose viewers power it.
 pub struct TrappedChestBlock {
     block: BlockRef,
 }
 
 macro_rules! impl_chest_block {
-    ($name:ident, $entity_type:ident, $stat:ident) => {
+    ($name:ident, $entity_type:ident, $stat:ident, $trapped:expr) => {
         impl $name {
             /// Creates the chest behavior for `block`.
             #[must_use]
@@ -425,12 +426,91 @@ macro_rules! impl_chest_block {
             ) -> i32 {
                 self.chest().get_analog_output_signal(state, world, pos)
             }
+
+            /// Vanilla `ChestBlock.tick`: the viewer recheck scheduled while
+            /// the chest is open.
+            fn tick(&self, _state: BlockStateId, world: &Arc<World>, pos: BlockPos) {
+                if let Some(chest) = world.get_block_entity(pos)
+                    && chest.downcast_ref::<ChestBlockEntity>().is_some()
+                {
+                    chest.recheck_open();
+                }
+            }
+
+            /// Vanilla `BaseEntityBlock.triggerEvent`: the block entity decides.
+            fn trigger_event(
+                &self,
+                _state: BlockStateId,
+                world: &Arc<World>,
+                pos: BlockPos,
+                param_a: i32,
+                param_b: i32,
+            ) -> bool {
+                world
+                    .get_block_entity(pos)
+                    .is_some_and(|chest| chest.trigger_event(param_a, param_b))
+            }
+
+            fn is_signal_source(&self, _state: BlockStateId, _context: SignalQueryContext) -> bool {
+                $trapped
+            }
+
+            /// Vanilla `TrappedChestBlock.ownSignal`: one per viewer of this
+            /// half, at most 15.
+            fn get_own_signal(
+                &self,
+                _state: BlockStateId,
+                world: &dyn LevelReader,
+                pos: BlockPos,
+                _context: SignalQueryContext,
+            ) -> i32 {
+                if !$trapped {
+                    return 0;
+                }
+                trapped_chest_signal(world, pos)
+            }
+
+            /// Vanilla `TrappedChestBlock.getDirectSignal`: strong power only
+            /// into the block below.
+            fn get_direct_signal(
+                &self,
+                state: BlockStateId,
+                world: &dyn LevelReader,
+                pos: BlockPos,
+                direction: Direction,
+                context: SignalQueryContext,
+            ) -> i32 {
+                if $trapped && direction == Direction::Up {
+                    self.get_signal(state, world, pos, direction, context)
+                } else {
+                    0
+                }
+            }
         }
     };
 }
 
-impl_chest_block!(ChestBlock, CHEST, OPEN_CHEST);
-impl_chest_block!(TrappedChestBlock, TRAPPED_CHEST, TRIGGER_TRAPPED_CHEST);
+/// A trapped chest half's power, Vanilla `ChestBlockEntity.getOpenCount`
+/// clamped to 0..=15.
+fn trapped_chest_signal(world: &dyn LevelReader, pos: BlockPos) -> i32 {
+    world
+        .get_block_entity(pos)
+        .and_then(|chest| {
+            chest
+                .downcast_ref::<ChestBlockEntity>()
+                .map(ChestBlockEntity::opener_count)
+        })
+        .unwrap_or(0)
+        .clamp(0, 15)
+}
+
+impl_chest_block!(ChestBlock, CHEST, OPEN_CHEST, false);
+impl_chest_block!(
+    TrappedChestBlock,
+    TRAPPED_CHEST,
+    TRIGGER_TRAPPED_CHEST,
+    true
+);
 
 /// The containers of the chest at `pos`, `RIGHT` half first, or `None` if the
 /// block is not a chest. Vanilla `ChestBlock.getContainer`.

@@ -1,12 +1,13 @@
 //! Ender chest container implementation.
 
+use std::ptr;
 use std::sync::{Arc, Weak};
 
 use steel_registry::item_stack::ItemStack;
 use steel_utils::locks::SyncMutex;
 use steel_utils::{DowncastType, DowncastTypeKey};
 
-use crate::block_entity::BlockEntity;
+use crate::block_entity::{BlockEntity, BlockEntityBase};
 use crate::inventory::container::Container;
 use crate::player::Player;
 
@@ -53,6 +54,20 @@ impl PlayerEnderChestContainer {
     /// Clears the active block entity.
     pub fn clear_active_chest(&mut self) {
         self.active_chest = None;
+    }
+
+    /// The block entity this container was opened from, if it still exists.
+    #[must_use]
+    pub fn active_chest(&self) -> Option<Arc<dyn BlockEntity>> {
+        self.active_chest.as_ref().and_then(Weak::upgrade)
+    }
+
+    /// Whether this container was opened from the block entity owning
+    /// `chest`. Vanilla `isActiveChest`.
+    #[must_use]
+    pub fn is_active_chest(&self, chest: &BlockEntityBase) -> bool {
+        self.active_chest()
+            .is_some_and(|active| ptr::eq(active.base(), chest))
     }
 
     /// Checks if the container is still valid for the given player.
