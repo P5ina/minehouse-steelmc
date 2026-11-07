@@ -188,3 +188,46 @@ where
         self.status = BehaviorStatus::Stopped;
     }
 }
+
+/// Starts `behavior` only while `predicate` holds for the body
+/// (vanilla `BehaviorBuilder.triggerIf(predicate, behavior)`).
+pub struct TriggerIf<E: ?Sized, B> {
+    predicate: fn(&E) -> bool,
+    behavior: B,
+}
+
+/// Wraps `behavior` so it only starts while `predicate` holds
+/// (vanilla `BehaviorBuilder.triggerIf(predicate, behavior)`).
+#[must_use]
+pub const fn trigger_if<E: ?Sized, B>(predicate: fn(&E) -> bool, behavior: B) -> TriggerIf<E, B> {
+    TriggerIf {
+        predicate,
+        behavior,
+    }
+}
+
+impl<E, B> BehaviorControl<E> for TriggerIf<E, B>
+where
+    E: ?Sized,
+    B: BehaviorControl<E>,
+{
+    fn status(&self) -> BehaviorStatus {
+        self.behavior.status()
+    }
+
+    fn register_memories(&self, memories: &mut Memories) {
+        self.behavior.register_memories(memories);
+    }
+
+    fn try_start(&mut self, world: &Arc<World>, body: &E, time: i64) -> bool {
+        (self.predicate)(body) && self.behavior.try_start(world, body, time)
+    }
+
+    fn tick_or_stop(&mut self, world: &Arc<World>, body: &E, time: i64) {
+        self.behavior.tick_or_stop(world, body, time);
+    }
+
+    fn do_stop(&mut self, world: &Arc<World>, body: &E, time: i64) {
+        self.behavior.do_stop(world, body, time);
+    }
+}

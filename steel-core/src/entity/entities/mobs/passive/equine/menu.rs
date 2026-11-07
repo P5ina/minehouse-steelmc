@@ -422,6 +422,12 @@ pub(super) fn open_horse_inventory<H: AbstractHorse + ?Sized>(horse: &H, player:
     {
         return;
     }
+    show_horse_inventory(horse, player);
+}
+
+/// Vanilla `Player.openHorseInventory`, without the rider and taming checks
+/// `AbstractHorse.openCustomInventoryScreen` makes first.
+pub(super) fn show_horse_inventory<H: AbstractHorse + ?Sized>(horse: &H, player: &Player) {
     let Some(world) = horse.level() else {
         return;
     };
