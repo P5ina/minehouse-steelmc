@@ -289,6 +289,8 @@ pub struct Player {
     /// In-flight ender pearls thrown by this player, kept weakly so they persist
     /// with the player and re-spawn on login (vanilla `ServerPlayer.enderPearls`).
     ender_pearls: SyncMutex<Vec<Weak<dyn Entity>>>,
+    /// Vanilla `ServerPlayer.raidOmenPosition`: where Bad Omen turned into Raid Omen.
+    raid_omen_position: SyncMutex<Option<BlockPos>>,
     /// Vanilla `shoulderEntityLeft`/`shoulderEntityRight`: perched parrots.
     shoulder_entities: SyncMutex<shoulder::ShoulderEntities>,
 
@@ -665,6 +667,7 @@ impl Player {
             chunk_send_epoch: SyncMutex::new(0),
             residence: SyncMutex::new(PlayerResidenceState::new()),
             ender_pearls: SyncMutex::new(Vec::new()),
+            raid_omen_position: SyncMutex::new(None),
             shoulder_entities: SyncMutex::new(shoulder::ShoulderEntities::default()),
             fishing: SyncMutex::new(None),
             stats: SyncMutex::new(StatsCounter::new()),
@@ -2273,3 +2276,26 @@ impl TextResolutor for Player {
 
 #[cfg(test)]
 mod tests;
+
+impl Player {
+    /// Vanilla `getRaidOmenPosition`.
+    #[must_use]
+    pub fn raid_omen_position(&self) -> Option<BlockPos> {
+        *self.raid_omen_position.lock()
+    }
+
+    /// Vanilla `setRaidOmenPosition`.
+    pub fn set_raid_omen_position(&self, pos: BlockPos) {
+        *self.raid_omen_position.lock() = Some(pos);
+    }
+
+    /// Vanilla `clearRaidOmenPosition`.
+    pub fn clear_raid_omen_position(&self) {
+        *self.raid_omen_position.lock() = None;
+    }
+
+    /// Restores the saved raid-omen position.
+    pub(crate) fn restore_raid_omen_position(&self, pos: Option<BlockPos>) {
+        *self.raid_omen_position.lock() = pos;
+    }
+}

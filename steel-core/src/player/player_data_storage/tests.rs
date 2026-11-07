@@ -77,6 +77,7 @@ fn sample_player_file(data_version: i32) -> PlayerDataFile {
         ender_items: Vec::new(),
         shoulder_entity_left: vec![10, 0, 0, 0],
         shoulder_entity_right: Vec::new(),
+        raid_omen_position: Vec::new(),
     }
 }
 
@@ -538,7 +539,8 @@ fn player_files_with_shoulders_but_without_effects_still_load() {
     let file = sample_player_file(8);
     let mut payload = wincode::serialize(&file).expect("player file should serialize");
     let effects = wincode::serialize(&file.active_effects).expect("effects should serialize");
-    payload.truncate(payload.len() - effects.len());
+    let omen = wincode::serialize(&file.raid_omen_position).expect("omen should serialize");
+    payload.truncate(payload.len() - effects.len() - omen.len());
     let encoded = encode_file(PLAYER_MAGIC, 11, Ok(payload)).expect("v11 file should encode");
 
     let decoded = decode_player_file(&encoded).expect("a storage version 11 file should decode");
@@ -971,4 +973,36 @@ async fn in_memory_permission_subjects_round_trip() {
             .expect("permission subjects should load"),
         subjects
     );
+}
+
+#[test]
+fn player_files_without_raid_omen_position_still_load() {
+    // Storage version 12 is the current layout without the trailing raid omen position.
+    let file = sample_player_file(9);
+    let mut payload = wincode::serialize(&file).expect("player file should serialize");
+    let omen = wincode::serialize(&file.raid_omen_position).expect("omen should serialize");
+    payload.truncate(payload.len() - omen.len());
+    let encoded = encode_file(PLAYER_MAGIC, 12, Ok(payload)).expect("v12 file should encode");
+
+    let decoded = decode_player_file(&encoded).expect("a storage version 12 file should decode");
+    assert_eq!(decoded.data_version, PLAYER_DATA_VERSION);
+    assert_eq!(decoded.raid_omen_position, Vec::<[i32; 3]>::new());
+}
+
+#[test]
+fn raid_omen_position_roundtrips() {
+    init_vanilla_registry();
+    let mut file = sample_player_file(PLAYER_DATA_VERSION);
+    file.raid_omen_position = vec![[12, 64, -7]];
+    let encoded = encode_player_file(&file).expect("player file should encode");
+    let persistent = decode_player_file(&encoded)
+        .expect("player file should decode")
+        .into_persistent()
+        .expect("player file should convert");
+    assert_eq!(
+        persistent.raid_omen_position,
+        Some(BlockPos::new(12, 64, -7))
+    );
+    let again = PlayerDataFile::from_persistent(&persistent).expect("player file should build");
+    assert_eq!(again.raid_omen_position, vec![[12, 64, -7]]);
 }

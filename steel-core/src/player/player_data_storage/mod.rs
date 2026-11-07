@@ -40,7 +40,7 @@ use steel_utils::{BlockPos, Identifier};
 
 const PLAYER_MAGIC: [u8; 4] = *b"STLP";
 const GLOBAL_MAGIC: [u8; 4] = *b"STLG";
-const PLAYER_STORAGE_VERSION: u16 = 12;
+const PLAYER_STORAGE_VERSION: u16 = 13;
 const GLOBAL_STORAGE_VERSION: u16 = 1;
 const GLOBAL_PLAYER_DATA_VERSION: i32 = 1;
 
@@ -99,6 +99,8 @@ struct PlayerDataFile {
     shoulder_entity_right: Vec<u8>,
     /// Each effect encoded with vanilla `MobEffectInstance.CODEC`.
     active_effects: Vec<Vec<u8>>,
+    /// Vanilla `raid_omen_position`; empty or one `[x, y, z]`.
+    raid_omen_position: Vec<[i32; 3]>,
 }
 
 #[derive(SchemaWrite, SchemaRead)]
@@ -384,6 +386,9 @@ impl PlayerDataFile {
                 .collect(),
             shoulder_entity_left: data.shoulder_entity_left.clone(),
             shoulder_entity_right: data.shoulder_entity_right.clone(),
+            raid_omen_position: data
+                .raid_omen_position
+                .map_or_else(Vec::new, |pos| vec![[pos.x(), pos.y(), pos.z()]]),
         })
     }
 
@@ -478,6 +483,10 @@ impl PlayerDataFile {
             advancements: Vec::new(),
             shoulder_entity_left: self.shoulder_entity_left,
             shoulder_entity_right: self.shoulder_entity_right,
+            raid_omen_position: self
+                .raid_omen_position
+                .first()
+                .map(|&[x, y, z]| BlockPos::new(x, y, z)),
         })
     }
 }
@@ -571,10 +580,12 @@ fn decode_player_file(bytes: &[u8]) -> io::Result<PlayerDataFile> {
     // Older layouts are the current one without its newest trailing fields, so the missing
     // fields are appended empty before decoding: (storage version, data version, missing).
     let legacy = match stored_version(bytes) {
-        // Before shoulder entities and active effects.
-        Some(10) => Some((10, 7, 3)),
-        // Before active effects.
-        Some(11) => Some((11, 8, 1)),
+        // Before shoulder entities, active effects and the raid omen position.
+        Some(10) => Some((10, 7, 4)),
+        // Before active effects and the raid omen position.
+        Some(11) => Some((11, 8, 2)),
+        // Before the raid omen position.
+        Some(12) => Some((12, 9, 1)),
         _ => None,
     };
     let Some((storage_version, data_version, missing_fields)) = legacy else {

@@ -21,13 +21,18 @@ use steel_utils::locks::SyncMutex;
 use steel_utils::random::xoroshiro::Xoroshiro;
 use steel_utils::types::InteractionHand;
 use steel_utils::{BlockPos, DowncastType, DowncastTypeKey, Identifier};
+use uuid::Uuid;
 
 use super::trading::{MerchantOffers, TradeContext, add_offers_from_trade_set};
 use super::{FIRE_IN_NEIGHBOR_MALUS, FIRE_MALUS, INVENTORY_SIZE, load_inventory, save_inventory};
+use super::{
+    Merchant, open_trading_screen, play_trade_updated_sound, record_trade, spawn_trade_experience,
+};
 use crate::behavior::InteractionResult;
 use crate::entity::ai::goal::{
     AvoidEntityGoal, FloatGoal, Goal, GoalControls, InteractGoal, LookAtPlayerGoal,
-    MoveTowardsRestrictionGoal, PanicGoal, UseItemGoal, WaterAvoidingRandomStrollGoal,
+    MoveTowardsRestrictionGoal, PanicGoal, TradeWithPlayerGoal, UseItemGoal,
+    WaterAvoidingRandomStrollGoal,
 };
 use crate::entity::ai::path::PathType;
 use crate::entity::damage::DamageSource;
@@ -53,6 +58,8 @@ const AVOID_SPEED: f64 = 0.5;
 const PANIC_SPEED: f64 = 0.5;
 const WANDER_STOP_DISTANCE: f64 = 2.0;
 const WANDER_SPEED: f64 = 0.35;
+/// Vanilla `WanderingTrader.mobInteract`: the level its trading screen shows.
+const WANDERING_TRADER_LEVEL: i32 = 1;
 /// Vanilla `WanderToPositionGoal`: far targets are walked to 10 blocks at a time.
 const WANDER_STEP: f64 = 10.0;
 
@@ -70,6 +77,8 @@ struct WanderingTraderState {
     despawn_delay: i32,
     /// Vanilla `AbstractVillager.offers`: `None` until first needed.
     offers: Option<MerchantOffers>,
+    /// Vanilla `AbstractVillager.tradingPlayer`.
+    trading_player: Option<Uuid>,
 }
 
 /// A wandering trader.
@@ -183,8 +192,7 @@ impl WanderingTraderEntity {
                     },
                 ),
             );
-            // TODO(trading menu): `TradeWithPlayerGoal` 1 and `LookAtTradingPlayerGoal` 1
-            // come with the trading screen.
+            goal_selector.add_goal(1, TradeWithPlayerGoal);
             goal_selector.add_goal(1, avoid_goal(8.0, is_zombie));
             goal_selector.add_goal(1, avoid_type_goal(12.0, &vanilla_entities::EVOKER));
             goal_selector.add_goal(1, avoid_type_goal(8.0, &vanilla_entities::VINDICATOR));
@@ -193,6 +201,7 @@ impl WanderingTraderEntity {
             goal_selector.add_goal(1, avoid_type_goal(12.0, &vanilla_entities::ILLUSIONER));
             goal_selector.add_goal(1, avoid_type_goal(10.0, &vanilla_entities::ZOGLIN));
             goal_selector.add_goal(1, PanicGoal::new(PANIC_SPEED));
+            goal_selector.add_goal(1, LookAtPlayerGoal::new_trading_player());
             goal_selector.add_goal(
                 2,
                 WanderToPositionGoal {
@@ -303,10 +312,9 @@ impl WanderingTraderEntity {
 
     /// Vanilla `maybeDespawn`.
     fn maybe_despawn(&self) {
-        // TODO(trading menu): vanilla also waits while a player is trading.
         let despawn = {
             let mut state = self.state.lock();
-            if state.despawn_delay > 0 {
+            if state.despawn_delay > 0 && state.trading_player.is_none() {
                 state.despawn_delay -= 1;
                 state.despawn_delay == 0
             } else {
@@ -408,7 +416,56 @@ impl Goal for WanderToPositionGoal {
 
 impl DefaultEntityPush for WanderingTraderEntity {}
 
+impl Merchant for WanderingTraderEntity {
+    fn trading_player(&self) -> Option<Uuid> {
+        self.state.lock().trading_player
+    }
+
+    fn set_trading_player(&self, player: Option<Uuid>) {
+        self.state.lock().trading_player = player;
+    }
+
+    fn with_merchant_offers(&self, f: &mut dyn FnMut(&mut MerchantOffers)) {
+        self.with_offers(|offers| f(offers));
+    }
+
+    /// Vanilla `AbstractVillager.notifyTrade` with `WanderingTrader.rewardTradeXp`.
+    fn notify_trade(&self, offer: usize) {
+        // Vanilla also fires the `TRADE` advancement trigger; Steel has no advancements.
+        let Some((_, reward_exp)) = self.with_offers(|offers| record_trade(self, offers, offer))
+        else {
+            return;
+        };
+        if reward_exp && let Some(world) = self.level() {
+            spawn_trade_experience(&world, self.position(), 3 + rand::random_range(0..4));
+        }
+    }
+
+    fn notify_trade_updated(&self, result: &ItemStack) {
+        play_trade_updated_sound(
+            self,
+            result,
+            &sound_events::ENTITY_WANDERING_TRADER_YES,
+            &sound_events::ENTITY_WANDERING_TRADER_NO,
+        );
+    }
+
+    /// Vanilla `AbstractVillager.getVillagerXp`.
+    fn merchant_xp(&self) -> i32 {
+        0
+    }
+
+    fn show_progress_bar(&self) -> bool {
+        false
+    }
+}
+
 impl Entity for WanderingTraderEntity {
+    /// Vanilla `AbstractVillager.teleport`: stops trading.
+    fn on_teleported(&self) {
+        Merchant::set_trading_player(self, None);
+    }
+
     fn as_default_entity_push(&self) -> Option<&dyn DefaultEntityPush> {
         Some(self)
     }
@@ -488,6 +545,12 @@ impl LivingEntity for WanderingTraderEntity {
         Some(&sound_events::ENTITY_WANDERING_TRADER_DEATH)
     }
 
+    /// Vanilla `AbstractVillager.die`: stops trading after dying.
+    fn die(&self, source: &DamageSource) {
+        self.default_die(source);
+        Merchant::set_trading_player(self, None);
+    }
+
     fn consume_sound_override(&self, stack: &ItemStack) -> Option<SoundEventRef> {
         Some(if stack.is(&vanilla_items::MILK_BUCKET) {
             &sound_events::ENTITY_WANDERING_TRADER_DRINK_MILK
@@ -548,8 +611,11 @@ impl Mob for WanderingTraderEntity {
     }
 
     fn ambient_sound(&self) -> Option<SoundEventRef> {
-        // TODO(trading menu): `ENTITY_WANDERING_TRADER_TRADE` while trading.
-        Some(&sound_events::ENTITY_WANDERING_TRADER_AMBIENT)
+        Some(if self.is_trading() {
+            &sound_events::ENTITY_WANDERING_TRADER_TRADE
+        } else {
+            &sound_events::ENTITY_WANDERING_TRADER_AMBIENT
+        })
     }
 
     fn remove_when_far_away(&self, _dist_sqr: f64) -> bool {
@@ -579,8 +645,11 @@ impl Mob for WanderingTraderEntity {
             .lock()
             .get_item_in_hand(hand)
             .is(&vanilla_items::VILLAGER_SPAWN_EGG);
-        // TODO(trading menu): a trading wandering trader also goes to the ageable branch.
-        if holds_spawn_egg || !LivingEntity::is_alive(self) || AgeableMob::is_baby(self) {
+        if holds_spawn_egg
+            || !LivingEntity::is_alive(self)
+            || self.is_trading()
+            || AgeableMob::is_baby(self)
+        {
             return self.mob_interact_ageable(player, hand);
         }
         if hand == InteractionHand::MainHand {
@@ -589,7 +658,18 @@ impl Mob for WanderingTraderEntity {
         if self.with_offers(|offers| offers.is_empty()) {
             return InteractionResult::Consume;
         }
-        // TODO(trading menu): set the trading player and open the trading screen.
+        Merchant::set_trading_player(self, Some(player.uuid()));
+        if let Some(merchant) = self
+            .level()
+            .and_then(|world| world.get_entity_by_id(self.id()))
+        {
+            open_trading_screen(
+                merchant,
+                player,
+                self.display_name(),
+                WANDERING_TRADER_LEVEL,
+            );
+        }
         InteractionResult::Success
     }
 

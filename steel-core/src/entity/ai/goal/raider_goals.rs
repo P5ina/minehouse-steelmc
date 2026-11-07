@@ -57,12 +57,11 @@ impl Goal for HoldGroundAttackGoal {
     }
 
     fn can_use(&mut self, mob: &dyn PathfinderMob) -> bool {
-        // TODO: Vanilla also requires `getCurrentRaid() == null`; until raids exist
-        // no raider is ever in one.
         let Some(raider) = mob.as_raider() else {
             return false;
         };
-        raider.is_patrolling()
+        raider.current_raid().is_none()
+            && raider.is_patrolling()
             && mob.target().is_some()
             && !mob.is_aggressive()
             && mob

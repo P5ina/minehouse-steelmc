@@ -32,7 +32,7 @@ use steel_registry::{
 use steel_utils::{Downcast as _, types::GameType};
 
 use crate::inventory::container::CraftingContainer;
-use crate::inventory::menu::kinds::InventoryKind;
+use crate::inventory::menu::kinds::{InventoryKind, MerchantKind};
 use crate::{
     entity::LivingEntity,
     inventory::lock::{ContainerId, ContainerLockGuard, ContainerRef},
@@ -210,6 +210,30 @@ impl Menu {
     pub(crate) fn crafting_container(&self) -> Option<Shared<CraftingContainer>> {
         let kind = self.kind.downcast_ref::<InventoryKind>()?;
         Some(kind.crafting_container())
+    }
+
+    /// Whether this is a trading menu (vanilla `instanceof MerchantMenu`).
+    #[must_use]
+    pub fn is_merchant(&self) -> bool {
+        self.kind.downcast_ref::<MerchantKind>().is_some()
+    }
+
+    /// Vanilla `MerchantMenu.updateSellItem`. A no-op for any other menu.
+    pub(crate) fn update_merchant_sell_item(&mut self) {
+        let Some(kind) = self.kind.downcast_ref::<MerchantKind>() else {
+            return;
+        };
+        let mut guard = self.behavior.lock_all_containers();
+        kind.update_sell_item(&mut guard);
+    }
+
+    /// Vanilla `handleSelectTrade` on a trading menu. A no-op for any other menu.
+    pub(crate) fn select_trade(&mut self, index: i32) {
+        let Some(kind) = self.kind.downcast_ref::<MerchantKind>() else {
+            return;
+        };
+        let mut guard = self.behavior.lock_all_containers();
+        kind.select_trade(&self.behavior, &mut guard, index);
     }
 
     /// Recomputes the base inventory menu's crafting result. A no-op for any

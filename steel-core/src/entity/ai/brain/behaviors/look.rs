@@ -201,3 +201,38 @@ pub fn set_entity_look_target_sometimes<E: LivingEntity + ?Sized>(
         },
     )
 }
+
+/// Looks at the closest visible entity matching `predicate` within
+/// `max_dist` (vanilla `SetEntityLookTarget.create(predicate, maxDist)`).
+pub fn set_entity_look_target<E: LivingEntity + ?Sized>(
+    max_dist: f32,
+    predicate: impl Fn(&dyn LivingEntity) -> bool + Send + 'static,
+) -> impl BehaviorControl<E> {
+    let max_dist_sqr = f64::from(max_dist * max_dist);
+    OneShot::new(
+        vec![
+            MemoryRequirement::new(&LOOK_TARGET, MemoryStatus::ValueAbsent),
+            MemoryRequirement::new(&NEAREST_VISIBLE_LIVING_ENTITIES, MemoryStatus::ValuePresent),
+        ],
+        move |_world: &Arc<World>, body: &E, _time: i64| {
+            let Some(memories) = body.brain_memories() else {
+                return false;
+            };
+            let Some(visible) = memories.lock().get(&NEAREST_VISIBLE_LIVING_ENTITIES) else {
+                return false;
+            };
+            let position = body.position();
+            let Some(target) = visible.find_closest(|entity| {
+                entity.as_living_entity().is_some_and(&predicate)
+                    && entity.position().distance_squared(position) <= max_dist_sqr
+                    && !body.has_passenger(entity.as_ref())
+            }) else {
+                return false;
+            };
+            memories
+                .lock()
+                .set(&LOOK_TARGET, Some(PositionTracker::entity(target, true)));
+            true
+        },
+    )
+}

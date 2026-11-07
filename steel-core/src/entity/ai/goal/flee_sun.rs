@@ -22,7 +22,8 @@ impl FleeSunGoal {
         }
     }
 
-    fn set_wanted_pos(&mut self, mob: &dyn PathfinderMob, level: &World) -> bool {
+    /// Vanilla `FleeSunGoal.setWantedPos`, for goals that extend it.
+    pub(crate) fn set_wanted_pos(&mut self, mob: &dyn PathfinderMob, level: &World) -> bool {
         let Some(pos) = get_hide_pos(mob, level) else {
             return false;
         };
