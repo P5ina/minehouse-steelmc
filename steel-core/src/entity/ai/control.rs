@@ -126,6 +126,12 @@ impl JumpControl {
         self.jump = true;
     }
 
+    /// Vanilla `RabbitJumpControl.wantJump`: whether a jump is queued.
+    #[must_use]
+    pub const fn wants_jump(self) -> bool {
+        self.jump
+    }
+
     pub const fn tick(&mut self) -> bool {
         let jump = self.jump;
         self.jump = false;

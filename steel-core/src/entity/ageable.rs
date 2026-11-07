@@ -250,7 +250,8 @@ pub trait AgeableMob: Mob {
                 | SpawnGroupData::Horse(group_data, _)
                 | SpawnGroupData::Axolotl(group_data, _)
                 | SpawnGroupData::Llama(group_data, _)
-                | SpawnGroupData::Fox(group_data, _),
+                | SpawnGroupData::Fox(group_data, _)
+                | SpawnGroupData::Rabbit(group_data, _),
             ) => group_data,
             // Vanilla only replaces a missing group; other mob groups never reach an ageable mob.
             Some(
