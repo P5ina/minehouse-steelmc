@@ -14,7 +14,6 @@ minehouse_mob_creaking
 minehouse_mob_ender_dragon
 minehouse_mob_fox
 minehouse_mob_frog
-minehouse_mob_goat
 minehouse_mob_happy_ghast
 minehouse_mob_hoglin
 minehouse_mob_nautilus

@@ -8,6 +8,7 @@ mod dolphin;
 pub mod equine;
 mod feline;
 mod fish;
+mod goat;
 mod mooshroom;
 mod parrot;
 mod pig;
@@ -27,6 +28,7 @@ pub use fish::{
     COMMON_TROPICAL_FISH_VARIANTS, CodEntity, PufferfishEntity, SalmonEntity, SalmonVariant,
     TropicalFishBase, TropicalFishEntity, TropicalFishPattern, TropicalFishVariant,
 };
+pub use goat::GoatEntity;
 pub use mooshroom::MushroomCowEntity;
 pub use parrot::ParrotEntity;
 pub use pig::PigEntity;

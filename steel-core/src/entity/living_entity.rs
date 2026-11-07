@@ -1383,6 +1383,24 @@ pub trait LivingEntity: Entity {
         );
     }
 
+    /// Vanilla `LivingEntity.calculateFallDamage`.
+    fn calculate_fall_damage(&self, fall_distance: f64, damage_modifier: f32) -> i32 {
+        let attributes = self.attributes().lock();
+        let safe_fall_distance = attributes
+            .get_value(vanilla_attributes::SAFE_FALL_DISTANCE)
+            .unwrap_or(vanilla_attributes::SAFE_FALL_DISTANCE.default_value);
+        let fall_damage_multiplier = attributes
+            .get_value(vanilla_attributes::FALL_DAMAGE_MULTIPLIER)
+            .unwrap_or(vanilla_attributes::FALL_DAMAGE_MULTIPLIER.default_value);
+        drop(attributes);
+        LivingEntityBase::calculate_fall_damage(
+            fall_distance,
+            damage_modifier,
+            safe_fall_distance,
+            fall_damage_multiplier,
+        )
+    }
+
     /// Applies fall damage to a living entity, factoring in effects that reduce or negate it.
     fn cause_living_fall_damage(
         &self,
@@ -1409,21 +1427,7 @@ pub trait LivingEntity: Entity {
 
         self.propagate_fall_to_passengers(effective_fall_distance, damage_modifier, source);
 
-        let attributes = self.attributes().lock();
-        let safe_fall_distance = attributes
-            .get_value(vanilla_attributes::SAFE_FALL_DISTANCE)
-            .unwrap_or(vanilla_attributes::SAFE_FALL_DISTANCE.default_value);
-        let fall_damage_multiplier = attributes
-            .get_value(vanilla_attributes::FALL_DAMAGE_MULTIPLIER)
-            .unwrap_or(vanilla_attributes::FALL_DAMAGE_MULTIPLIER.default_value);
-        drop(attributes);
-
-        let damage = LivingEntityBase::calculate_fall_damage(
-            effective_fall_distance,
-            damage_modifier,
-            safe_fall_distance,
-            fall_damage_multiplier,
-        );
+        let damage = self.calculate_fall_damage(effective_fall_distance, damage_modifier);
         if damage <= 0 {
             return false;
         }
