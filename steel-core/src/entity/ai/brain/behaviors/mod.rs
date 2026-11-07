@@ -5,10 +5,12 @@ mod cooldown;
 mod do_nothing;
 mod fight;
 pub mod gate;
+mod long_jump;
 mod look;
 mod make_love;
 mod move_to_target;
 mod panic;
+mod ram;
 mod swim;
 mod temptation;
 pub mod utils;
@@ -22,10 +24,12 @@ pub use fight::{
     set_walk_target_from_attack_target_if_target_out_of_reach, stop_attacking_if_target_invalid,
 };
 pub use gate::run_one;
+pub use long_jump::{LongJumpMidJump, LongJumpToRandomPos};
 pub use look::{LookAtTargetSink, RandomLookAround, set_entity_look_target_sometimes};
 pub use make_love::AnimalMakeLove;
 pub use move_to_target::MoveToTargetSink;
 pub use panic::AnimalPanic;
+pub use ram::PrepareRamNearestTarget;
 pub use swim::Swim;
 pub use temptation::FollowTemptation;
 pub use walk::{

@@ -123,31 +123,7 @@ pub trait AbstractHurtingProjectile: Projectile {
 
     /// Vanilla `ProjectileUtil.rotateTowardsMovement`.
     fn rotate_towards_movement(&self, rotation_speed: f32) {
-        let movement = self.velocity();
-        if movement.length_squared() == 0.0 {
-            return;
-        }
-        let horizontal = movement.x.hypot(movement.z);
-        let y_rot = vanilla_degrees(movement.z.atan2(movement.x)) + 90.0;
-        let x_rot = vanilla_degrees(horizontal.atan2(movement.y)) - 90.0;
-        let (mut y_rot_old, mut x_rot_old) = self.base().old_rotation();
-        while x_rot - x_rot_old < -180.0 {
-            x_rot_old -= 360.0;
-        }
-        while x_rot - x_rot_old >= 180.0 {
-            x_rot_old += 360.0;
-        }
-        while y_rot - y_rot_old < -180.0 {
-            y_rot_old -= 360.0;
-        }
-        while y_rot - y_rot_old >= 180.0 {
-            y_rot_old += 360.0;
-        }
-        self.base().set_old_rotation((y_rot_old, x_rot_old));
-        self.set_rotation((
-            y_rot_old + rotation_speed * (y_rot - y_rot_old),
-            x_rot_old + rotation_speed * (x_rot - x_rot_old),
-        ));
+        rotate_towards_movement(self, rotation_speed);
     }
 
     /// Vanilla `AbstractHurtingProjectile.tick`.
@@ -220,4 +196,33 @@ pub trait AbstractHurtingProjectile: Projectile {
                 .unwrap_or(INITIAL_ACCELERATION_POWER),
         );
     }
+}
+
+/// Vanilla `ProjectileUtil.rotateTowardsMovement` for any entity.
+pub(crate) fn rotate_towards_movement(entity: &(impl Entity + ?Sized), rotation_speed: f32) {
+    let movement = entity.velocity();
+    if movement.length_squared() == 0.0 {
+        return;
+    }
+    let horizontal = movement.x.hypot(movement.z);
+    let y_rot = vanilla_degrees(movement.z.atan2(movement.x)) + 90.0;
+    let x_rot = vanilla_degrees(horizontal.atan2(movement.y)) - 90.0;
+    let (mut y_rot_old, mut x_rot_old) = entity.base().old_rotation();
+    while x_rot - x_rot_old < -180.0 {
+        x_rot_old -= 360.0;
+    }
+    while x_rot - x_rot_old >= 180.0 {
+        x_rot_old += 360.0;
+    }
+    while y_rot - y_rot_old < -180.0 {
+        y_rot_old -= 360.0;
+    }
+    while y_rot - y_rot_old >= 180.0 {
+        y_rot_old += 360.0;
+    }
+    entity.base().set_old_rotation((y_rot_old, x_rot_old));
+    entity.set_rotation((
+        y_rot_old + rotation_speed * (y_rot - y_rot_old),
+        x_rot_old + rotation_speed * (x_rot - x_rot_old),
+    ));
 }

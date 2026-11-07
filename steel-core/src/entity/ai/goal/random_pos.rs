@@ -375,7 +375,7 @@ fn is_water(mob: &(impl PathfinderMob + ?Sized), pos: BlockPos) -> bool {
         .is_none_or(|world| world.get_block_state(pos).get_fluid_state().is_water())
 }
 
-fn has_malus(mob: &(impl PathfinderMob + ?Sized), pos: BlockPos) -> bool {
+pub(crate) fn has_malus(mob: &(impl PathfinderMob + ?Sized), pos: BlockPos) -> bool {
     let Some(world) = mob.level() else {
         return true;
     };

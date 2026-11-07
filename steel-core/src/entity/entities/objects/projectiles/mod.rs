@@ -27,3 +27,5 @@ pub use snowball::SnowballEntity;
 pub use splash_potion::SplashPotionEntity;
 pub use thrown_egg::ThrownEggEntity;
 pub use thrown_trident::ThrownTridentEntity;
+mod shulker_bullet;
+pub use shulker_bullet::ShulkerBulletEntity;

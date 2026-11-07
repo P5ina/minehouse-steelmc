@@ -4,8 +4,9 @@ use std::{ops::ControlFlow, sync::Arc};
 
 use glam::DVec3;
 use smallvec::SmallVec;
+use steel_registry::blocks::shapes::is_face_full;
 use steel_registry::{blocks::block_state_ext::BlockStateExt, vanilla_blocks, vanilla_entities};
-use steel_utils::{BlockLocalAabb, BlockPos, BlockStateId, WorldAabb};
+use steel_utils::{BlockLocalAabb, BlockPos, BlockStateId, Direction, WorldAabb};
 
 use crate::behavior::{
     BLOCK_BEHAVIORS, BlockCollisionBoxes, BlockCollisionContext, blocks::PowderSnowBlock,
@@ -427,6 +428,25 @@ impl<'a> WorldCollisionProvider<'a> {
         } else {
             context
         }
+    }
+
+    /// Vanilla `Level.loadedAndEntityCanStandOnFace(pos, entity, face)`: the
+    /// block's collision shape for the source entity fully covers `face`.
+    #[must_use]
+    pub fn loaded_and_entity_can_stand_on_face(&self, pos: BlockPos, face: Direction) -> bool {
+        if !self.world.is_full_chunk_loaded_at(pos) {
+            return false;
+        }
+        let state = self.world.get_block_state(pos);
+        let context = self
+            .source
+            .map_or_else(BlockCollisionContext::empty, |source| {
+                self.entity_collision_context(source.position().y, source.is_descending(), false)
+            });
+        let shape = BLOCK_BEHAVIORS
+            .get_behavior(state.get_block())
+            .get_collision_shape(state, self.world.as_ref(), pos, context);
+        is_face_full(shape, face)
     }
 
     /// Returns whether an entity-context collision query intersects anything.
