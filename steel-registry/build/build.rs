@@ -183,6 +183,7 @@ const PLACED_FEATURES: &str = "placed_features";
 const CUSTOM_STATS: &str = "custom_stats";
 const SUSPICIOUS_STEW_EFFECTS: &str = "suspicious_stew_effects";
 const VILLAGER_TRADES: &str = "villager_trades";
+const CONTEXT_INT_PROVIDERS: &str = "context_int_providers";
 
 pub fn main() {
     // Rerun build script when any file in the build/ directory changes
@@ -282,6 +283,10 @@ pub fn main() {
         (suspicious_stew_effects::build(), SUSPICIOUS_STEW_EFFECTS),
         (advancements::build(), ADVANCEMENTS),
         (villager_trades::build(), VILLAGER_TRADES),
+        (
+            loot_tables::context_int_providers::build(),
+            CONTEXT_INT_PROVIDERS,
+        ),
     ];
 
     // Track which files we're generating this run

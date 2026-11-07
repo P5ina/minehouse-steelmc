@@ -58,6 +58,7 @@ pub mod item_stack;
 pub mod item_stack_template;
 pub mod items;
 pub mod jukebox_song;
+pub mod context_int_provider;
 pub mod loot_table;
 mod macros;
 pub mod map_decoration_type;
@@ -516,3 +517,8 @@ pub mod vanilla_advancements;
 #[rustfmt::skip]
 #[path = "generated/vanilla_villager_trades.rs"]
 pub mod vanilla_villager_trades;
+
+#[expect(warnings)]
+#[rustfmt::skip]
+#[path = "generated/vanilla_context_int_providers.rs"]
+pub mod vanilla_context_int_providers;
