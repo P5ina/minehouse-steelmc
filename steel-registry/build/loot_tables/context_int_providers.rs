@@ -57,10 +57,10 @@ fn generate_provider(provider: &ProviderJson) -> TokenStream {
                     quote! { DispatcherCase { condition: #condition, value: #value } }
                 });
                 // Vanilla `DispatcherProvider.mapCodec` defaults to `exactly(0)`.
-                let default = object
-                    .default
-                    .as_ref()
-                    .map_or_else(|| quote! { ContextIntProvider::Constant(0) }, generate_provider);
+                let default = object.default.as_ref().map_or_else(
+                    || quote! { ContextIntProvider::Constant(0) },
+                    generate_provider,
+                );
                 quote! {
                     ContextIntProvider::NumberDispatcher {
                         cases: &[#(#cases),*],
@@ -85,7 +85,11 @@ pub(crate) fn build() -> TokenStream {
     println!("cargo:rerun-if-changed={FOLDER}");
     let mut files: Vec<_> = fs::read_dir(FOLDER)
         .unwrap_or_else(|e| panic!("Failed to read {FOLDER}: {e}"))
-        .map(|entry| entry.unwrap_or_else(|e| panic!("Failed to read entry: {e}")).path())
+        .map(|entry| {
+            entry
+                .unwrap_or_else(|e| panic!("Failed to read entry: {e}"))
+                .path()
+        })
         .filter(|path| path.extension().is_some_and(|ext| ext == "json"))
         .collect();
     files.sort();
