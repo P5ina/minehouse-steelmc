@@ -5,19 +5,25 @@ use std::sync::Arc;
 use glam::DVec3;
 use rand::{SeedableRng as _, rngs::StdRng};
 use steel_registry::vanilla_custom_stats::TIME_SINCE_REST;
+use steel_registry::vanilla_game_rules::SPAWN_WANDERING_TRADERS;
 use steel_registry::{
     RegistryEntry as _, init_vanilla_registry, vanilla_blocks, vanilla_dimension_types,
     vanilla_entities, vanilla_poi_types, vanilla_world_clocks,
 };
 use steel_utils::types::{Difficulty, UpdateFlags};
-use steel_utils::{BlockPos, ChunkPos, Identifier, WorldAabb};
+use steel_utils::{BlockPos, ChunkPos, Downcast as _, Identifier, WorldAabb};
 
+use super::WanderingTraderData;
 use super::cat::{spawn_in_hut, spawn_in_village};
 use super::custom_spawners_for;
 use super::patrol::{patrol_spawn_pos, spawn_patrol};
 use super::phantom::phantom_spawn_pos;
 use super::village_siege::{SiegeState, VillageSiege};
+use super::wandering_trader::{
+    DEFAULT_SPAWN_DELAY, MIN_SPAWN_CHANCE, WanderingTraderSpawner, has_enough_space, spawn,
+};
 use crate::behavior::init_behaviors;
+use crate::entity::entities::WanderingTraderEntity;
 use crate::entity::{Entity as _, SharedEntity, init_entities};
 use crate::player::ResetReason;
 use crate::test_support::{
@@ -30,7 +36,7 @@ use crate::world::World;
 fn only_the_overworld_gets_custom_spawners() {
     assert_eq!(
         custom_spawners_for(&vanilla_dimension_types::OVERWORLD).len(),
-        4
+        5
     );
     assert!(custom_spawners_for(&vanilla_dimension_types::THE_NETHER).is_empty());
     assert!(custom_spawners_for(&vanilla_dimension_types::THE_END).is_empty());
@@ -416,4 +422,156 @@ fn a_siege_sends_twenty_zombies_into_the_village() {
             "{position:?}"
         );
     }
+}
+
+#[test]
+fn the_trader_roll_comes_once_a_day_and_raises_the_chance() {
+    init_vanilla_registry();
+    init_behaviors();
+    init_entities();
+    let world_fixture = fresh_test_world("trader_roll");
+    let world = &world_fixture.world;
+    let mut rolled_in = 0;
+    for seed in 0..200 {
+        *world.wandering_trader_data.lock() = WanderingTraderData::default();
+        world.wandering_trader_data.lock().set_spawn_delay(1_200);
+        let mut spawner = WanderingTraderSpawner::default();
+        let mut random = StdRng::seed_from_u64(seed);
+        for _ in 0..1_199 {
+            spawner.tick_with(world, &mut random);
+        }
+        assert_eq!(world.wandering_trader_data.lock().spawn_delay(), 1_200);
+        spawner.tick_with(world, &mut random);
+        let data = world.wandering_trader_data.lock().clone();
+        assert_eq!(data.spawn_delay(), DEFAULT_SPAWN_DELAY);
+        assert!(data.is_dirty());
+        // Without a player a won roll counts as a visit and resets the chance.
+        match data.spawn_chance() {
+            MIN_SPAWN_CHANCE => rolled_in += 1,
+            50 => {}
+            other => panic!("unexpected spawn chance {other}"),
+        }
+    }
+    assert!(
+        (30..=75).contains(&rolled_in),
+        "about one in four: {rolled_in}"
+    );
+
+    assert!(world.set_game_rule(&SPAWN_WANDERING_TRADERS, false));
+    *world.wandering_trader_data.lock() = WanderingTraderData::default();
+    world.wandering_trader_data.lock().set_spawn_delay(1_200);
+    let mut spawner = WanderingTraderSpawner::default();
+    let mut random = StdRng::seed_from_u64(0);
+    for _ in 0..2_400 {
+        spawner.tick_with(world, &mut random);
+    }
+    assert_eq!(world.wandering_trader_data.lock().spawn_delay(), 1_200);
+}
+
+#[test]
+fn a_trader_comes_to_the_bell_with_two_leashed_llamas() {
+    init_vanilla_registry();
+    init_behaviors();
+    init_entities();
+    let world_fixture = fresh_test_world("trader_bell");
+    let world = &world_fixture.world;
+    for x in -5..=4 {
+        for z in -5..=4 {
+            insert_ready_full_chunk(world, ChunkPos::new(x, z));
+        }
+    }
+    for x in -70..70 {
+        for z in -70..70 {
+            assert!(world.set_block(
+                BlockPos::new(x, 63, z),
+                vanilla_blocks::GRASS_BLOCK.default_state(),
+                UpdateFlags::UPDATE_ALL,
+            ));
+        }
+    }
+    let bell = BlockPos::new(20, 64, -10);
+    let meeting = vanilla_poi_types::MEETING
+        .try_id()
+        .expect("vanilla meeting POI type should be registered");
+    world
+        .poi_storage
+        .lock()
+        .add(bell, meeting, vanilla_poi_types::MEETING.ticket_count);
+    let player = TestPlayerBuilder::new(Arc::clone(world), "Customer", 1).build();
+    player.snap_to(DVec3::new(0.5, 64.0, 0.5), 0.0, 0.0);
+    assert!(world.add_player(Arc::clone(&player), ResetReason::InitialJoin));
+
+    let mut random = StdRng::seed_from_u64(0);
+    let mut spawned = false;
+    for _ in 0..200 {
+        if spawn(world, &mut random) {
+            spawned = true;
+            break;
+        }
+    }
+    assert!(spawned, "no trader in 200 tries");
+
+    let area = WorldAabb::new(-128.0, 0.0, -128.0, 128.0, 128.0, 128.0);
+    let traders = world.get_entities_in_aabb_matching(&area, |entity| {
+        entity.entity_type() == &vanilla_entities::WANDERING_TRADER
+    });
+    assert_eq!(traders.len(), 1);
+    let trader = &traders[0];
+    let position = trader.position();
+    assert!((position.y - 64.0).abs() < 1.0e-9);
+    assert!(
+        (position.x - f64::from(bell.x())).abs() <= 48.5,
+        "{position:?}"
+    );
+    assert!(
+        (position.z - f64::from(bell.z())).abs() <= 48.5,
+        "{position:?}"
+    );
+    let wandering_trader = trader
+        .downcast_ref::<WanderingTraderEntity>()
+        .expect("the trader should be a wandering trader");
+    assert_eq!(wandering_trader.despawn_delay(), 48_000);
+    assert_eq!(wandering_trader.wander_target(), Some(bell));
+
+    let llamas = world.get_entities_in_aabb_matching(&area, |entity| {
+        entity.entity_type() == &vanilla_entities::TRADER_LLAMA
+    });
+    assert_eq!(llamas.len(), 2);
+    for llama in &llamas {
+        let leashable = llama
+            .as_leashable()
+            .expect("a trader llama should be leashable");
+        let holder = leashable
+            .leash_holder()
+            .expect("each llama should be leashed");
+        assert_eq!(holder.id(), trader.id());
+        let llama_position = llama.position();
+        assert!(
+            (llama_position.x - position.x).abs() <= 4.0,
+            "{llama_position:?}"
+        );
+        assert!(
+            (llama_position.z - position.z).abs() <= 4.0,
+            "{llama_position:?}"
+        );
+    }
+}
+
+#[test]
+fn a_trader_needs_a_free_two_by_three_by_two_box() {
+    init_vanilla_registry();
+    init_behaviors();
+    init_entities();
+    let world_fixture = fresh_test_world("trader_space");
+    let world = &world_fixture.world;
+    insert_ready_full_chunk(world, ChunkPos::new(0, 0));
+    let spawn_pos = BlockPos::new(4, 64, 4);
+    assert!(has_enough_space(world, spawn_pos));
+    assert!(world.set_block(
+        BlockPos::new(5, 66, 5),
+        vanilla_blocks::STONE.default_state(),
+        UpdateFlags::UPDATE_ALL,
+    ));
+    assert!(!has_enough_space(world, spawn_pos));
+    assert!(has_enough_space(world, BlockPos::new(8, 64, 8)));
 }

@@ -7,6 +7,7 @@ mod phantom;
 #[cfg(test)]
 mod tests;
 mod village_siege;
+mod wandering_trader;
 
 use std::sync::Arc;
 
@@ -18,6 +19,7 @@ pub(crate) use cat::CatSpawner;
 pub(crate) use patrol::PatrolSpawner;
 pub(crate) use phantom::PhantomSpawner;
 pub(crate) use village_siege::VillageSiege;
+pub(crate) use wandering_trader::{WanderingTraderData, WanderingTraderSpawner};
 
 use steel_utils::{BlockPos, ChunkPos};
 
@@ -39,6 +41,7 @@ pub(crate) fn custom_spawners_for(dimension_type: DimensionTypeRef) -> Vec<Box<d
             Box::new(PatrolSpawner::default()),
             Box::new(CatSpawner::default()),
             Box::new(VillageSiege::default()),
+            Box::new(WanderingTraderSpawner::default()),
         ]
     } else {
         Vec::new()
