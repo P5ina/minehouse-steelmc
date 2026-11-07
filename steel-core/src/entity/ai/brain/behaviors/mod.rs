@@ -11,6 +11,7 @@ mod look;
 mod make_love;
 mod move_to_target;
 mod panic;
+mod poi;
 mod ram;
 mod stroll;
 mod swim;
@@ -34,6 +35,7 @@ pub use look::{
 pub use make_love::AnimalMakeLove;
 pub use move_to_target::MoveToTargetSink;
 pub use panic::AnimalPanic;
+pub use poi::{SCAN_RANGE, acquire_poi, find_path_to_pois, validate_bed_poi, validate_nearby_poi};
 pub use ram::PrepareRamNearestTarget;
 pub use stroll::{
     inside_brownian_walk, set_walk_target_away_from_entity, village_bound_random_stroll,

@@ -1,30 +1,38 @@
 //! The villager brain (vanilla `Villager.BRAIN_PROVIDER` and
 //! `VillagerGoalPackages`), with the villager-only behaviors and sensors.
 //!
-//! Not yet ported: points of interest (beds, job sites, the meeting bell),
-//! the work and meet activities, doors, sleeping, breeding, gifts to heroes,
-//! trading with other villagers, picking up wanted items, iron golem calls
-//! and raids.
+//! Not yet ported: the work and meet activities, doors, sleeping, breeding,
+//! gifts to heroes, trading with other villagers, picking up wanted items,
+//! iron golem calls and raids.
 
 use std::sync::Arc;
 
 use steel_registry::entity_type::{EntityTypeRef, MobCategory};
 use steel_registry::item_stack::ItemStack;
 use steel_registry::vanilla_entities;
+use steel_registry::villager_profession::VillagerProfessionRef;
+use steel_utils::entity_events::EntityStatus;
 
+use self::poi::{
+    GoToPotentialJobSite, acquirable_job_site, assign_profession_from_job_site,
+    poi_competitor_scan, reset_profession, set_closest_home_as_walk_target,
+    set_walk_target_from_block_memory, yield_job_site,
+};
+pub(super) use self::poi::{held_job_site, is_acquirable_job, is_home, is_meeting};
 use super::{VillagerEntity, trading_player_of};
 use crate::entity::ai::brain::behavior::{Behavior, OneShot, TimedBehavior};
 use crate::entity::ai::brain::behaviors::{
-    DoNothing, LookAtTargetSink, MoveToTargetSink, Swim, inside_brownian_walk, interact_with_type,
-    run_one, set_entity_look_target, set_look_and_interact, set_walk_target_away_from_entity,
-    set_walk_target_from_look_target, village_bound_random_stroll,
-    village_bound_random_stroll_within,
+    DoNothing, LookAtTargetSink, MoveToTargetSink, Swim, acquire_poi, inside_brownian_walk,
+    interact_with_type, run_one, set_entity_look_target, set_look_and_interact,
+    set_walk_target_away_from_entity, set_walk_target_from_look_target, validate_bed_poi,
+    validate_nearby_poi, village_bound_random_stroll, village_bound_random_stroll_within,
 };
 use crate::entity::ai::brain::memory::MemoryRequirement;
 use crate::entity::ai::brain::memory_types::{
-    BREED_TARGET, GOLEM_DETECTED_RECENTLY, HURT_BY, HURT_BY_ENTITY, INTERACTION_TARGET,
-    LOOK_TARGET, NEAREST_HOSTILE, NEAREST_LIVING_ENTITIES, NEAREST_VISIBLE_LIVING_ENTITIES, PATH,
-    PositionTracker, VISIBLE_VILLAGER_BABIES, WALK_TARGET, WalkTarget,
+    BREED_TARGET, GOLEM_DETECTED_RECENTLY, HOME, HURT_BY, HURT_BY_ENTITY, INTERACTION_TARGET,
+    JOB_SITE, LOOK_TARGET, MEETING_POINT, NEAREST_HOSTILE, NEAREST_LIVING_ENTITIES,
+    NEAREST_VISIBLE_LIVING_ENTITIES, PATH, POTENTIAL_JOB_SITE, PositionTracker,
+    VISIBLE_VILLAGER_BABIES, WALK_TARGET, WalkTarget,
 };
 use crate::entity::ai::brain::sensors::{HurtBySensor, NearestLivingEntitySensor, PlayerSensor};
 use crate::entity::ai::brain::{
@@ -46,14 +54,14 @@ const BABY_VILLAGER_ACTIVITY: &str = "minecraft:gameplay/baby_villager_activity"
 
 /// Vanilla `Villager.BRAIN_PROVIDER.makeBrain`: babies play where adults
 /// work, and both share the other activities.
-pub(super) fn make_brain(baby: bool) -> Brain<VillagerEntity> {
+pub(super) fn make_brain(baby: bool, profession: VillagerProfessionRef) -> Brain<VillagerEntity> {
     let mut activities = Vec::new();
     if baby {
         activities.push(play_package());
     }
     // TODO(villager brain): the adult `WORK` package, active while a job site
     // is remembered, comes with points of interest.
-    activities.push(core_package());
+    activities.push(core_package(profession));
     // TODO(villager brain): the `MEET` package, active while a meeting point
     // is remembered, comes with points of interest.
     activities.push(rest_package());
@@ -93,10 +101,10 @@ fn is_type(entity: &SharedEntity, entity_type: EntityTypeRef) -> bool {
 }
 
 /// Vanilla `VillagerGoalPackages.getCorePackage`.
-fn core_package() -> ActivityData<VillagerEntity> {
-    // TODO(villager brain): vanilla also opens doors, reacts to bells,
-    // tracks raids, validates, acquires and yields points of interest,
-    // picks up wanted items and takes up or drops a profession here.
+fn core_package(profession: VillagerProfessionRef) -> ActivityData<VillagerEntity> {
+    // TODO(villager brain): vanilla also opens doors (priority 0) and picks
+    // up wanted items (priority 5) here.
+    // TODO(raids): vanilla also reacts to bells and tracks raids (priority 0).
     let behaviors: Behaviors = vec![
         (0, Box::new(TimedBehavior::new(Swim::new(0.8)))),
         (
@@ -105,13 +113,70 @@ fn core_package() -> ActivityData<VillagerEntity> {
         ),
         (0, Box::new(TimedBehavior::new(VillagerPanicTrigger))),
         (0, Box::new(wake_up())),
+        (
+            0,
+            Box::new(validate_nearby_poi(
+                move |poi_type| held_job_site(profession, poi_type),
+                &JOB_SITE,
+            )),
+        ),
+        (
+            0,
+            Box::new(validate_nearby_poi(
+                move |poi_type| acquirable_job_site(profession, poi_type),
+                &POTENTIAL_JOB_SITE,
+            )),
+        ),
         (1, Box::new(TimedBehavior::new(MoveToTargetSink::new()))),
+        (2, Box::new(poi_competitor_scan())),
         (
             3,
             Box::new(TimedBehavior::new(LookAndFollowTradingPlayerSink {
                 speed_modifier: SPEED_MODIFIER,
             })),
         ),
+        (
+            6,
+            Box::new(acquire_poi(
+                move |poi_type| acquirable_job_site(profession, poi_type),
+                &JOB_SITE,
+                &POTENTIAL_JOB_SITE,
+                true,
+                None,
+                |_, _| true,
+            )),
+        ),
+        (
+            7,
+            Box::new(TimedBehavior::new(GoToPotentialJobSite {
+                speed_modifier: SPEED_MODIFIER,
+            })),
+        ),
+        (8, Box::new(yield_job_site(SPEED_MODIFIER))),
+        (
+            10,
+            Box::new(acquire_poi(
+                is_home,
+                &HOME,
+                &HOME,
+                false,
+                Some(EntityStatus::VillagerHappy),
+                validate_bed_poi,
+            )),
+        ),
+        (
+            10,
+            Box::new(acquire_poi(
+                is_meeting,
+                &MEETING_POINT,
+                &MEETING_POINT,
+                true,
+                Some(EntityStatus::VillagerHappy),
+                |_, _| true,
+            )),
+        ),
+        (10, Box::new(assign_profession_from_job_site())),
+        (10, Box::new(reset_profession())),
     ];
     ActivityData::new(Activity::CORE, behaviors)
 }
@@ -175,20 +240,29 @@ fn play_package() -> ActivityData<VillagerEntity> {
 
 /// Vanilla `VillagerGoalPackages.getRestPackage`.
 fn rest_package() -> ActivityData<VillagerEntity> {
-    // TODO(villager brain): vanilla also walks home, validates the bed,
-    // sleeps in it and looks for the closest home (weight 1).
     let homeless: Weighted = vec![
+        (Box::new(set_closest_home_as_walk_target(SPEED_MODIFIER)), 1),
         (Box::new(inside_brownian_walk(SPEED_MODIFIER)), 4),
         (Box::new(go_to_closest_village(SPEED_MODIFIER, 4)), 2),
         (Box::new(DoNothing::new(20, 40)), 2),
     ];
+    // TODO(villager brain): vanilla also sleeps in the bed (priority 3).
     let behaviors: Behaviors = vec![
+        (
+            2,
+            Box::new(set_walk_target_from_block_memory(
+                &HOME,
+                SPEED_MODIFIER,
+                1,
+                150,
+                1200,
+            )),
+        ),
+        (3, Box::new(validate_nearby_poi(is_home, &HOME))),
         (
             5,
             Box::new(run_one(
-                // Vanilla requires `HOME` to be absent; Steel does not
-                // remember homes yet, so this always holds.
-                Vec::new(),
+                vec![MemoryRequirement::new(&HOME, MemoryStatus::ValueAbsent)],
                 homeless,
             )),
         ),
@@ -924,6 +998,8 @@ impl Sensor<VillagerEntity> for GolemSensor {
         }
     }
 }
+
+mod poi;
 
 #[cfg(test)]
 mod tests;
