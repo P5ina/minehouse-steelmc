@@ -13,7 +13,9 @@ use steel_registry::entity_type::EntityTypeRef;
 use steel_registry::item_stack::ItemStack;
 use steel_registry::vanilla_entity_data::ItemEntityData;
 use steel_registry::vanilla_game_rules::MOB_GRIEFING;
-use steel_registry::{vanilla_custom_stats, vanilla_damage_types};
+use steel_registry::{
+    REGISTRY, TaggedRegistryExt as _, vanilla_custom_stats, vanilla_damage_types,
+};
 use steel_utils::UuidExt;
 use steel_utils::locks::SyncMutex;
 use steel_utils::{Downcast as _, DowncastType, DowncastTypeKey};
@@ -529,6 +531,13 @@ impl DefaultEntityPush for ItemEntity {}
 impl Entity for ItemEntity {
     fn is_hard_collision_relevant(&self) -> bool {
         false
+    }
+
+    /// Vanilla `ItemEntity.dampensVibrations`.
+    fn dampens_vibrations(&self) -> bool {
+        REGISTRY
+            .items
+            .is_in_tag(self.get_item().item(), &ItemTag::DAMPENS_VIBRATIONS)
     }
 
     fn as_default_entity_push(&self) -> Option<&dyn DefaultEntityPush> {
