@@ -23,12 +23,16 @@ use super::work::{SecondaryPoiSensor, WorkAtPoi, stroll_to_poi_list};
 use super::{ShowTradesToPlayer, VillagerPanicTrigger, hostile_distance, villager_calm_down};
 use crate::behavior::init_behaviors;
 use crate::entity::ai::brain::behavior::{Behavior, TimedBehavior};
-use crate::entity::ai::brain::behaviors::{interact_with_door, stroll_to_poi, validate_nearby_poi};
+use crate::entity::ai::brain::behaviors::{
+    go_to_wanted_item, interact_with_door, stroll_to_poi, validate_nearby_poi,
+};
 use crate::entity::ai::brain::memory_types::{
     DOORS_TO_CLOSE, GOLEM_DETECTED_RECENTLY, HOME, INTERACTION_TARGET, JOB_SITE,
-    LAST_WORKED_AT_POI, LOOK_TARGET, MEETING_POINT, NEAREST_HOSTILE, NEAREST_LIVING_ENTITIES, PATH,
-    POTENTIAL_JOB_SITE, SECONDARY_JOB_SITE, WALK_TARGET, WalkTarget,
+    LAST_WORKED_AT_POI, LOOK_TARGET, MEETING_POINT, NEAREST_HOSTILE, NEAREST_LIVING_ENTITIES,
+    NEAREST_VISIBLE_WANTED_ITEM, PATH, POTENTIAL_JOB_SITE, SECONDARY_JOB_SITE, WALK_TARGET,
+    WalkTarget,
 };
+use crate::entity::ai::brain::sensors::NearestItemSensor;
 use crate::entity::ai::brain::{Activity, BehaviorControl as _, Sensor as _};
 use crate::entity::ai::node::Node;
 use crate::entity::ai::path::Path;
@@ -915,4 +919,45 @@ fn villagers_use_bone_meal_on_growing_crops() {
 
     bone_meal.stop(world, &mob, 21);
     assert!(main_hand(&mob).is_empty());
+}
+
+#[test]
+fn villagers_see_and_walk_to_wanted_items() {
+    init_vanilla_registry();
+    init_behaviors();
+    let fixture = fresh_test_world("villager_brain_wanted_item");
+    let world = &fixture.world;
+    insert_ready_full_chunk(world, ChunkPos::new(0, 0));
+    let mob = villager_in(world);
+    let _stone = world
+        .spawn_item(
+            DVec3::new(3.5, 64.0, 1.5),
+            ItemStack::new(&vanilla_items::STONE),
+        )
+        .expect("the stone spawns");
+    NearestItemSensor.do_tick(world, &mob);
+    assert!(
+        !mob.brain
+            .memories()
+            .lock()
+            .has_value(&NEAREST_VISIBLE_WANTED_ITEM),
+        "villagers do not want stone"
+    );
+
+    let _wheat = world
+        .spawn_item(
+            DVec3::new(4.5, 64.0, 1.5),
+            ItemStack::new(&vanilla_items::WHEAT),
+        )
+        .expect("the wheat spawns");
+    NearestItemSensor.do_tick(world, &mob);
+    assert!(
+        mob.brain
+            .memories()
+            .lock()
+            .has_value(&NEAREST_VISIBLE_WANTED_ITEM)
+    );
+    let mut go = go_to_wanted_item(|_: &VillagerEntity| true, 0.5, false, 4);
+    assert!(go.try_start(world, &mob, 1));
+    assert!(mob.brain.memories().lock().has_value(&WALK_TARGET));
 }

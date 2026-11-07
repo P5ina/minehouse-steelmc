@@ -2,7 +2,7 @@
 //! `VillagerGoalPackages`), with the villager-only behaviors and sensors.
 //!
 //! Not yet ported: sleeping,
-//! breeding, gifts to heroes, trading with other villagers, picking up wanted items, iron
+//! breeding, gifts to heroes, trading with other villagers, iron
 //! golem calls and raids.
 
 use std::sync::Arc;
@@ -24,10 +24,10 @@ use self::work::{SecondaryPoiSensor, WorkAtPoi, stroll_to_poi_list};
 use super::{VillagerEntity, trading_player_of};
 use crate::entity::ai::brain::behavior::{Behavior, OneShot, TimedBehavior};
 use crate::entity::ai::brain::behaviors::{
-    DoNothing, LookAtTargetSink, MoveToTargetSink, Swim, acquire_poi, inside_brownian_walk,
-    interact_with_door, interact_with_type, run_one, set_entity_look_target, set_look_and_interact,
-    set_walk_target_away_from_entity, set_walk_target_from_look_target, stroll_around_poi,
-    stroll_to_poi, trigger_one_shuffled, validate_bed_poi, validate_nearby_poi,
+    DoNothing, LookAtTargetSink, MoveToTargetSink, Swim, acquire_poi, go_to_wanted_item,
+    inside_brownian_walk, interact_with_door, interact_with_type, run_one, set_entity_look_target,
+    set_look_and_interact, set_walk_target_away_from_entity, set_walk_target_from_look_target,
+    stroll_around_poi, stroll_to_poi, trigger_one_shuffled, validate_bed_poi, validate_nearby_poi,
     village_bound_random_stroll, village_bound_random_stroll_within,
 };
 use crate::entity::ai::brain::memory::MemoryRequirement;
@@ -37,7 +37,9 @@ use crate::entity::ai::brain::memory_types::{
     NEAREST_VISIBLE_LIVING_ENTITIES, PATH, POTENTIAL_JOB_SITE, PositionTracker, SECONDARY_JOB_SITE,
     VISIBLE_VILLAGER_BABIES, WALK_TARGET, WalkTarget,
 };
-use crate::entity::ai::brain::sensors::{HurtBySensor, NearestLivingEntitySensor, PlayerSensor};
+use crate::entity::ai::brain::sensors::{
+    HurtBySensor, NearestItemSensor, NearestLivingEntitySensor, PlayerSensor,
+};
 use crate::entity::ai::brain::{
     Activity, ActivityData, BehaviorControl, Brain, Memories, MemoryStatus, Sensor,
 };
@@ -93,11 +95,11 @@ pub(super) const fn schedule_for(baby: bool) -> &'static str {
 }
 
 fn sensors() -> Vec<Box<dyn Sensor<VillagerEntity>>> {
-    // TODO(villager brain): vanilla also has the nearest item and nearest
-    // bed sensors.
+    // TODO(villager brain): vanilla also has the nearest bed sensor.
     vec![
         Box::new(NearestLivingEntitySensor),
         Box::new(PlayerSensor),
+        Box::new(NearestItemSensor),
         Box::new(HurtBySensor),
         Box::new(VillagerHostilesSensor),
         Box::new(VillagerBabiesSensor),
@@ -115,7 +117,6 @@ fn is_type(entity: &SharedEntity, entity_type: EntityTypeRef) -> bool {
 
 /// Vanilla `VillagerGoalPackages.getCorePackage`.
 fn core_package(profession: VillagerProfessionRef) -> ActivityData<VillagerEntity> {
-    // TODO(villager brain): vanilla also picks up wanted items (priority 5).
     // TODO(raids): vanilla also reacts to bells and tracks raids (priority 0).
     let behaviors: Behaviors = vec![
         (0, Box::new(TimedBehavior::new(Swim::new(0.8)))),
@@ -147,6 +148,15 @@ fn core_package(profession: VillagerProfessionRef) -> ActivityData<VillagerEntit
             Box::new(TimedBehavior::new(LookAndFollowTradingPlayerSink {
                 speed_modifier: SPEED_MODIFIER,
             })),
+        ),
+        (
+            5,
+            Box::new(go_to_wanted_item(
+                |_: &VillagerEntity| true,
+                SPEED_MODIFIER,
+                false,
+                4,
+            )),
         ),
         (
             6,
