@@ -436,3 +436,9 @@ pub static SNIFFER_DIGGING: MemoryModuleType<bool> = MemoryModuleType::new("snif
 pub static SNIFFER_HAPPY: MemoryModuleType<bool> = MemoryModuleType::new("sniffer_happy");
 pub static UNREACHABLE_TONGUE_TARGETS: MemoryModuleType<Vec<Uuid>> =
     MemoryModuleType::new("unreachable_tongue_targets");
+pub static LIKED_PLAYER: MemoryModuleType<Uuid> =
+    MemoryModuleType::with_codec("liked_player", uuid_codec());
+pub static LIKED_NOTEBLOCK_POSITION: MemoryModuleType<GlobalPos> =
+    MemoryModuleType::with_codec("liked_noteblock", global_pos_codec());
+pub static LIKED_NOTEBLOCK_COOLDOWN_TICKS: MemoryModuleType<i32> =
+    MemoryModuleType::with_codec("liked_noteblock_cooldown_ticks", int_codec());
