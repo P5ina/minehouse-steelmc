@@ -120,6 +120,18 @@ impl Menu {
         self.overrides_player_slots
     }
 
+    /// Runs the kind's `startOpen` hook once the menu exists for `player`.
+    pub fn start_open(&mut self, player: &Player) {
+        self.kind.start_open(player);
+    }
+
+    /// The block entity containers of a chest-shaped menu, see
+    /// [`MenuKind::chest_menu_containers`].
+    #[must_use]
+    pub fn chest_menu_containers(&self) -> Vec<ContainerId> {
+        self.kind.chest_menu_containers()
+    }
+
     /// Returns true if this menu is still valid for the player.
     #[must_use]
     pub fn still_valid(&self, player: &Player) -> bool {

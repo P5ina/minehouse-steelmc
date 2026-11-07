@@ -23,7 +23,7 @@ use steel_registry::vanilla_entity_data::{GiantEntityData, HuskEntityData, Zombi
 use steel_registry::vanilla_item_tags::ItemTag;
 use steel_registry::{
     REGISTRY, TaggedRegistryExt as _, level_events, sound_events, vanilla_attributes,
-    vanilla_entities, vanilla_items, vanilla_mob_effects,
+    vanilla_blocks, vanilla_entities, vanilla_items, vanilla_mob_effects,
 };
 use steel_utils::locks::SyncMutex;
 use steel_utils::random::Random;
@@ -34,8 +34,9 @@ use steel_utils::{
 };
 
 use crate::entity::ai::goal::{
-    BreakDoorGoal, HurtByTargetGoal, LookAtPlayerGoal, NearestAttackableTargetGoal,
-    RandomLookAroundGoal, WaterAvoidingRandomStrollGoal, ZombieAttackGoal,
+    BreakDoorGoal, HurtByTargetGoal, LookAtPlayerGoal, MoveThroughVillageGoal,
+    NearestAttackableTargetGoal, RandomLookAroundGoal, RemoveBlockGoal, RemoveBlockSound,
+    WaterAvoidingRandomStrollGoal, ZombieAttackGoal,
 };
 use crate::entity::attribute::{AttributeModifier, AttributeModifierOperation};
 use crate::entity::conversion::ConversionParams;
@@ -58,6 +59,8 @@ use crate::world::{DifficultyInstance, ServerLevelAccessor, World};
 
 const DEFAULT_STEP_HEIGHT: f32 = 0.6;
 const XP_REWARD: i32 = 5;
+/// Vanilla `ZombieAttackTurtleEggGoal.acceptedDistance`.
+const TURTLE_EGG_ACCEPTED_DISTANCE: f64 = 1.14;
 /// Vanilla `Zombie.getBaseExperienceReward` multiplies a baby's reward.
 const BABY_XP_MULTIPLIER: f64 = 2.5;
 const STEP_SOUND_VOLUME: f32 = 0.15;
@@ -280,12 +283,43 @@ impl ZombieState {
     }
 }
 
+/// Vanilla `Zombie::canBreakDoors`, as `MoveThroughVillageGoal` asks it.
+fn zombie_can_break_doors(mob: &dyn PathfinderMob) -> bool {
+    let entity: &dyn Entity = mob;
+    if let Some(zombie) = entity.downcast_ref::<ZombieEntity>() {
+        zombie.can_break_doors()
+    } else if let Some(husk) = entity.downcast_ref::<HuskEntity>() {
+        husk.can_break_doors()
+    } else if let Some(zombie_villager) = entity.downcast_ref::<ZombieVillagerEntity>() {
+        zombie_villager.can_break_doors()
+    } else {
+        false
+    }
+}
+
+/// Vanilla `Zombie.ZombieAttackTurtleEggGoal`.
+fn zombie_attack_turtle_egg_goal() -> RemoveBlockGoal {
+    RemoveBlockGoal::new(&vanilla_blocks::TURTLE_EGG, 1.0, 3)
+        .with_accepted_distance(TURTLE_EGG_ACCEPTED_DISTANCE)
+        .with_destroy_progress_sound(RemoveBlockSound {
+            sound: &sound_events::ENTITY_ZOMBIE_DESTROY_EGG,
+            source: SoundSource::Hostile,
+            volume: 0.5,
+        })
+        .with_break_sound(RemoveBlockSound {
+            sound: &sound_events::ENTITY_TURTLE_EGG_BREAK,
+            source: SoundSource::Blocks,
+            volume: 0.7,
+        })
+}
+
 /// Builds the vanilla `Zombie.registerGoals` mob base.
 fn zombie_mob_base(variant: ZombieVariant) -> MobBase {
     let mob_base = MobBase::new();
     mob_base.set_xp_reward(XP_REWARD);
     {
         let mut goal_selector = mob_base.goal_selector().lock();
+        goal_selector.add_goal(4, zombie_attack_turtle_egg_goal());
         goal_selector.add_goal(8, LookAtPlayerGoal::new(8.0));
         goal_selector.add_goal(8, RandomLookAroundGoal::new());
     }
@@ -295,9 +329,12 @@ fn zombie_mob_base(variant: ZombieVariant) -> MobBase {
     }
     {
         let mut goal_selector = mob_base.goal_selector().lock();
-        // Vanilla priority 4 attacks turtle eggs; priority 2 uses spears and
-        // priority 6 moves through villages. Steel has none of these goals yet.
+        // Vanilla priority 2 uses spears; Steel has no spear goal yet.
         goal_selector.add_goal(3, ZombieAttackGoal::new(1.0, false));
+        goal_selector.add_goal(
+            6,
+            MoveThroughVillageGoal::new(1.0, true, 4, zombie_can_break_doors),
+        );
         goal_selector.add_goal(7, WaterAvoidingRandomStrollGoal::new(1.0));
 
         let mut target_selector = mob_base.target_selector().lock();

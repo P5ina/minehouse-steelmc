@@ -60,3 +60,6 @@ pub use enderman::EndermanEntity;
 /// Hoglin and zoglin, the Nether boars.
 pub mod hoglin;
 pub use hoglin::{HoglinEntity, ZoglinEntity};
+/// Breeze, the trial chamber wind charge shooter.
+pub mod breeze;
+pub use breeze::BreezeEntity;

@@ -15,6 +15,7 @@ use std::mem;
 
 use steel_registry::blocks::properties::Direction;
 use steel_registry::item_stack::ItemStack;
+use steel_registry::items::ItemRef;
 use steel_utils::ErasedType;
 
 /// Extra reach allowed when validating containers and menus.
@@ -69,6 +70,15 @@ pub trait Container: ErasedType + Send + Sync {
             let item = self.get_item(slot);
             !item.is_empty() && ItemStack::is_same_item_same_components(item, search_stack)
         })
+    }
+
+    /// Vanilla `Container.countItem`: how many of `item` the container holds.
+    fn count_item(&self, item: ItemRef) -> i32 {
+        self.items()
+            .iter()
+            .filter(|stack| stack.is(item))
+            .map(ItemStack::count)
+            .sum()
     }
 
     /// Returns a mutable reference to the item in the specified slot.

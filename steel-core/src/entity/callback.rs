@@ -7,6 +7,7 @@ use steel_utils::{ChunkPos, WorldAabb};
 
 use super::EntityMoveError;
 use crate::world::World;
+use crate::world::game_event::DynamicListenerAction;
 
 /// Reasons an entity can be removed from the world.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -245,6 +246,12 @@ impl EntityLevelCallback for EntityChunkCallback {
         if update.section_changed() {
             if update.became_inaccessible() {
                 world.remove_entity_from_tracker(self.entity_id);
+                if let Some(entity) = world.entity_manager().get_by_id(self.entity_id) {
+                    world.update_dynamic_game_event_listeners(
+                        &entity,
+                        DynamicListenerAction::Remove,
+                    );
+                }
             } else if update.became_accessible() {
                 if let Some(entity) = world.entity_manager().get_by_id(self.entity_id) {
                     world.add_entity_to_tracker(&entity);
@@ -257,6 +264,9 @@ impl EntityLevelCallback for EntityChunkCallback {
                     |chunk| world.get_packet_tracking_players(chunk),
                     |player_id| world.players.get_by_entity_id(player_id),
                 );
+                if let Some(entity) = world.entity_manager().get_by_id(self.entity_id) {
+                    world.update_dynamic_game_event_listeners(&entity, DynamicListenerAction::Move);
+                }
             }
         }
 
@@ -281,6 +291,7 @@ impl EntityLevelCallback for EntityChunkCallback {
             .remove_live_entity(self.entity_id, reason);
         if let Some(entity) = entity {
             world.mark_chunk_dirty(ChunkPos::from_entity_pos(entity.position()));
+            world.update_dynamic_game_event_listeners(&entity, DynamicListenerAction::Remove);
         }
 
         world.remove_entity_from_tracker(self.entity_id);

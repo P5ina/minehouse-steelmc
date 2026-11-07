@@ -1,36 +1,44 @@
 use std::sync::Arc;
 
 use glam::DVec3;
+use steel_registry::blocks::block_state_ext::BlockStateExt as _;
+use steel_registry::blocks::properties::{BlockStateProperties, DoubleBlockHalf};
 use steel_registry::item_stack::ItemStack;
 use steel_registry::poi::PointOfInterestType;
 use steel_registry::{
-    RegistryEntry as _, init_vanilla_registry, vanilla_entities, vanilla_items, vanilla_poi_types,
-    vanilla_villager_professions, vanilla_villager_types, vanilla_world_clocks,
+    RegistryEntry as _, init_vanilla_registry, vanilla_blocks, vanilla_entities, vanilla_items,
+    vanilla_poi_types, vanilla_villager_professions, vanilla_villager_types, vanilla_world_clocks,
 };
 use steel_utils::types::InteractionHand;
-use steel_utils::{BlockPos, GlobalPos};
+use steel_utils::types::UpdateFlags;
+use steel_utils::{BlockPos, ChunkPos, GlobalPos};
 
 use super::poi::{
     GoToPotentialJobSite, acquirable_job_site, assign_profession_from_job_site, held_job_site,
     poi_competitor_scan, reset_profession,
 };
+use super::work::{SecondaryPoiSensor, WorkAtPoi, stroll_to_poi_list};
 use super::{ShowTradesToPlayer, VillagerPanicTrigger, hostile_distance, villager_calm_down};
 use crate::behavior::init_behaviors;
 use crate::entity::ai::brain::behavior::{Behavior, TimedBehavior};
-use crate::entity::ai::brain::behaviors::validate_nearby_poi;
+use crate::entity::ai::brain::behaviors::{interact_with_door, stroll_to_poi, validate_nearby_poi};
 use crate::entity::ai::brain::memory_types::{
-    GOLEM_DETECTED_RECENTLY, HOME, INTERACTION_TARGET, JOB_SITE, NEAREST_HOSTILE,
-    NEAREST_LIVING_ENTITIES, POTENTIAL_JOB_SITE, WALK_TARGET, WalkTarget,
+    DOORS_TO_CLOSE, GOLEM_DETECTED_RECENTLY, HOME, INTERACTION_TARGET, JOB_SITE,
+    LAST_WORKED_AT_POI, LOOK_TARGET, MEETING_POINT, NEAREST_HOSTILE, NEAREST_LIVING_ENTITIES, PATH,
+    POTENTIAL_JOB_SITE, SECONDARY_JOB_SITE, WALK_TARGET, WalkTarget,
 };
-use crate::entity::ai::brain::{Activity, BehaviorControl as _};
+use crate::entity::ai::brain::{Activity, BehaviorControl as _, Sensor as _};
+use crate::entity::ai::node::Node;
+use crate::entity::ai::path::Path;
 use crate::entity::entities::ZombieEntity;
 use crate::entity::entities::mobs::villagers::VillagerEntity;
 use crate::entity::entities::mobs::villagers::trading::MerchantOffer;
 use crate::entity::{
     AgeableMob as _, Entity as _, LivingEntity as _, SharedEntity, next_entity_id,
 };
+use crate::inventory::container::Container as _;
 use crate::inventory::equipment::EquipmentSlot;
-use crate::test_support::{TestPlayerBuilder, fresh_test_world};
+use crate::test_support::{TestPlayerBuilder, fresh_test_world, insert_ready_full_chunk};
 use crate::world::World;
 
 fn villager_in(world: &Arc<World>) -> VillagerEntity {
@@ -460,4 +468,284 @@ fn villagers_free_their_pois_and_remember_them_across_refreshes() {
 
     mob.release_all_pois();
     assert!(!world.poi_storage.lock().is_occupied(bed));
+}
+
+/// A villager standing at `(x, 64, 1)` with a path along +x whose next
+/// node index is `next`.
+fn walk_path(villager: &VillagerEntity, next: usize) {
+    let nodes = (0..6).map(|x| Node::new(x, 64, 1)).collect();
+    let mut path = Path::new(nodes, BlockPos::new(5, 64, 1), true);
+    path.set_next_node_index(next);
+    villager.brain.memories().lock().set(&PATH, Some(path));
+}
+
+#[test]
+fn villagers_open_doors_on_their_path_and_close_them_behind() {
+    init_vanilla_registry();
+    init_behaviors();
+    let fixture = fresh_test_world("villager_brain_doors");
+    let world = &fixture.world;
+    insert_ready_full_chunk(world, ChunkPos::new(0, 0));
+    let door = BlockPos::new(2, 64, 1);
+    let half = &BlockStateProperties::DOUBLE_BLOCK_HALF;
+    let lower = vanilla_blocks::OAK_DOOR
+        .default_state()
+        .set_value(half, DoubleBlockHalf::Lower);
+    world.set_block(door, lower, UpdateFlags::UPDATE_CLIENTS);
+    world.set_block(
+        door.above(),
+        lower.set_value(half, DoubleBlockHalf::Upper),
+        UpdateFlags::UPDATE_CLIENTS,
+    );
+    let is_open = || {
+        world
+            .get_block_state(door)
+            .get_value(&BlockStateProperties::OPEN)
+    };
+    let mob = VillagerEntity::new(
+        &vanilla_entities::VILLAGER,
+        next_entity_id(),
+        DVec3::new(1.5, 64.0, 1.5),
+        Arc::downgrade(world),
+    );
+    mob.brain
+        .replace_with(super::make_brain(false, mob.profession()));
+
+    // Walking from (1, 64, 1) into the door.
+    walk_path(&mob, 2);
+    let mut doors = interact_with_door();
+    assert!(doors.try_start(world, &mob, 0));
+    assert!(is_open(), "the door on the next node opens");
+    assert_eq!(
+        mob.brain
+            .memories()
+            .lock()
+            .get(&DOORS_TO_CLOSE)
+            .map(|doors| doors.len()),
+        Some(1)
+    );
+
+    // Through it, from (3, 64, 1) on.
+    mob.base().set_position_local(DVec3::new(3.5, 64.0, 1.5));
+    walk_path(&mob, 4);
+    assert!(doors.try_start(world, &mob, 1));
+    assert!(!is_open(), "the door it passed closes again");
+    assert_eq!(
+        mob.brain
+            .memories()
+            .lock()
+            .get(&DOORS_TO_CLOSE)
+            .map(|doors| doors.len()),
+        Some(0)
+    );
+}
+
+#[test]
+fn villagers_stroll_back_to_the_poi_they_are_near() {
+    init_vanilla_registry();
+    let fixture = fresh_test_world("villager_brain_stroll_to_poi");
+    let world = &fixture.world;
+    let mob = villager_in(world);
+    mob.brain
+        .replace_with(super::make_brain(false, mob.profession()));
+    let site = BlockPos::new(4, 64, 1);
+    mob.brain
+        .memories()
+        .lock()
+        .set(&JOB_SITE, Some(global(world, site)));
+
+    let mut stroll = stroll_to_poi(&JOB_SITE, 0.4, 1, 10);
+    assert!(stroll.try_start(world, &mob, 100));
+    let target = mob
+        .brain
+        .memories()
+        .lock()
+        .get(&WALK_TARGET)
+        .map(|target| target.target.current_block_position());
+    assert_eq!(target, Some(site));
+
+    mob.brain.memories().lock().erase(&WALK_TARGET);
+    let mut stroll = stroll_to_poi(&JOB_SITE, 0.4, 1, 2);
+    assert!(
+        !stroll.try_start(world, &mob, 200),
+        "too far from the job site"
+    );
+}
+
+#[test]
+fn employed_villagers_work_and_meet_at_the_bell_by_day() {
+    init_vanilla_registry();
+    let fixture = fresh_test_world("villager_brain_work_meet");
+    let world = &fixture.world;
+    let mob = villager_in(world);
+    {
+        let mut memories = mob.brain.memories().lock();
+        memories.set(&JOB_SITE, Some(global(world, BlockPos::new(3, 64, 3))));
+        memories.set(
+            &MEETING_POINT,
+            Some(global(world, BlockPos::new(-3, 64, -3))),
+        );
+    }
+
+    set_time(world, 2_000);
+    mob.refresh_brain();
+    assert_eq!(mob.brain.active_non_core_activity(), Some(Activity::WORK));
+
+    set_time(world, 9_500);
+    mob.refresh_brain();
+    assert_eq!(mob.brain.active_non_core_activity(), Some(Activity::MEET));
+}
+
+fn farmer_in(world: &Arc<World>) -> VillagerEntity {
+    let mob = villager_in(world);
+    mob.set_villager_data(
+        &vanilla_villager_types::PLAINS,
+        &vanilla_villager_professions::FARMER,
+        1,
+    );
+    mob
+}
+
+fn use_up_first_offer(mob: &VillagerEntity) {
+    mob.with_offers(|offers| {
+        let offer = offers.iter_mut().next().expect("farmers have trades");
+        while !offer.is_out_of_stock() {
+            offer.increase_uses();
+        }
+    });
+}
+
+fn first_offer_uses(mob: &VillagerEntity) -> i32 {
+    mob.with_offers(|offers| offers.iter().next().map_or(0, MerchantOffer::uses))
+}
+
+#[test]
+fn villagers_restock_twice_a_day_and_again_the_next_day() {
+    init_vanilla_registry();
+    let fixture = fresh_test_world("villager_brain_restock");
+    let world = &fixture.world;
+    let mob = farmer_in(world);
+    set_time(world, 24_000);
+
+    assert!(
+        !mob.should_restock(world),
+        "nothing sold, nothing to restock"
+    );
+    use_up_first_offer(&mob);
+    assert!(mob.should_restock(world));
+    mob.restock(world.game_time());
+    assert_eq!(first_offer_uses(&mob), 0);
+
+    use_up_first_offer(&mob);
+    assert!(
+        !mob.should_restock(world),
+        "the second restock of a day waits two minutes"
+    );
+
+    set_time(world, 48_000);
+    assert!(
+        !mob.should_restock(world),
+        "a new day catches up on the missed restock, so nothing is left to refill"
+    );
+    assert_eq!(first_offer_uses(&mob), 0);
+    use_up_first_offer(&mob);
+    assert!(
+        mob.should_restock(world),
+        "the new day's count starts again from zero"
+    );
+}
+
+#[test]
+fn farmers_bake_bread_at_the_composter() {
+    init_vanilla_registry();
+    init_behaviors();
+    let fixture = fresh_test_world("villager_brain_bake_bread");
+    let world = &fixture.world;
+    insert_ready_full_chunk(world, ChunkPos::new(0, 0));
+    let composter = BlockPos::new(2, 64, 1);
+    world.set_block(
+        composter,
+        vanilla_blocks::COMPOSTER.default_state(),
+        UpdateFlags::UPDATE_CLIENTS,
+    );
+    let mob = farmer_in(world);
+    mob.brain
+        .memories()
+        .lock()
+        .set(&JOB_SITE, Some(global(world, composter)));
+    let _ = mob
+        .inventory()
+        .lock()
+        .add_item(&ItemStack::with_count(&vanilla_items::WHEAT, 10));
+
+    let mut work = WorkAtPoi::at_composter();
+    work.start(world, &mob, 5);
+
+    let inventory = mob.inventory().lock();
+    assert_eq!(inventory.count_item(&vanilla_items::BREAD), 3);
+    assert_eq!(inventory.count_item(&vanilla_items::WHEAT), 1);
+    drop(inventory);
+    let memories = mob.brain.memories().lock();
+    assert_eq!(
+        memories.get(&LAST_WORKED_AT_POI),
+        None,
+        "like vanilla, no villager behavior or sensor registers this memory"
+    );
+    assert_eq!(
+        memories
+            .get(&LOOK_TARGET)
+            .map(|target| target.current_block_position()),
+        Some(composter)
+    );
+}
+
+#[test]
+fn farmers_find_farmland_and_stroll_between_it() {
+    init_vanilla_registry();
+    init_behaviors();
+    let fixture = fresh_test_world("villager_brain_secondary_poi");
+    let world = &fixture.world;
+    insert_ready_full_chunk(world, ChunkPos::new(0, 0));
+    let farmland = BlockPos::new(3, 63, 2);
+    world.set_block(
+        farmland,
+        vanilla_blocks::FARMLAND.default_state(),
+        UpdateFlags::UPDATE_CLIENTS,
+    );
+
+    let librarian = villager_in(world);
+    librarian.set_villager_data(
+        &vanilla_villager_types::PLAINS,
+        &vanilla_villager_professions::LIBRARIAN,
+        1,
+    );
+    SecondaryPoiSensor.do_tick(world, &librarian);
+    assert!(
+        !librarian
+            .brain
+            .memories()
+            .lock()
+            .has_value(&SECONDARY_JOB_SITE)
+    );
+
+    let mob = farmer_in(world);
+    SecondaryPoiSensor.do_tick(world, &mob);
+    assert_eq!(
+        mob.brain.memories().lock().get(&SECONDARY_JOB_SITE),
+        Some(vec![global(world, farmland)])
+    );
+
+    mob.brain
+        .memories()
+        .lock()
+        .set(&JOB_SITE, Some(global(world, BlockPos::new(2, 64, 1))));
+    let mut stroll = stroll_to_poi_list(&SECONDARY_JOB_SITE, 0.5, 1, 6, &JOB_SITE);
+    assert!(stroll.try_start(world, &mob, 200));
+    let target = mob
+        .brain
+        .memories()
+        .lock()
+        .get(&WALK_TARGET)
+        .map(|target| target.target.current_block_position());
+    assert_eq!(target, Some(farmland));
 }

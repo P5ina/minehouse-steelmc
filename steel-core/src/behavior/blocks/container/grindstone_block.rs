@@ -52,20 +52,31 @@ impl BlockBehavior for GrindstoneBlock {
         FaceAttachedHorizontalDirectionalBlock::update_shape(state, world, pos, direction)
     }
 
-    fn use_without_item(
+    fn open_menu_provider(
         &self,
         _state: BlockStateId,
         _world: &Arc<World>,
         pos: BlockPos,
         player: &Player,
-        _hit_result: &BlockHitResult,
-        _inv: &mut InventoryAccess,
-    ) -> InteractionResult {
+    ) -> bool {
         let inventory = Arc::clone(&player.inventory);
         player.open_menu(
             TextComponent::translated(translations::CONTAINER_GRINDSTONE_TITLE.msg()),
             move |context| grindstone(inventory, context.container_id, pos, context.world),
         );
+        true
+    }
+
+    fn use_without_item(
+        &self,
+        state: BlockStateId,
+        world: &Arc<World>,
+        pos: BlockPos,
+        player: &Player,
+        _hit_result: &BlockHitResult,
+        _inv: &mut InventoryAccess,
+    ) -> InteractionResult {
+        self.open_menu_provider(state, world, pos, player);
         InteractionResult::Success
     }
 }

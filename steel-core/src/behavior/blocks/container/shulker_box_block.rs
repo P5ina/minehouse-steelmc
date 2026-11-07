@@ -22,7 +22,7 @@ use crate::{
         BlockLootContext, BlockPlaceContext, InteractionResult, InventoryAccess,
     },
     block_entity::{
-        BLOCK_ENTITIES, BlockEntity, BlockEntityTicker,
+        BLOCK_ENTITIES, BlockEntityTicker,
         entities::{AnimationStatus, ShulkerBoxBlockEntity},
     },
     inventory::{
@@ -90,6 +90,33 @@ impl BlockBehavior for ShulkerBoxBlock {
         )
     }
 
+    fn open_menu_provider(
+        &self,
+        _state: BlockStateId,
+        world: &Arc<World>,
+        pos: BlockPos,
+        player: &Player,
+    ) -> bool {
+        let Some(block_entity) = world.get_block_entity(pos) else {
+            return false;
+        };
+        if block_entity
+            .downcast_ref::<ShulkerBoxBlockEntity>()
+            .is_none()
+        {
+            return false;
+        }
+        let Some(container_ref) = block_entity.container_ref() else {
+            return false;
+        };
+        let inventory = Arc::clone(&player.inventory);
+        player.open_menu(
+            TextComponent::translated(translations::CONTAINER_SHULKER_BOX.msg()),
+            move |context| shulker_box(inventory, context.container_id, container_ref),
+        );
+        true
+    }
+
     fn use_without_item(
         &self,
         state: BlockStateId,
@@ -99,17 +126,12 @@ impl BlockBehavior for ShulkerBoxBlock {
         _hit_result: &BlockHitResult,
         _inv: &mut InventoryAccess,
     ) -> InteractionResult {
+        // Only `useWithoutItem` checks the lid; vanilla's menu provider does not.
         if let Some(block_entity) = world.get_block_entity(pos)
             && let Some(block_entity) = block_entity.downcast_ref::<ShulkerBoxBlockEntity>()
-            && let Some(container_ref) = block_entity.container_ref()
             && block_entity.can_open(state, world, pos)
+            && self.open_menu_provider(state, world, pos, player)
         {
-            let inventory = Arc::clone(&player.inventory);
-            player.open_menu(
-                TextComponent::translated(translations::CONTAINER_SHULKER_BOX.msg()),
-                move |context| shulker_box(inventory, context.container_id, container_ref),
-            );
-
             player.award_custom_stat(&vanilla_custom_stats::OPEN_SHULKER_BOX);
             // TODO: Anger nearby piglins (PiglinAi.angerNearbyPiglins)
         }

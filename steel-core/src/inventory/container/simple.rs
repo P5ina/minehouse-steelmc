@@ -1,6 +1,7 @@
 use std::mem;
 
 use steel_registry::item_stack::ItemStack;
+use steel_registry::items::ItemRef;
 use steel_utils::{DowncastType, DowncastTypeKey};
 
 use crate::inventory::container::Container;
@@ -39,6 +40,27 @@ impl SimpleContainer {
     #[must_use]
     pub const fn times_changed(&self) -> u32 {
         self.times_changed
+    }
+
+    /// Vanilla `SimpleContainer.removeItemType`: takes up to `count` of
+    /// `item`, last slot first, and returns what it took.
+    pub fn remove_item_type(&mut self, item: ItemRef, count: i32) -> ItemStack {
+        let mut removed = ItemStack::with_count(item, 0);
+        for slot in (0..self.items.len()).rev() {
+            let current = &mut self.items[slot];
+            if current.is(item) {
+                let still_needed = count - removed.count();
+                let from_this_slot = current.split(still_needed);
+                removed.grow(from_this_slot.count());
+                if removed.count() == count {
+                    break;
+                }
+            }
+        }
+        if !removed.is_empty() {
+            self.set_changed();
+        }
+        removed
     }
 
     /// Vanilla `SimpleContainer.addItem`: merges into matching stacks, then the

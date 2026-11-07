@@ -1,6 +1,8 @@
 use rustc_hash::FxHashMap;
 use steel_utils::Identifier;
 
+use crate::RegistryTags;
+
 #[derive(Debug, Clone)]
 pub struct GameEvent {
     pub key: Identifier,
@@ -12,6 +14,7 @@ pub type GameEventRef = &'static GameEvent;
 pub struct GameEventRegistry {
     game_events_by_id: Vec<GameEventRef>,
     game_events_by_key: FxHashMap<Identifier, usize>,
+    tags: RegistryTags,
     allows_registering: bool,
 }
 
@@ -23,6 +26,7 @@ impl GameEventRegistry {
         Self {
             game_events_by_id: Vec::new(),
             game_events_by_key: FxHashMap::default(),
+            tags: RegistryTags::default(),
             allows_registering: true,
         }
     }
@@ -43,3 +47,5 @@ crate::impl_registry!(
     game_events_by_key,
     game_events
 );
+
+crate::impl_tagged_registry!(GameEventRegistry, game_events_by_key, "game event");

@@ -5,13 +5,40 @@ use super::{
 };
 use steel_registry::data_components::vanilla_components::USE_REMAINDER;
 use steel_registry::stat::vanilla_stat_types;
+use steel_utils::{BlockPos, BlockStateId};
+
+/// The spectator branch of vanilla `ServerPlayerGameMode.useItemOn`: open
+/// the block's menu provider, or teleport through a right-clicked portal block.
+///
+/// Spectators only look: no use statistics, no lid animation or sound
+/// (vanilla openers counters skip spectators), and every container click is
+/// rejected while in spectator mode.
+fn spectator_use_item_on(
+    player: &Arc<Player>,
+    world: &Arc<World>,
+    pos: BlockPos,
+    state: BlockStateId,
+) -> InteractionResult {
+    let Some(block) = REGISTRY.blocks.by_state_id(state) else {
+        return InteractionResult::Pass;
+    };
+    let behavior = BLOCK_BEHAVIORS.get_behavior(block);
+    if behavior.open_menu_provider(state, world, pos, player) {
+        return InteractionResult::Consume;
+    }
+    if let Some(portal) = behavior.portal_kind() {
+        player.use_portal_as_spectator(world, portal, pos);
+        return InteractionResult::Consume;
+    }
+    InteractionResult::Pass
+}
 
 /// Handles using an item on a block.
 ///
 /// This implements the logic from Java's `ServerPlayerGameMode.useItemOn()`.
 ///
 /// # Flow
-/// 1. Spectator mode: Only allow opening menus (currently returns Pass)
+/// 1. Spectator mode: Only allow opening menus and teleporting through portal blocks
 /// 2. Check if block interaction should be suppressed (sneaking + holding items)
 /// 3. If not suppressed: Call block's `use_item_on` method
 /// 4. If block returns `TryEmptyHandInteraction` and main hand: Call block's `use_without_item`
@@ -26,10 +53,8 @@ pub fn use_item_on(
     let pos = hit_result.block_pos;
     let state = world.get_block_state(pos);
 
-    // Spectator mode: can only open menus
-    // TODO: Implement menu providers for blocks like chests
     if player.game_mode() == GameType::Spectator {
-        return InteractionResult::Pass;
+        return spectator_use_item_on(player, world, pos, state);
     }
 
     // Check if block interaction should be suppressed (sneaking + holding items in either hand)

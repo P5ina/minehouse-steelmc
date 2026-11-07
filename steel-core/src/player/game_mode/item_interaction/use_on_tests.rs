@@ -8,8 +8,10 @@ use steel_registry::data_components::vanilla_components::{
 };
 use steel_registry::item_stack::ItemStack;
 use steel_registry::items::ItemRef;
+use steel_registry::stat::custom::CustomStatRef;
 use steel_registry::stat::vanilla_stat_types;
 use steel_registry::{ItemStackTemplate, init_vanilla_registry, vanilla_blocks, vanilla_items};
+use steel_registry::{vanilla_custom_stats, vanilla_menu_types};
 use steel_utils::types::{GameType, InteractionHand, SignTextSlot, UpdateFlags};
 use steel_utils::{BlockPos, BlockStateId, ChunkPos, Direction, Downcast as _};
 use text_components::TextComponent;
@@ -18,11 +20,12 @@ use uuid::Uuid;
 use crate::behavior::{
     BlockHitResult, InteractionResult, blocks::facing_text_slot, init_behaviors,
 };
-use crate::block_entity::SharedBlockEntity;
 use crate::block_entity::entities::{SignBlockEntity, SignText};
+use crate::block_entity::{SharedBlockEntity, init_block_entities};
 use crate::entity::{Entity as _, entities::ItemEntity};
 use crate::inventory::container::Container as _;
 use crate::player::Player;
+use crate::portal::{PortalKind, WorldChangeRequest};
 use crate::test_support::{
     TestPlayerBuilder, TestWorld, fresh_test_world, insert_ready_full_chunk,
 };
@@ -39,6 +42,7 @@ impl Interaction {
     fn new(name: &'static str) -> Self {
         init_vanilla_registry();
         init_behaviors();
+        init_block_entities();
         let world_fixture = fresh_test_world(name);
         let world = &world_fixture.world;
         insert_ready_full_chunk(world, ChunkPos::new(0, 0));
@@ -382,4 +386,188 @@ fn honeycomb_can_wax_blank_signs_without_consuming_in_creative() {
     assert_eq!(sign.get_player_who_may_edit(), None);
     assert_eq!(interaction.count(&vanilla_items::HONEYCOMB), 1);
     assert_eq!(interaction.used(&vanilla_items::HONEYCOMB), 1);
+}
+
+fn queued_portal_requests(interaction: &Interaction) -> Vec<(PortalKind, BlockPos, bool)> {
+    interaction
+        .world_fixture
+        .world
+        .drain_world_changes()
+        .into_iter()
+        .filter_map(|(_, request)| match request {
+            WorldChangeRequest::Portal {
+                portal,
+                portal_pos,
+                spectator_use,
+                ..
+            } => Some((portal, portal_pos, spectator_use)),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn spectator_right_click_on_portal_blocks_queues_an_immediate_portal_teleport() {
+    for (name, block, portal) in [
+        (
+            "spectator-click-nether-portal",
+            &vanilla_blocks::NETHER_PORTAL,
+            PortalKind::Nether,
+        ),
+        (
+            "spectator-click-end-portal",
+            &vanilla_blocks::END_PORTAL,
+            PortalKind::End,
+        ),
+        (
+            "spectator-click-end-gateway",
+            &vanilla_blocks::END_GATEWAY,
+            PortalKind::EndGateway,
+        ),
+    ] {
+        let interaction = Interaction::new(name);
+        interaction.block(block.default_state());
+        interaction
+            .player
+            .restore_game_modes(GameType::Spectator, None);
+
+        assert_eq!(
+            interaction.use_on(InteractionHand::MainHand),
+            InteractionResult::Consume
+        );
+        assert_eq!(
+            queued_portal_requests(&interaction),
+            vec![(portal, interaction.pos, true)]
+        );
+        assert!(interaction.player.is_world_change_pending());
+
+        // A second click while the first teleport is still being prepared is ignored.
+        assert_eq!(
+            interaction.use_on(InteractionHand::MainHand),
+            InteractionResult::Consume
+        );
+        assert_eq!(queued_portal_requests(&interaction), vec![]);
+    }
+}
+
+#[test]
+fn spectator_right_click_on_other_blocks_passes_without_teleporting() {
+    let interaction = Interaction::new("spectator-click-stone");
+    interaction.block(vanilla_blocks::STONE.default_state());
+    interaction
+        .player
+        .restore_game_modes(GameType::Spectator, None);
+
+    assert_eq!(
+        interaction.use_on(InteractionHand::MainHand),
+        InteractionResult::Pass
+    );
+    assert_eq!(queued_portal_requests(&interaction), vec![]);
+    assert!(!interaction.player.is_world_change_pending());
+}
+
+#[test]
+fn survival_right_click_on_a_nether_portal_does_not_teleport() {
+    let interaction = Interaction::new("survival-click-nether-portal");
+    interaction.block(vanilla_blocks::NETHER_PORTAL.default_state());
+
+    assert_ne!(
+        interaction.use_on(InteractionHand::MainHand),
+        InteractionResult::Consume
+    );
+    assert_eq!(queued_portal_requests(&interaction), vec![]);
+    assert!(!interaction.player.is_world_change_pending());
+}
+
+fn open_stat(interaction: &Interaction, stat: CustomStatRef) -> i32 {
+    let stat = vanilla_stat_types::CUSTOM.get(stat);
+    interaction
+        .player
+        .stats()
+        .into_iter()
+        .find_map(|(key, count)| (key == stat).then_some(count))
+        .unwrap_or(0)
+}
+
+#[test]
+fn spectator_right_click_on_a_chest_only_looks_inside() {
+    let interaction = Interaction::new("spectator-click-chest");
+    interaction.block(vanilla_blocks::CHEST.default_state());
+    interaction
+        .player
+        .restore_game_modes(GameType::Spectator, None);
+
+    assert_eq!(
+        interaction.use_on(InteractionHand::MainHand),
+        InteractionResult::Consume
+    );
+    assert_eq!(
+        interaction
+            .player
+            .open_menu_type_for_test()
+            .map(|menu_type| &menu_type.key),
+        Some(&vanilla_menu_types::GENERIC_9X3.key)
+    );
+    // Vanilla's spectator branch skips `useWithoutItem`, so no open statistic.
+    assert_eq!(
+        open_stat(&interaction, &vanilla_custom_stats::OPEN_CHEST),
+        0
+    );
+}
+
+#[test]
+fn spectator_right_click_on_a_crafting_table_opens_it() {
+    let interaction = Interaction::new("spectator-click-crafting-table");
+    interaction.block(vanilla_blocks::CRAFTING_TABLE.default_state());
+    interaction
+        .player
+        .restore_game_modes(GameType::Spectator, None);
+
+    assert_eq!(
+        interaction.use_on(InteractionHand::MainHand),
+        InteractionResult::Consume
+    );
+    assert_eq!(
+        interaction
+            .player
+            .open_menu_type_for_test()
+            .map(|menu_type| &menu_type.key),
+        Some(&vanilla_menu_types::CRAFTING.key)
+    );
+    assert_eq!(
+        open_stat(
+            &interaction,
+            &vanilla_custom_stats::INTERACT_WITH_CRAFTING_TABLE
+        ),
+        0
+    );
+}
+
+#[test]
+fn spectator_cannot_open_an_ender_chest() {
+    // Vanilla `EnderChestBlock` has no menu provider.
+    let interaction = Interaction::new("spectator-click-ender-chest");
+    interaction.block(vanilla_blocks::ENDER_CHEST.default_state());
+    interaction
+        .player
+        .restore_game_modes(GameType::Spectator, None);
+
+    assert_eq!(
+        interaction.use_on(InteractionHand::MainHand),
+        InteractionResult::Pass
+    );
+    assert!(interaction.player.open_menu_type_for_test().is_none());
+}
+
+#[test]
+fn survival_chest_use_still_counts_the_open_statistic() {
+    let interaction = Interaction::new("survival-click-chest");
+    interaction.block(vanilla_blocks::CHEST.default_state());
+
+    interaction.use_on(InteractionHand::MainHand);
+    assert!(interaction.player.open_menu_type_for_test().is_some());
+    assert_eq!(
+        open_stat(&interaction, &vanilla_custom_stats::OPEN_CHEST),
+        1
+    );
 }

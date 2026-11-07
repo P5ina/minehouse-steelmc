@@ -26,6 +26,12 @@ struct WeightedExplosionParticleInfo {
 pub struct ExplosionParticlePalette(Vec<WeightedExplosionParticleInfo>);
 
 impl ExplosionParticlePalette {
+    /// An empty palette (vanilla `WeightedList.of()`): no block debris.
+    #[must_use]
+    pub const fn empty() -> Self {
+        Self(Vec::new())
+    }
+
     /// Validates Vanilla's non-negative weights and signed 32-bit list limits.
     pub fn try_new(
         entries: Vec<(ExplosionParticleInfo, i32)>,

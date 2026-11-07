@@ -16,7 +16,7 @@ use steel_registry::vanilla_game_rules::{
     BLOCK_EXPLOSION_DROP_DECAY, MOB_EXPLOSION_DROP_DECAY, MOB_GRIEFING, TNT_EXPLOSION_DROP_DECAY,
 };
 use steel_registry::{sound_events, vanilla_particle_types};
-use steel_utils::{BlockPos, BlockStateId};
+use steel_utils::{BlockPos, BlockStateId, Identifier};
 
 use crate::behavior::FLUID_BEHAVIORS;
 use crate::entity::damage::DamageSource;
@@ -324,6 +324,84 @@ impl ExplosionDamageCalculator for WindChargeExplosionDamageCalculator {
             .as_player()
             .is_some_and(|player| player.abilities.lock().flying);
         if creative_flying { 0.0 } else { 1.0 }
+    }
+}
+
+/// Vanilla `SimpleExplosionDamageCalculator`: fixed answers for whether
+/// blocks explode and entities get hurt, an optional knockback multiplier,
+/// and an optional set of blocks the blast cannot pass.
+pub struct SimpleExplosionDamageCalculator {
+    explodes_blocks: bool,
+    damages_entities: bool,
+    knockback_multiplier: Option<f32>,
+    immune_blocks: Option<Identifier>,
+}
+
+/// Resistance vanilla gives blocks a simple calculator is immune to.
+const IMMUNE_BLOCK_RESISTANCE: f32 = 3_600_000.0;
+
+impl SimpleExplosionDamageCalculator {
+    /// Creates a calculator with vanilla's four settings.
+    #[must_use]
+    pub const fn new(
+        explodes_blocks: bool,
+        damages_entities: bool,
+        knockback_multiplier: Option<f32>,
+        immune_blocks: Option<Identifier>,
+    ) -> Self {
+        Self {
+            explodes_blocks,
+            damages_entities,
+            knockback_multiplier,
+            immune_blocks,
+        }
+    }
+}
+
+impl ExplosionDamageCalculator for SimpleExplosionDamageCalculator {
+    fn block_explosion_resistance(
+        &self,
+        explosion: &dyn Explosion,
+        world: &World,
+        pos: BlockPos,
+        state: BlockStateId,
+        fluid: FluidState,
+    ) -> Option<f32> {
+        match &self.immune_blocks {
+            Some(immune) => state
+                .get_block()
+                .has_tag(immune)
+                .then_some(IMMUNE_BLOCK_RESISTANCE),
+            None => DefaultExplosionDamageCalculator
+                .block_explosion_resistance(explosion, world, pos, state, fluid),
+        }
+    }
+
+    fn should_block_explode(
+        &self,
+        _explosion: &dyn Explosion,
+        _world: &World,
+        _pos: BlockPos,
+        _state: BlockStateId,
+        _power: f32,
+    ) -> bool {
+        self.explodes_blocks
+    }
+
+    fn should_damage_entity(&self, _explosion: &dyn Explosion, _entity: &dyn Entity) -> bool {
+        self.damages_entities
+    }
+
+    fn knockback_multiplier(&self, entity: &dyn Entity) -> f32 {
+        let creative_flying = entity
+            .as_player()
+            .is_some_and(|player| player.abilities.lock().flying);
+        if creative_flying {
+            0.0
+        } else {
+            self.knockback_multiplier
+                .unwrap_or_else(|| DefaultExplosionDamageCalculator.knockback_multiplier(entity))
+        }
     }
 }
 

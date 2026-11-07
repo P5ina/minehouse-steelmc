@@ -8,6 +8,10 @@ use super::{
 };
 use crate::behavior::blocks::PowderSnowBlock;
 use crate::enchantment_helper;
+use crate::entity::SharedEntity;
+use crate::portal::{PortalKind, WorldChangeRequest};
+use crate::world::World;
+use std::sync::Arc;
 use steel_protocol::packets::game::SPunch;
 use steel_utils::types::InteractionHand;
 
@@ -311,6 +315,35 @@ impl Player {
                 camera_id: target.id(),
             });
         }
+    }
+
+    /// Teleports a spectator through a right-clicked portal block.
+    ///
+    /// Mirrors the spectator branch of vanilla `ServerPlayerGameMode.useItemOn`:
+    /// the portal's destination is used immediately, with no portal wait time,
+    /// no `canUsePortal` check and no portal cooldown, and a portal without a
+    /// destination shows `spectator.cannot_teleport`. Steel prepares the
+    /// destination chunks first, so the teleport lands once they are loaded.
+    pub(crate) fn use_portal_as_spectator(
+        self: &Arc<Self>,
+        world: &Arc<World>,
+        portal: PortalKind,
+        pos: BlockPos,
+    ) {
+        let Some(pending_token) = self.begin_pending_world_change() else {
+            return;
+        };
+        let entity: SharedEntity = Arc::<Self>::clone(self);
+        world.queue_world_change(
+            entity,
+            WorldChangeRequest::Portal {
+                portal,
+                source_world: Arc::clone(world),
+                portal_pos: pos,
+                pending_token,
+                spectator_use: true,
+            },
+        );
     }
 
     /// Returns true if player is sneaking (secondary use active).

@@ -8,6 +8,7 @@ use super::{
     portal_entity_still_valid,
 };
 use crate::entity::LivingEntity as _;
+use crate::portal::{notify_spectator_cannot_teleport, reset_spectator_camera};
 use crate::world::player_spawn_finder::PlayerSpawnSearch;
 
 impl Server {
@@ -38,12 +39,14 @@ impl Server {
                     source_world,
                     portal_pos,
                     pending_token,
+                    spectator_use,
                 } => {
                     self.queue_nether_portal_change(
                         entity,
                         source_world,
                         portal_pos,
                         pending_token,
+                        spectator_use,
                         tick_count,
                         runs_normally,
                     );
@@ -53,11 +56,13 @@ impl Server {
                     source_world,
                     portal_pos: _,
                     pending_token,
+                    spectator_use,
                 } => {
                     self.queue_end_portal_change(
                         entity,
                         source_world,
                         pending_token,
+                        spectator_use,
                         tick_count,
                         runs_normally,
                     );
@@ -67,12 +72,14 @@ impl Server {
                     source_world,
                     portal_pos,
                     pending_token,
+                    spectator_use,
                 } => {
                     self.queue_end_gateway_change(
                         entity,
                         source_world,
                         portal_pos,
                         pending_token,
+                        spectator_use,
                         tick_count,
                         runs_normally,
                     );
@@ -81,12 +88,17 @@ impl Server {
         }
     }
 
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "mirrors the portal world-change request fields"
+    )]
     fn queue_nether_portal_change(
         self: &Arc<Self>,
         entity: SharedEntity,
         source_world: Arc<World>,
         portal_pos: BlockPos,
         pending_token: PendingWorldChangeToken,
+        spectator_use: bool,
         tick_count: u64,
         runs_normally: bool,
     ) {
@@ -99,6 +111,7 @@ impl Server {
                 "No Nether portal target world loaded for source world {}",
                 source_world.key
             );
+            notify_spectator_cannot_teleport(entity.as_ref(), spectator_use);
             clear_pending_world_change(&entity, pending_token);
             return;
         };
@@ -126,6 +139,7 @@ impl Server {
                 approximate_exit_pos,
                 to_nether,
                 pending_token,
+                spectator_use,
             ),
         );
     }
@@ -135,6 +149,7 @@ impl Server {
         entity: SharedEntity,
         source_world: Arc<World>,
         pending_token: PendingWorldChangeToken,
+        spectator_use: bool,
         tick_count: u64,
         runs_normally: bool,
     ) {
@@ -147,6 +162,7 @@ impl Server {
                 entity,
                 source_world,
                 pending_token,
+                spectator_use,
                 tick_count,
                 runs_normally,
             );
@@ -158,6 +174,7 @@ impl Server {
                 entity,
                 source_world,
                 pending_token,
+                spectator_use,
                 tick_count,
                 runs_normally,
             );
@@ -178,6 +195,7 @@ impl Server {
         entity: SharedEntity,
         source_world: Arc<World>,
         pending_token: PendingWorldChangeToken,
+        spectator_use: bool,
         tick_count: u64,
         runs_normally: bool,
     ) {
@@ -186,6 +204,7 @@ impl Server {
                 "No End portal target world loaded for source world {}",
                 source_world.key
             );
+            notify_spectator_cannot_teleport(entity.as_ref(), spectator_use);
             clear_pending_world_change(&entity, pending_token);
             return;
         };
@@ -195,6 +214,8 @@ impl Server {
             clear_pending_world_change(&entity, pending_token);
             return;
         }
+        // The End entry destination is never null once the End is loaded.
+        reset_spectator_camera(entity.as_ref(), spectator_use);
         self.jobs.poll_now_or_spawn(
             Arc::downgrade(self),
             tick_count,
@@ -208,6 +229,7 @@ impl Server {
         entity: SharedEntity,
         source_world: Arc<World>,
         pending_token: PendingWorldChangeToken,
+        spectator_use: bool,
         tick_count: u64,
         runs_normally: bool,
     ) {
@@ -229,6 +251,8 @@ impl Server {
             clear_pending_world_change(&entity, pending_token);
             return;
         }
+        // `findRespawnPositionAndUseSpawnBlock` never yields a null destination.
+        reset_spectator_camera(entity.as_ref(), spectator_use);
         match EndPortalTeleportJob::returning_player(
             Arc::clone(&entity),
             source_world,
@@ -287,12 +311,17 @@ impl Server {
         );
     }
 
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "mirrors the portal world-change request fields"
+    )]
     fn queue_end_gateway_change(
         self: &Arc<Self>,
         entity: SharedEntity,
         source_world: Arc<World>,
         portal_pos: BlockPos,
         pending_token: PendingWorldChangeToken,
+        spectator_use: bool,
         tick_count: u64,
         runs_normally: bool,
     ) {
@@ -307,8 +336,10 @@ impl Server {
             portal_pos,
             source_is_end,
             pending_token,
+            spectator_use,
         ) else {
             tracing::debug!("End gateway world change ignored because no destination is available");
+            notify_spectator_cannot_teleport(entity.as_ref(), spectator_use);
             clear_pending_world_change(&entity, pending_token);
             return;
         };

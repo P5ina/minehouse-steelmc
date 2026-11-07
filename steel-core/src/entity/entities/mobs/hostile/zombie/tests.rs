@@ -4,7 +4,10 @@ use std::sync::{Arc, Weak};
 use glam::DVec3;
 use simdnbt::borrow::read_compound as read_borrowed_compound;
 use simdnbt::owned::NbtCompound;
+use steel_registry::blocks::block_state_ext::BlockStateExt as _;
 use steel_registry::item_stack::ItemStack;
+use steel_registry::vanilla_game_rules::MOB_GRIEFING;
+use steel_registry::vanilla_poi_types;
 use steel_registry::{
     init_vanilla_registry, vanilla_attributes, vanilla_blocks, vanilla_damage_types,
     vanilla_entities, vanilla_items, vanilla_mob_effects, vanilla_villager_professions,
@@ -784,4 +787,122 @@ fn natural_drowned_with_a_trident_may_ride_a_zombie_nautilus() {
 #[test]
 fn spawner_drowned_never_rides_a_zombie_nautilus() {
     assert_eq!(drowned_nautilus_jockeys(EntitySpawnReason::Spawner, 32), 0);
+}
+
+/// Whether a zombie next to a turtle egg breaks it within 600 ticks.
+fn zombie_breaks_turtle_egg(name: &'static str, mob_griefing: bool) -> bool {
+    init_vanilla_registry();
+    init_behaviors();
+    init_entities();
+    let fixture = fresh_test_world(name);
+    let world = &fixture.world;
+    insert_ready_full_chunk(world, ChunkPos::new(0, 0));
+    assert!(world.set_game_rule(&MOB_GRIEFING, mob_griefing));
+    let stone = vanilla_blocks::STONE.default_state();
+    for x in 4..13 {
+        for z in 4..13 {
+            world.set_block(BlockPos::new(x, 63, z), stone, UpdateFlags::UPDATE_ALL);
+        }
+    }
+    let egg_pos = BlockPos::new(8, 64, 8);
+    world.set_block(
+        egg_pos,
+        vanilla_blocks::TURTLE_EGG.default_state(),
+        UpdateFlags::UPDATE_ALL,
+    );
+    let zombie = add(
+        world,
+        ZombieEntity::new(
+            &vanilla_entities::ZOMBIE,
+            next_entity_id(),
+            DVec3::new(9.5, 64.0, 8.5),
+            Arc::downgrade(world),
+        ),
+    );
+
+    for _ in 0..600 {
+        world.level_data.write().advance_game_time();
+        Arc::clone(&zombie).tick();
+        if world.get_block_state(egg_pos).get_block() != &vanilla_blocks::TURTLE_EGG {
+            break;
+        }
+    }
+
+    world.get_block_state(egg_pos).is_air()
+}
+
+#[test]
+fn zombie_tramples_a_turtle_egg() {
+    assert!(
+        zombie_breaks_turtle_egg("zombie_turtle_egg", true),
+        "the zombie stomps the turtle egg away"
+    );
+}
+
+#[test]
+fn zombie_leaves_turtle_eggs_without_mob_griefing() {
+    assert!(!zombie_breaks_turtle_egg(
+        "zombie_turtle_egg_no_griefing",
+        false
+    ));
+}
+
+#[test]
+fn zombie_walks_to_an_occupied_village_poi() {
+    use crate::entity::ai::goal::{Goal as _, MoveThroughVillageGoal};
+    use steel_registry::RegistryEntry as _;
+    init_vanilla_registry();
+    init_behaviors();
+    init_entities();
+    let fixture = fresh_test_world("zombie_village");
+    let world = &fixture.world;
+    insert_ready_full_chunk(world, ChunkPos::new(0, 0));
+    let stone = vanilla_blocks::STONE.default_state();
+    for x in 0..16 {
+        for z in 0..16 {
+            world.set_block(BlockPos::new(x, 63, z), stone, UpdateFlags::UPDATE_ALL);
+        }
+    }
+    let home = vanilla_poi_types::HOME
+        .try_id()
+        .expect("vanilla home POI type should be registered");
+    let bed = BlockPos::new(12, 64, 8);
+    {
+        let mut storage = world.poi_storage.lock();
+        storage.add(bed, home, vanilla_poi_types::HOME.ticket_count);
+        assert!(storage.reserve_ticket(bed));
+    }
+    let zombie = add(
+        world,
+        ZombieEntity::new(
+            &vanilla_entities::ZOMBIE,
+            next_entity_id(),
+            DVec3::new(4.5, 64.0, 8.5),
+            Arc::downgrade(world),
+        ),
+    );
+    let zombie_ref = zombie
+        .downcast_ref::<ZombieEntity>()
+        .expect("zombie is concrete");
+
+    // `canUpdatePath` needs the zombie on the ground first.
+    for _ in 0..5 {
+        Arc::clone(&zombie).tick();
+    }
+    let mut goal = MoveThroughVillageGoal::new(1.0, false, 4, |_| false);
+    // Vanilla tries ten random land positions per attempt and few of them land
+    // on this small floor, so allow the attempts the goal selector would make.
+    assert!(
+        (0..200).any(|_| goal.can_use(zombie_ref)),
+        "the zombie heads for the claimed bed"
+    );
+    goal.start(zombie_ref);
+    assert!(!zombie_ref.mob_base().navigation().lock().is_done());
+
+    assert!(world.poi_storage.lock().release_ticket(bed));
+    let mut goal = MoveThroughVillageGoal::new(1.0, false, 4, |_| false);
+    assert!(
+        !(0..200).any(|_| goal.can_use(zombie_ref)),
+        "an unclaimed bed is no village"
+    );
 }

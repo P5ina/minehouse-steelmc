@@ -27,20 +27,29 @@ use steel_utils::{
     types::UpdateFlags,
 };
 
+use steel_protocol::packets::game::SoundSource;
+use steel_registry::{sound_events, vanilla_game_events};
+
 use crate::{
     behavior::{ITEM_BEHAVIORS, blocks::ShulkerBoxBlock},
+    block_entity::container_openers::container_sound_pitch,
     block_entity::{BlockEntity, BlockEntityBase, ImplicitComponentGetter},
+    entity::Entity as _,
     inventory::{
         container::Container,
         lock::{ContainerRef, SharedContainer},
     },
     physics::{CollisionWorld as _, MoverType, WorldCollisionProvider},
+    player::Player,
     world::World,
+    world::game_event::GameEventContext,
 };
 
 /// Number of slots in a shulker box (3 rows of 9).
 pub const SHULKER_BOX_SLOTS: usize = 27;
 const ANIMATION_STEPS: u8 = 10;
+/// Block event that sets a shulker box's open count, and with it the lid.
+const EVENT_SET_OPEN_COUNT: i32 = 1;
 
 /// The current animation state of a shulker box.
 #[derive(Debug, Clone, Copy)]
@@ -324,7 +333,7 @@ impl BlockEntity for ShulkerBoxBlockEntity {
     }
 
     fn trigger_event(&self, kind: i32, data: i32) -> bool {
-        if kind == 1 {
+        if kind == EVENT_SET_OPEN_COUNT {
             self.open_count.store(data, Ordering::Relaxed);
             if data == 0 {
                 self.animation.lock().animation_status = AnimationStatus::Closing;
@@ -409,6 +418,78 @@ impl BlockEntity for ShulkerBoxBlockEntity {
 
     fn container_ref(&self) -> Option<ContainerRef> {
         Some(self.container_ref.clone())
+    }
+
+    /// Vanilla `ShulkerBoxBlockEntity.startOpen`: every viewer sends the count
+    /// in block event 1; the first also sounds and emits `container_open`.
+    fn start_open(&self, player: &Player) {
+        if self.base.is_removed() || player.is_spectator() {
+            return;
+        }
+        let Some(world) = self.get_level() else {
+            return;
+        };
+        let pos = self.base.pos;
+        let open_count = {
+            let previous = self.open_count.load(Ordering::Relaxed).max(0);
+            let open_count = previous + 1;
+            self.open_count.store(open_count, Ordering::Relaxed);
+            open_count
+        };
+        world.block_event(
+            pos,
+            self.base.block_state().get_block(),
+            EVENT_SET_OPEN_COUNT,
+            open_count,
+        );
+        if open_count == 1 {
+            world.game_event(
+                &vanilla_game_events::CONTAINER_OPEN,
+                pos,
+                &GameEventContext::new(Some(player), None),
+            );
+            world.play_sound(
+                &sound_events::BLOCK_SHULKER_BOX_OPEN,
+                SoundSource::Blocks,
+                pos,
+                0.5,
+                container_sound_pitch(),
+                None,
+            );
+        }
+    }
+
+    /// Vanilla `ShulkerBoxBlockEntity.stopOpen`.
+    fn stop_open(&self, player: &Player) {
+        if self.base.is_removed() || player.is_spectator() {
+            return;
+        }
+        let Some(world) = self.get_level() else {
+            return;
+        };
+        let pos = self.base.pos;
+        let open_count = self.open_count.fetch_sub(1, Ordering::Relaxed) - 1;
+        world.block_event(
+            pos,
+            self.base.block_state().get_block(),
+            EVENT_SET_OPEN_COUNT,
+            open_count,
+        );
+        if open_count <= 0 {
+            world.game_event(
+                &vanilla_game_events::CONTAINER_CLOSE,
+                pos,
+                &GameEventContext::new(Some(player), None),
+            );
+            world.play_sound(
+                &sound_events::BLOCK_SHULKER_BOX_CLOSE,
+                SoundSource::Blocks,
+                pos,
+                0.5,
+                container_sound_pitch(),
+                None,
+            );
+        }
     }
 }
 

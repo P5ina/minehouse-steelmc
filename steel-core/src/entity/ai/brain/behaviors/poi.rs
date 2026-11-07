@@ -1,5 +1,5 @@
-//! Claiming and checking points of interest (vanilla `AcquirePoi` and
-//! `ValidateNearbyPoi`).
+//! Claiming, checking and strolling around points of interest (vanilla
+//! `AcquirePoi`, `ValidateNearbyPoi`, `StrollAroundPoi` and `StrollToPoi`).
 
 use std::ptr;
 use std::sync::Arc;
@@ -14,7 +14,9 @@ use steel_utils::{BlockPos, GlobalPos, WorldAabb};
 
 use crate::entity::ai::brain::behavior::OneShot;
 use crate::entity::ai::brain::memory::{MemoryModuleType, MemoryRequirement};
+use crate::entity::ai::brain::memory_types::{PositionTracker, WALK_TARGET, WalkTarget};
 use crate::entity::ai::brain::{BehaviorControl, MemoryStatus};
+use crate::entity::ai::goal::random_pos::land_random_pos;
 use crate::entity::ai::path::Path;
 use crate::entity::{LivingEntity, PathfinderMob};
 use crate::poi::OccupationStatus;
@@ -277,4 +279,97 @@ pub fn validate_bed_poi(world: &World, pos: BlockPos) -> bool {
         .get_block()
         .has_tag(&BlockTag::VILLAGERS_CAN_SLEEP_ON_BED)
         && state.try_get_value(&BlockStateProperties::OCCUPIED) == Some(false)
+}
+
+/// Whether the POI in `memory` lies in `world` and its center is within
+/// `max_distance` of the body.
+fn poi_within<E: PathfinderMob + ?Sized>(
+    world: &World,
+    body: &E,
+    memory: &'static MemoryModuleType<GlobalPos>,
+    max_distance: f64,
+) -> Option<BlockPos> {
+    let global = body.brain_memories()?.lock().get(memory)?;
+    let (x, y, z) = global.pos.get_center();
+    let close =
+        glam::DVec3::new(x, y, z).distance_squared(body.position()) < max_distance * max_distance;
+    (global.dimension == world.key && close).then_some(global.pos)
+}
+
+/// Vanilla `StrollAroundPoi.create`: near the POI in `memory`, wanders to a
+/// random spot every 9 seconds.
+pub fn stroll_around_poi<E: PathfinderMob + ?Sized>(
+    memory: &'static MemoryModuleType<GlobalPos>,
+    speed_modifier: f32,
+    max_distance_from_poi: i32,
+) -> impl BehaviorControl<E> {
+    /// Vanilla `MIN_TIME_BETWEEN_STROLLS`.
+    const MIN_TIME_BETWEEN_STROLLS: i64 = 180;
+    /// Vanilla `STROLL_MAX_XZ_DIST` and `STROLL_MAX_Y_DIST`.
+    const STROLL_MAX_XZ_DIST: i32 = 8;
+    const STROLL_MAX_Y_DIST: i32 = 6;
+    let mut next_ok_start_time = 0_i64;
+    OneShot::new(
+        vec![
+            MemoryRequirement::new(&WALK_TARGET, MemoryStatus::Registered),
+            MemoryRequirement::new(memory, MemoryStatus::ValuePresent),
+        ],
+        move |world: &Arc<World>, body: &E, time: i64| {
+            if poi_within(world, body, memory, f64::from(max_distance_from_poi)).is_none() {
+                return false;
+            }
+            if time <= next_ok_start_time {
+                return true;
+            }
+            let land_pos = land_random_pos(body, STROLL_MAX_XZ_DIST, STROLL_MAX_Y_DIST);
+            if let Some(memories) = body.brain_memories() {
+                memories.lock().set(
+                    &WALK_TARGET,
+                    land_pos.map(|pos| WalkTarget::to_point(pos, speed_modifier, 1)),
+                );
+            }
+            next_ok_start_time = time + MIN_TIME_BETWEEN_STROLLS;
+            true
+        },
+    )
+}
+
+/// Vanilla `StrollToPoi.create`: near the POI in `memory`, walks back to it
+/// every 4 seconds.
+pub fn stroll_to_poi<E: PathfinderMob + ?Sized>(
+    memory: &'static MemoryModuleType<GlobalPos>,
+    speed_modifier: f32,
+    close_enough_dist: i32,
+    max_distance_from_poi: i32,
+) -> impl BehaviorControl<E> {
+    /// Vanilla's wait between strolls.
+    const TIME_BETWEEN_STROLLS: i64 = 80;
+    let mut next_ok_start_time = 0_i64;
+    OneShot::new(
+        vec![
+            MemoryRequirement::new(&WALK_TARGET, MemoryStatus::Registered),
+            MemoryRequirement::new(memory, MemoryStatus::ValuePresent),
+        ],
+        move |world: &Arc<World>, body: &E, time: i64| {
+            let Some(pos) = poi_within(world, body, memory, f64::from(max_distance_from_poi))
+            else {
+                return false;
+            };
+            if time <= next_ok_start_time {
+                return true;
+            }
+            if let Some(memories) = body.brain_memories() {
+                memories.lock().set(
+                    &WALK_TARGET,
+                    Some(WalkTarget::new(
+                        PositionTracker::block(pos),
+                        speed_modifier,
+                        close_enough_dist,
+                    )),
+                );
+            }
+            next_ok_start_time = time + TIME_BETWEEN_STROLLS;
+            true
+        },
+    )
 }

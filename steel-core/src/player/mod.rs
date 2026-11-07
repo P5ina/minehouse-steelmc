@@ -1387,6 +1387,14 @@ impl Entity for Player {
         false
     }
 
+    /// Vanilla `ServerPlayer.onExplosionHit`: a wind charge's own burst spares
+    /// the landing.
+    fn on_explosion_hit(&self, explosion_source: Option<&dyn Entity>) {
+        let from_wind_charge = explosion_source
+            .is_some_and(|source| source.entity_type() == &vanilla_entities::WIND_CHARGE);
+        self.set_ignore_fall_damage_from_current_impulse(from_wind_charge, self.position());
+    }
+
     fn base(&self) -> &EntityBase {
         &self.base
     }
