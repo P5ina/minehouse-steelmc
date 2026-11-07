@@ -129,7 +129,7 @@ fn entity_type_name(entity_type: EntityTypeRef) -> TextComponent {
     })
 }
 
-fn remove_entity_name_actions(mut component: TextComponent) -> TextComponent {
+pub(crate) fn remove_entity_name_actions(mut component: TextComponent) -> TextComponent {
     fn remove_actions(component: &mut TextComponent) {
         component.interactions.click = None;
         for child in &mut component.children {
