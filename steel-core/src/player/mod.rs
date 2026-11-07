@@ -1961,8 +1961,6 @@ impl LivingEntity for Player {
         }
 
         self.send_experience_packet_if_dirty();
-
-        self.connection.tick();
     }
 
     fn get_health(&self) -> f32 {

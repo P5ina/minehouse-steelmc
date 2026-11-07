@@ -17,6 +17,7 @@ use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use crate::{
+    entity::{Entity as _, RemovalReason},
     player::connection::{JavaConnection, JavaNetworkWriter, NetworkConnection, OutboundPacket},
     player::{ClientInformation, GameProfile, Player, PlayerConnection, PlayerSession},
     server::DuplicatePlayerWaitError,
@@ -321,5 +322,35 @@ fn duplicate_login_wait_matches_vanillas_deadline_ordering() {
         }
 
         drop(server);
+    });
+}
+
+#[test]
+fn removed_player_entity_still_receives_keep_alives() {
+    let world_fixture = fresh_test_world("removed_player_keep_alive");
+    let world = &world_fixture.world;
+    let runtime = Builder::new_current_thread().enable_all().build();
+    let Ok(runtime) = runtime else {
+        panic!("test runtime should initialize");
+    };
+
+    runtime.block_on(async {
+        let server = test_server(Arc::clone(world), super::PermissionSubjectIndex::new()).await;
+        let Ok(server) = server else {
+            panic!("test server should initialize");
+        };
+        let (player, mut receiver, _network_writer) =
+            java_test_player(&server, Arc::clone(world), Uuid::from_u128(1));
+        assert!(server.online_players.insert(Arc::clone(&player)));
+
+        // A dead player sitting on the respawn screen is removed from the world and no
+        // longer ticks as an entity, but its connection must keep the client alive.
+        player.set_removed(RemovalReason::Killed);
+        assert!(receiver.try_recv().is_err());
+
+        server.tick_connections();
+
+        assert!(matches!(receiver.try_recv(), Ok(OutboundPacket::Packet(_))));
+        assert!(!player.connection.closed());
     });
 }

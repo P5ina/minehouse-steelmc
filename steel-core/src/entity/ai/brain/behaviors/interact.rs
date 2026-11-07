@@ -110,12 +110,17 @@ pub fn set_look_and_interact<E: LivingEntity + ?Sized>(
             let Some(memories) = body.brain_memories() else {
                 return false;
             };
-            let mut memories = memories.lock();
-            if memories.has_value(&INTERACTION_TARGET) {
-                return false;
-            }
-            let Some(visible) = memories.get_ref(&NEAREST_VISIBLE_LIVING_ENTITIES) else {
-                return false;
+            // The memories lock must be released before searching: visibility
+            // checks read the body's attack target.
+            let visible = {
+                let memories = memories.lock();
+                if memories.has_value(&INTERACTION_TARGET) {
+                    return false;
+                }
+                let Some(visible) = memories.get(&NEAREST_VISIBLE_LIVING_ENTITIES) else {
+                    return false;
+                };
+                visible
             };
             let position = body.position();
             let Some(target) = visible.find_closest(|entity| {
@@ -123,6 +128,7 @@ pub fn set_look_and_interact<E: LivingEntity + ?Sized>(
             }) else {
                 return false;
             };
+            let mut memories = memories.lock();
             memories.set(&INTERACTION_TARGET, Some(Arc::clone(&target)));
             memories.set(&LOOK_TARGET, Some(PositionTracker::entity(target, true)));
             true

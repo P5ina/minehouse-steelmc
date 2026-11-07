@@ -1,4 +1,6 @@
-use std::sync::Arc;
+use std::sync::{Arc, mpsc};
+use std::thread;
+use std::time::Duration;
 
 use glam::DVec3;
 use steel_registry::blocks::block_state_ext::BlockStateExt as _;
@@ -20,18 +22,23 @@ use super::poi::{
     poi_competitor_scan, reset_profession,
 };
 use super::work::{SecondaryPoiSensor, WorkAtPoi, stroll_to_poi_list};
-use super::{ShowTradesToPlayer, VillagerPanicTrigger, hostile_distance, villager_calm_down};
+use super::{
+    ShowTradesToPlayer, VillagerBabiesSensor, VillagerHostilesSensor, VillagerPanicTrigger,
+    hostile_distance, villager_calm_down,
+};
 use crate::behavior::init_behaviors;
 use crate::entity::ai::brain::behavior::{Behavior, TimedBehavior};
 use crate::entity::ai::brain::behaviors::{
-    go_to_wanted_item, interact_with_door, stroll_to_poi, validate_nearby_poi,
+    go_to_wanted_item, interact_with_door, set_look_and_interact, stroll_to_poi,
+    validate_nearby_poi,
 };
 use crate::entity::ai::brain::memory_types::{
     DOORS_TO_CLOSE, GOLEM_DETECTED_RECENTLY, HOME, INTERACTION_TARGET, JOB_SITE,
     LAST_WORKED_AT_POI, LOOK_TARGET, MEETING_POINT, NEAREST_HOSTILE, NEAREST_LIVING_ENTITIES,
-    NEAREST_VISIBLE_WANTED_ITEM, PATH, POTENTIAL_JOB_SITE, SECONDARY_JOB_SITE, WALK_TARGET,
-    WalkTarget,
+    NEAREST_VISIBLE_LIVING_ENTITIES, NEAREST_VISIBLE_WANTED_ITEM, PATH, POTENTIAL_JOB_SITE,
+    SECONDARY_JOB_SITE, WALK_TARGET, WalkTarget,
 };
+use crate::entity::ai::brain::nearest_visible::NearestVisibleLivingEntities;
 use crate::entity::ai::brain::sensors::NearestItemSensor;
 use crate::entity::ai::brain::{Activity, BehaviorControl as _, Sensor as _};
 use crate::entity::ai::node::Node;
@@ -960,4 +967,66 @@ fn villagers_see_and_walk_to_wanted_items() {
     let mut go = go_to_wanted_item(|_: &VillagerEntity| true, 0.5, false, 4);
     assert!(go.try_start(world, &mob, 1));
     assert!(mob.brain.memories().lock().has_value(&WALK_TARGET));
+}
+
+/// Runs `check` on its own thread and fails instead of hanging the suite if it deadlocks.
+fn assert_finishes(name: &str, check: impl FnOnce() + Send + 'static) {
+    let (done, finished) = mpsc::channel();
+    thread::spawn(move || {
+        check();
+        let _ = done.send(());
+    });
+    assert!(
+        finished.recv_timeout(Duration::from_secs(10)).is_ok(),
+        "{name} deadlocked on the villager's own brain memories"
+    );
+}
+
+/// Seeds the visible entities with a zombie next to the villager. Its visibility is not
+/// cached yet, so a search runs the targeting test, which reads the villager's memories.
+fn villager_seeing_a_zombie(world: &Arc<World>) -> Arc<VillagerEntity> {
+    let mob = Arc::new(villager_in(world));
+    mob.refresh_brain();
+    let body: SharedEntity = Arc::clone(&mob) as _;
+    let zombie: SharedEntity = Arc::new(ZombieEntity::new(
+        &vanilla_entities::ZOMBIE,
+        next_entity_id(),
+        DVec3::new(2.0, 64.0, 2.0),
+        Arc::downgrade(world),
+    ));
+    mob.brain.memories().lock().set(
+        &NEAREST_VISIBLE_LIVING_ENTITIES,
+        Some(NearestVisibleLivingEntities::new(
+            world,
+            &body,
+            vec![zombie],
+        )),
+    );
+    mob
+}
+
+#[test]
+fn visible_entity_searches_do_not_hold_the_memories_lock() {
+    init_vanilla_registry();
+    let fixture = fresh_test_world("villager_visible_search_lock");
+    let world = Arc::clone(&fixture.world);
+
+    let mob = villager_seeing_a_zombie(&world);
+    let sensor_world = Arc::clone(&world);
+    assert_finishes("VillagerHostilesSensor", move || {
+        VillagerHostilesSensor.do_tick(&sensor_world, &mob);
+    });
+
+    let mob = villager_seeing_a_zombie(&world);
+    let sensor_world = Arc::clone(&world);
+    assert_finishes("VillagerBabiesSensor", move || {
+        VillagerBabiesSensor.do_tick(&sensor_world, &mob);
+    });
+
+    let mob = villager_seeing_a_zombie(&world);
+    let behavior_world = Arc::clone(&world);
+    assert_finishes("set_look_and_interact", move || {
+        let mut look = set_look_and_interact::<VillagerEntity>(|_| true, 8);
+        let _ = look.try_start(&behavior_world, &mob, behavior_world.game_time());
+    });
 }
