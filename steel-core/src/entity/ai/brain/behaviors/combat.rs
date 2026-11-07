@@ -4,19 +4,10 @@
 
 use std::sync::Arc;
 
-use steel_utils::types::InteractionHand;
-
-use crate::entity::ai::brain::behavior::OneShot;
-use crate::entity::ai::brain::memory::MemoryRequirement;
-use crate::entity::ai::brain::memory_types::{
-    ATTACK_COOLING_DOWN, ATTACK_TARGET, CANT_REACH_WALK_TARGET_SINCE, LOOK_TARGET,
-    NEAREST_VISIBLE_LIVING_ENTITIES, PositionTracker, WALK_TARGET, WalkTarget,
-};
-use crate::entity::ai::brain::{BehaviorControl, BehaviorStatus, Memories, MemoryStatus};
-use crate::entity::{Entity, LivingEntity, Mob, SharedEntity};
+use crate::entity::ai::brain::memory_types::ATTACK_TARGET;
+use crate::entity::ai::brain::{BehaviorControl, BehaviorStatus, Memories};
+use crate::entity::{Entity, LivingEntity, SharedEntity};
 use crate::world::World;
-
-/// Ticks a brain keeps trying to reach its attack target before giving up.
 
 /// Vanilla `BehaviorBuilder.triggerIf(predicate, behavior)`: runs `behavior`
 /// only while `predicate` holds when it would start.

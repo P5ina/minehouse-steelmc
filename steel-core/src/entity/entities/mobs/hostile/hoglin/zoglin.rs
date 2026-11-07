@@ -46,8 +46,8 @@ use crate::world::World;
 
 const XP_REWARD: i32 = 5;
 /// Vanilla `ATTACK_INTERVAL` and `BABY_ATTACK_INTERVAL`.
-const ATTACK_INTERVAL: i64 = 40;
-const BABY_ATTACK_INTERVAL: i64 = 15;
+const ATTACK_INTERVAL: i32 = 40;
+const BABY_ATTACK_INTERVAL: i32 = 15;
 /// Vanilla `ATTACK_DURATION`: how long a hurt zoglin stays angry.
 const ATTACK_DURATION: i64 = 200;
 const BABY_ATTACK_DAMAGE: f64 = 0.5;
@@ -171,8 +171,9 @@ impl ZoglinEntity {
             Activity::IDLE,
             10,
             vec![
-                Box::new(start_attacking(|world: &Arc<World>, body: &Self| body.find_nearest_valid_attack_target(world),
-                )),
+                Box::new(start_attacking(|world: &Arc<World>, body: &Self| {
+                    body.find_nearest_valid_attack_target(world)
+                })),
                 Box::new(set_entity_look_target_sometimes(
                     8.0,
                     UniformInt::of(30, 60),

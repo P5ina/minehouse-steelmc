@@ -37,4 +37,3 @@ pub fn become_passive_if_memory_present<E: LivingEntity + ?Sized>(
         },
     )
 }
-

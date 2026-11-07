@@ -79,8 +79,8 @@ const ATTACK_DURATION: i64 = 200;
 const DESIRED_DISTANCE_FROM_PIGLIN_WHEN_IDLING: i32 = 8;
 const DESIRED_DISTANCE_FROM_PIGLIN_WHEN_RETREATING: i32 = 15;
 const DESIRED_DISTANCE_FROM_REPELLENT: i32 = 8;
-const ATTACK_INTERVAL: i64 = 40;
-const BABY_ATTACK_INTERVAL: i64 = 15;
+const ATTACK_INTERVAL: i32 = 40;
+const BABY_ATTACK_INTERVAL: i32 = 15;
 const REPELLENT_PACIFY_TIME: i64 = 200;
 const ADULT_FOLLOW_RANGE: UniformInt = UniformInt::of(5, 16);
 const SPEED_MULTIPLIER_WHEN_AVOIDING_REPELLENT: f32 = 1.0;
@@ -228,8 +228,9 @@ impl HoglinEntity {
                     DESIRED_DISTANCE_FROM_REPELLENT,
                     true,
                 )),
-                Box::new(start_attacking(|_world: &Arc<World>, body: &Self| body.find_nearest_valid_attack_target(),
-                )),
+                Box::new(start_attacking(|_world: &Arc<World>, body: &Self| {
+                    body.find_nearest_valid_attack_target()
+                })),
                 Box::new(trigger_if(
                     Self::is_adult,
                     set_walk_target_away_from_entity(
@@ -272,10 +273,7 @@ impl HoglinEntity {
                 Box::new(set_walk_target_from_attack_target_if_target_out_of_reach(
                     |_| 1.0,
                 )),
-                Box::new(trigger_if(
-                    Self::is_adult,
-                    melee_attack(ATTACK_INTERVAL),
-                )),
+                Box::new(trigger_if(Self::is_adult, melee_attack(ATTACK_INTERVAL))),
                 Box::new(trigger_if(
                     |hoglin: &Self| AgeableMob::is_baby(hoglin),
                     melee_attack(BABY_ATTACK_INTERVAL),
