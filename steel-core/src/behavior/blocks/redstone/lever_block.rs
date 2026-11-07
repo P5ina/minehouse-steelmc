@@ -16,8 +16,10 @@ use crate::behavior::{
     BlockBehavior, BlockHitResult, BlockPlaceContext, InteractionResult, InventoryAccess,
 };
 use crate::player::Player;
+use crate::world::Explosion;
 use crate::world::game_event::GameEventContext;
 use crate::world::{LevelAccessor, LevelReader, ScheduledTickAccess, SignalQueryContext, World};
+use steel_registry::item_stack::ItemStack;
 
 /// Vanilla `LeverBlock` source behavior.
 #[block_behavior]
@@ -72,6 +74,21 @@ impl LeverBlock {
 }
 
 impl BlockBehavior for LeverBlock {
+    /// Vanilla `onExplosionHit`: wind bursts trigger this block.
+    fn on_explosion_hit(
+        &self,
+        state: BlockStateId,
+        world: &Arc<World>,
+        pos: BlockPos,
+        explosion: &dyn Explosion,
+        on_hit: &mut dyn FnMut(ItemStack, BlockPos),
+    ) {
+        if explosion.can_trigger_blocks() {
+            self.pull(state, world, pos);
+        }
+        self.default_on_explosion_hit(state, world, pos, explosion, on_hit);
+    }
+
     fn can_survive(&self, state: BlockStateId, world: &dyn LevelReader, pos: BlockPos) -> bool {
         FaceAttachedHorizontalDirectionalBlock::can_survive(state, world, pos)
     }

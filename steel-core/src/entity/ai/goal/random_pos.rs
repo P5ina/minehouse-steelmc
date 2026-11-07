@@ -387,7 +387,7 @@ fn move_up_out_of_solid(mob: &(impl PathfinderMob + ?Sized), pos: BlockPos) -> O
     Some(pos)
 }
 
-fn mob_restricted(mob: &(impl PathfinderMob + ?Sized), horizontal_dist: f64) -> bool {
+pub(crate) fn mob_restricted(mob: &(impl PathfinderMob + ?Sized), horizontal_dist: f64) -> bool {
     mob.has_home()
         && block_center_distance_sqr(mob.home_position(), mob.position())
             < (f64::from(mob.home_radius()) + horizontal_dist + 1.0).powi(2)
@@ -398,7 +398,11 @@ fn is_outside_limits(mob: &(impl PathfinderMob + ?Sized), pos: BlockPos) -> bool
         .is_none_or(|world| world.is_outside_build_height(pos.y()))
 }
 
-fn is_restricted(restrict: bool, mob: &(impl PathfinderMob + ?Sized), pos: BlockPos) -> bool {
+pub(crate) fn is_restricted(
+    restrict: bool,
+    mob: &(impl PathfinderMob + ?Sized),
+    pos: BlockPos,
+) -> bool {
     restrict && !mob.is_within_home_pos(pos)
 }
 

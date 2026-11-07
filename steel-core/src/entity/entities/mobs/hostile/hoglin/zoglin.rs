@@ -171,9 +171,7 @@ impl ZoglinEntity {
             Activity::IDLE,
             10,
             vec![
-                Box::new(start_attacking(
-                    |_, _| true,
-                    |world: &Arc<World>, body: &Self| body.find_nearest_valid_attack_target(world),
+                Box::new(start_attacking(|world: &Arc<World>, body: &Self| body.find_nearest_valid_attack_target(world),
                 )),
                 Box::new(set_entity_look_target_sometimes(
                     8.0,
@@ -195,17 +193,13 @@ impl ZoglinEntity {
                 )),
                 Box::new(trigger_if(
                     |zoglin: &Self| !zoglin.is_baby(),
-                    melee_attack(|_| true, ATTACK_INTERVAL),
+                    melee_attack(ATTACK_INTERVAL),
                 )),
                 Box::new(trigger_if(
                     |zoglin: &Self| zoglin.is_baby(),
-                    melee_attack(|_| true, BABY_ATTACK_INTERVAL),
+                    melee_attack(BABY_ATTACK_INTERVAL),
                 )),
-                Box::new(stop_attacking_if_target_invalid(
-                    |_, _| false,
-                    |_, _, _| {},
-                    true,
-                )),
+                Box::new(stop_attacking_if_target_invalid(|_, _, _| {})),
             ],
         )
         .while_memory_present(&ATTACK_TARGET)

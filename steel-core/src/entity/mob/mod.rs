@@ -461,6 +461,12 @@ pub trait Mob: LivingEntity + Leashable {
         self.default_can_attack_mob(target)
     }
 
+    /// Vanilla `Mob.canUseNonMeleeWeapon`: only ranged mobs use bows and
+    /// crossbows as weapons.
+    fn can_use_non_melee_weapon(&self, _item: &ItemStack) -> bool {
+        false
+    }
+
     /// The `Mob.canAttack` body, for overrides that call `super.canAttack`.
     fn default_can_attack_mob(&self, target: &dyn LivingEntity) -> bool {
         target.entity_type() != &vanilla_entities::GHAST && LivingEntity::can_attack(self, target)

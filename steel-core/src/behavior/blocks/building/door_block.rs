@@ -26,6 +26,7 @@ use steel_utils::{
 };
 
 use super::weathering_block::{WeatherState, WeatheringCopper};
+use crate::world::Explosion;
 use crate::{
     behavior::{
         BlockBehavior, BlockHitResult, BlockPlaceContext, InteractionResult, InventoryAccess,
@@ -39,6 +40,7 @@ use crate::{
         LevelReader, ScheduledTickAccess, SignalGetter as _, World, game_event::GameEventContext,
     },
 };
+use steel_registry::item_stack::ItemStack;
 
 /// Behavior for vanilla door blocks.
 #[block_behavior]
@@ -46,6 +48,8 @@ pub struct DoorBlock {
     block: BlockRef,
     #[json_arg(value, json = "type_can_open_by_hand")]
     can_open_by_hand: bool,
+    #[json_arg(value, json = "type_can_open_by_wind_charge")]
+    can_open_by_wind_charge: bool,
     #[json_arg(sound_events, json = "type_door_open")]
     sound_open: SoundEventRef,
     #[json_arg(sound_events, json = "type_door_close")]
@@ -67,12 +71,14 @@ impl DoorBlock {
     pub const fn new(
         block: BlockRef,
         can_open_by_hand: bool,
+        can_open_by_wind_charge: bool,
         sound_open: SoundEventRef,
         sound_close: SoundEventRef,
     ) -> Self {
         Self {
             block,
             can_open_by_hand,
+            can_open_by_wind_charge,
             sound_open,
             sound_close,
         }
@@ -185,6 +191,25 @@ impl DoorBlock {
 }
 
 impl BlockBehavior for DoorBlock {
+    /// Vanilla `onExplosionHit`: wind bursts trigger this block.
+    fn on_explosion_hit(
+        &self,
+        state: BlockStateId,
+        world: &Arc<World>,
+        pos: BlockPos,
+        explosion: &dyn Explosion,
+        on_hit: &mut dyn FnMut(ItemStack, BlockPos),
+    ) {
+        if explosion.can_trigger_blocks()
+            && Self::is_lower_door(state)
+            && self.can_open_by_wind_charge
+            && !state.get_value(POWERED)
+        {
+            self.set_door_open(state, world, pos, None, !state.get_value(OPEN));
+        }
+        self.default_on_explosion_hit(state, world, pos, explosion, on_hit);
+    }
+
     fn get_state_for_placement(&self, context: &BlockPlaceContext<'_>) -> Option<BlockStateId> {
         let pos = context.place_pos();
         if pos.y() >= context.world.max_y_exclusive() - 1 {
@@ -384,6 +409,8 @@ pub struct WeatheringCopperDoorBlock {
     weathering: WeatheringCopper,
     #[json_arg(value, json = "type_can_open_by_hand")]
     can_open_by_hand: bool,
+    #[json_arg(value, json = "type_can_open_by_wind_charge")]
+    can_open_by_wind_charge: bool,
     #[json_arg(sound_events, json = "type_door_open")]
     sound_open: SoundEventRef,
     #[json_arg(sound_events, json = "type_door_close")]
@@ -397,6 +424,7 @@ impl WeatheringCopperDoorBlock {
         block: BlockRef,
         weather_state: WeatherState,
         can_open_by_hand: bool,
+        can_open_by_wind_charge: bool,
         sound_open: SoundEventRef,
         sound_close: SoundEventRef,
     ) -> Self {
@@ -404,6 +432,7 @@ impl WeatheringCopperDoorBlock {
             block,
             weathering: WeatheringCopper::new(weather_state),
             can_open_by_hand,
+            can_open_by_wind_charge,
             sound_open,
             sound_close,
         }
@@ -413,6 +442,7 @@ impl WeatheringCopperDoorBlock {
         DoorBlock::new(
             self.block,
             self.can_open_by_hand,
+            self.can_open_by_wind_charge,
             self.sound_open,
             self.sound_close,
         )
@@ -420,6 +450,19 @@ impl WeatheringCopperDoorBlock {
 }
 
 impl BlockBehavior for WeatheringCopperDoorBlock {
+    /// Vanilla `onExplosionHit`: wind bursts trigger this block.
+    fn on_explosion_hit(
+        &self,
+        state: BlockStateId,
+        world: &Arc<World>,
+        pos: BlockPos,
+        explosion: &dyn Explosion,
+        on_hit: &mut dyn FnMut(ItemStack, BlockPos),
+    ) {
+        self.door()
+            .on_explosion_hit(state, world, pos, explosion, on_hit);
+    }
+
     fn get_state_for_placement(&self, context: &BlockPlaceContext<'_>) -> Option<BlockStateId> {
         self.door().get_state_for_placement(context)
     }
@@ -528,6 +571,7 @@ mod tests {
         let behavior = DoorBlock::new(
             &vanilla_blocks::SPRUCE_DOOR,
             true,
+            true,
             &sound_events::BLOCK_WOODEN_DOOR_OPEN,
             &sound_events::BLOCK_WOODEN_DOOR_CLOSE,
         );
@@ -567,11 +611,13 @@ mod tests {
         let oak = DoorBlock::new(
             &vanilla_blocks::OAK_DOOR,
             true,
+            true,
             &sound_events::BLOCK_WOODEN_DOOR_OPEN,
             &sound_events::BLOCK_WOODEN_DOOR_CLOSE,
         );
         let iron = DoorBlock::new(
             &vanilla_blocks::IRON_DOOR,
+            false,
             false,
             &sound_events::BLOCK_IRON_DOOR_OPEN,
             &sound_events::BLOCK_IRON_DOOR_CLOSE,

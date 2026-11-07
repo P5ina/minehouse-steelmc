@@ -3,6 +3,7 @@ use std::collections::BTreeSet;
 use super::*;
 use crate::enchantment_helper;
 use crate::entity::entities::mobs::hostile::cube_mob::AbstractCubeMob;
+use crate::entity::entities::mobs::passive::AbstractNautilus;
 use crate::entity::entities::mobs::passive::equine::{AbstractHorse, Llama, PlayerRideableJumping};
 use crate::entity::entities::{Guardian, LightningBoltEntity, Squid};
 use crate::entity::{leash::Leashable, pushing::EntityPush};
@@ -1804,6 +1805,12 @@ pub trait Entity: EntityEventSource + ErasedType + Send + Sync + 'static {
     /// Whether this entity is a horse-like mount.
     fn is_abstract_horse(&self) -> bool {
         self.as_abstract_horse().is_some()
+    }
+
+    /// Returns this entity as a nautilus mount, equivalent to vanilla's
+    /// `instanceof AbstractNautilus`.
+    fn as_abstract_nautilus(&self) -> Option<&dyn AbstractNautilus> {
+        try_as_dyn::<Self, dyn AbstractNautilus>(self)
     }
 
     /// Returns this entity as a mount whose rider can charge jumps,

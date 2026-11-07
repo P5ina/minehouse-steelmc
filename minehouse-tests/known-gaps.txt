@@ -4,7 +4,6 @@
 
 # mobs: the entity (or the mob it converts into) does not exist in SteelMC yet
 minehouse_mob_allay
-minehouse_mob_axolotl
 minehouse_mob_bee
 minehouse_mob_breeze
 minehouse_mob_camel
@@ -15,8 +14,6 @@ minehouse_mob_ender_dragon
 minehouse_mob_fox
 minehouse_mob_frog
 minehouse_mob_happy_ghast
-minehouse_mob_llama
-minehouse_mob_nautilus
 minehouse_mob_panda
 minehouse_mob_pig
 minehouse_mob_piglin
@@ -29,7 +26,6 @@ minehouse_mob_turtle
 minehouse_mob_warden
 minehouse_mob_wither
 minehouse_mob_zombie
-minehouse_mob_zombie_nautilus
 minehouse_mob_zombified_piglin
 
 # mobs: built with a dispenser

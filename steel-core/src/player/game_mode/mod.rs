@@ -110,4 +110,6 @@ const ENTITY_INTERACTION_RANGE_BUFFER: f64 = 3.0;
 const FLIGHT_DISABLE_RANGE: f64 = 1.0;
 
 #[cfg(test)]
+mod attack_tests;
+#[cfg(test)]
 mod tests;

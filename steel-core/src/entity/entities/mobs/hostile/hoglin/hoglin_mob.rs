@@ -228,9 +228,7 @@ impl HoglinEntity {
                     DESIRED_DISTANCE_FROM_REPELLENT,
                     true,
                 )),
-                Box::new(start_attacking(
-                    |_, _| true,
-                    |_world: &Arc<World>, body: &Self| body.find_nearest_valid_attack_target(),
+                Box::new(start_attacking(|_world: &Arc<World>, body: &Self| body.find_nearest_valid_attack_target(),
                 )),
                 Box::new(trigger_if(
                     Self::is_adult,
@@ -276,17 +274,13 @@ impl HoglinEntity {
                 )),
                 Box::new(trigger_if(
                     Self::is_adult,
-                    melee_attack(|_| true, ATTACK_INTERVAL),
+                    melee_attack(ATTACK_INTERVAL),
                 )),
                 Box::new(trigger_if(
                     |hoglin: &Self| AgeableMob::is_baby(hoglin),
-                    melee_attack(|_| true, BABY_ATTACK_INTERVAL),
+                    melee_attack(BABY_ATTACK_INTERVAL),
                 )),
-                Box::new(stop_attacking_if_target_invalid(
-                    |_, _| false,
-                    |_, _, _| {},
-                    true,
-                )),
+                Box::new(stop_attacking_if_target_invalid(|_, _, _| {})),
                 Box::new(erase_memory_if(Self::is_breeding, &ATTACK_TARGET)),
             ],
         )

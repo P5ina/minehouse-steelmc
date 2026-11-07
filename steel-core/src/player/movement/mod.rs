@@ -1006,10 +1006,12 @@ impl Player {
             PlayerCommandAction::OpenVehicleInventory => {
                 // Vanilla `HasCustomInventoryScreen`; chest boats and minecarts
                 // join this once they have inventory screens.
-                if let Some(vehicle) = self.vehicle()
-                    && let Some(horse) = vehicle.as_abstract_horse()
-                {
-                    horse.open_custom_inventory_screen(self);
+                if let Some(vehicle) = self.vehicle() {
+                    if let Some(horse) = vehicle.as_abstract_horse() {
+                        horse.open_custom_inventory_screen(self);
+                    } else if let Some(nautilus) = vehicle.as_abstract_nautilus() {
+                        nautilus.open_custom_inventory_screen(self);
+                    }
                 }
             }
         }
