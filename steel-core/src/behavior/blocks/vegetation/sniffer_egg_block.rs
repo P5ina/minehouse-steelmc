@@ -163,7 +163,7 @@ mod tests {
 
     use super::*;
     use crate::behavior::{BLOCK_BEHAVIORS, init_behaviors};
-    use crate::entity::init_entities;
+    use crate::entity::{LivingEntity, init_entities};
     use crate::test_support::{fresh_test_world, insert_ready_full_chunk};
 
     #[test]
@@ -202,9 +202,7 @@ mod tests {
             .iter()
             .filter(|entity| {
                 entity.entity_type() == &vanilla_entities::SNIFFER
-                    && entity
-                        .as_living_entity()
-                        .is_some_and(|sniffer| sniffer.is_baby())
+                    && entity.as_living_entity().is_some_and(LivingEntity::is_baby)
             })
             .count();
         assert_eq!(babies, 1, "a baby sniffer hatches");
