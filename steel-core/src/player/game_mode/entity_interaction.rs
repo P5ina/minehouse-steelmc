@@ -12,12 +12,14 @@ use super::{
 
 use crate::entity::{EntityReference, ProjectileDeflection};
 use crate::player::food_data::food_constants;
-use std::ops::Add;
 use steel_math::trig;
+use steel_protocol::packets::game::CAnimate;
 use steel_registry::particle_type::ParticleData;
 use steel_registry::vanilla_entity_type_tags::EntityTypeTag;
+use steel_registry::vanilla_item_tags::ItemTag;
 use steel_registry::{
-    REGISTRY, TaggedRegistryExt as _, sound_events, vanilla_custom_stats, vanilla_particle_types,
+    REGISTRY, TaggedRegistryExt as _, sound_events, vanilla_custom_stats, vanilla_mob_effects,
+    vanilla_particle_types,
 };
 
 const fn sound_holder_ref(holder: &SoundEventHolder) -> Option<SoundEventRef> {
@@ -349,35 +351,64 @@ impl Player {
         );
         let enchanted_damage =
             enchantment_helper::modify_damage(&attacking_item, &enchantment_context, base_damage);
-        let attack_strength_scale = self.attack_strength_scale(0.5);
-        let magic_boost = attack_strength_scale * (enchanted_damage - base_damage);
-        let base_damage = base_damage * Self::base_damage_scale_factor(attack_strength_scale);
-        let damage = base_damage + magic_boost;
+        let mut magic_boost = enchanted_damage - base_damage;
+        let mut base_damage = base_damage;
+        // Vanilla scales by attack strength unless the hit comes from the
+        // item being used in this hand (a kinetic charge).
+        let using_main_hand = self
+            .living_base()
+            .active_item_use()
+            .is_some_and(|active| active.hand() == InteractionHand::MainHand);
+        if !using_main_hand {
+            let attack_strength_scale = self.attack_strength_scale(0.5);
+            magic_boost *= attack_strength_scale;
+            base_damage *= Self::base_damage_scale_factor(attack_strength_scale);
+        }
+        if deals_knockback && self.deflect_projectile(target) {
+            return true;
+        }
+
+        let total_damage = if deals_damage {
+            base_damage + magic_boost
+        } else {
+            0.0
+        };
+        let old_entity_living_health = entity
+            .as_living_entity()
+            .map_or(0.0, LivingEntity::get_health);
         let old_movement = entity.velocity();
-        let mut affected = deals_knockback;
-        let damage_dealt = deals_damage
+        let was_hurt = deals_damage
             && entity
                 .level()
-                .is_some_and(|world| entity.hurt(&world, &damage_source, damage));
-        affected |= damage_dealt;
+                .is_some_and(|world| entity.hurt(&world, &damage_source, total_damage));
         if deals_knockback {
+            self.cause_extra_knockback(entity, 0.4, old_movement);
             self.cause_extra_knockback(
                 entity,
-                0.4 + Self::get_knockback(0.0, &attacking_item, &enchantment_context),
+                Self::get_knockback(0.0, &attacking_item, &enchantment_context),
                 old_movement,
             );
         }
-        if dismounts && entity.is_passenger() {
-            affected = true;
+        let mut dismounted = false;
+        if dismounts
+            && entity.is_passenger()
+            && !REGISTRY.entity_types.is_in_tag(
+                entity.entity_type(),
+                &EntityTypeTag::CANNOT_BE_DISMOUNTED_BY_ITEM_USAGE,
+            )
+        {
+            dismounted = true;
             entity.stop_riding();
         }
 
-        if !affected {
+        if !was_hurt && !deals_knockback && !dismounted {
             return false;
         }
 
-        self.item_attack_interaction(target, &damage_source, damage_dealt);
+        self.attack_visual_effects(entity, false, false, deals_damage, true, magic_boost);
         self.set_last_hurt_mob(Some(target));
+        self.item_attack_interaction(target, &damage_source, was_hurt);
+        self.damage_stats_and_hearts(entity, old_entity_living_health);
         self.cause_food_exhaustion(food_constants::EXHAUSTION_ATTACK);
         true
     }
@@ -427,7 +458,8 @@ impl Player {
         true
     }
 
-    /// Attacks an entity with the player's main-hand base damage.
+    /// Vanilla `Player.attack`: a melee hit with the main-hand weapon,
+    /// including critical hits, sweep attacks and the attack sounds.
     ///
     /// Returns `true` if the target accepted damage.
     #[must_use]
@@ -437,6 +469,7 @@ impl Player {
             return false;
         }
 
+        // TODO: Riptide auto spin attacks use `autoSpinAttackDmg` once they exist.
         let attacking_item = {
             let inventory = self.inventory.lock();
             let stack = inventory.get_item_in_hand(InteractionHand::MainHand);
@@ -450,10 +483,10 @@ impl Player {
                 attributes.required_value(vanilla_attributes::ATTACK_KNOCKBACK),
             )
         };
+        let damage_source = self.attack_damage_source(&attacking_item);
         let attack_strength_delay = Self::attack_strength_delay_from_speed(attack_speed);
         let attack_strength_scale =
             self.attack_strength_scale_for_delay(0.5, attack_strength_delay);
-        let damage_source = self.attack_damage_source(&attacking_item);
         let enchantment_context = EnchantmentDamageContext::new(
             entity.entity_type(),
             Some(self.entity_type()),
@@ -464,48 +497,236 @@ impl Player {
             enchantment_helper::modify_damage(&attacking_item, &enchantment_context, attack_damage);
         let magic_boost = attack_strength_scale * (enchanted_damage - attack_damage);
         let mut base_damage = attack_damage * Self::base_damage_scale_factor(attack_strength_scale);
-        base_damage += ITEM_BEHAVIORS
-            .get_behavior(attacking_item.item())
-            .get_attack_damage_bonus(self.as_ref(), entity, base_damage, &damage_source);
-        let total_damage = base_damage + magic_boost;
-        let full_strength_attack = attack_strength_scale > 0.9;
-        let knockback_attack = self.is_sprinting() && full_strength_attack;
         self.reset_attack_strength_ticker();
-
         if self.deflect_projectile(target) {
             return false;
         }
-        if total_damage <= 0.0 {
-            return false;
-        }
-
-        let old_entity_living_health = entity
-            .as_living_entity()
-            .map_or(0.0, LivingEntity::get_health);
-
-        // TODO: Apply crits, sweep attacks, and sounds.
-        let old_movement = entity.velocity();
-        let Some(target_world) = entity.level() else {
-            return false;
-        };
-        let was_hurt = entity.hurt(&target_world, &damage_source, total_damage);
-        if was_hurt {
-            self.set_last_hurt_mob(Some(target));
-            let sprint_knockback = if knockback_attack { 0.5 } else { 0.0 };
-            self.cause_extra_knockback(
-                entity,
-                Self::get_knockback(attack_knockback, &attacking_item, &enchantment_context)
-                    + sprint_knockback,
-                old_movement,
-            );
-            self.item_attack_interaction(target, &damage_source, true);
-            self.damage_stats_and_hearts(entity, old_entity_living_health);
-            self.cause_food_exhaustion(food_constants::EXHAUSTION_ATTACK);
-        }
 
         let world = self.get_world();
+        let mut was_hurt = false;
+        if base_damage > 0.0 || magic_boost > 0.0 {
+            let full_strength_attack = attack_strength_scale > 0.9;
+            let knockback_attack = self.is_sprinting() && full_strength_attack;
+            if knockback_attack {
+                self.play_server_side_sound(&sound_events::ENTITY_PLAYER_ATTACK_KNOCKBACK);
+            }
+
+            base_damage += ITEM_BEHAVIORS
+                .get_behavior(attacking_item.item())
+                .get_attack_damage_bonus(self.as_ref(), entity, base_damage, &damage_source);
+            let critical_attack = full_strength_attack && self.can_critical_attack(entity);
+            if critical_attack {
+                base_damage *= 1.5;
+            }
+            let total_damage = base_damage + magic_boost;
+            let sweep_attack =
+                self.is_sweep_attack(full_strength_attack, critical_attack, knockback_attack);
+            let old_entity_living_health = entity
+                .as_living_entity()
+                .map_or(0.0, LivingEntity::get_health);
+
+            let old_movement = entity.velocity();
+            was_hurt = entity.level().is_some_and(|target_world| {
+                entity.hurt(&target_world, &damage_source, total_damage)
+            });
+            if was_hurt {
+                let sprint_knockback = if knockback_attack { 0.5 } else { 0.0 };
+                self.cause_extra_knockback(
+                    entity,
+                    Self::get_knockback(attack_knockback, &attacking_item, &enchantment_context)
+                        + sprint_knockback,
+                    old_movement,
+                );
+                if sweep_attack {
+                    self.do_sweep_attack(
+                        &world,
+                        entity,
+                        &attacking_item,
+                        base_damage,
+                        &damage_source,
+                        attack_strength_scale,
+                    );
+                }
+                self.attack_visual_effects(
+                    entity,
+                    critical_attack,
+                    sweep_attack,
+                    full_strength_attack,
+                    false,
+                    magic_boost,
+                );
+                self.set_last_hurt_mob(Some(target));
+                self.item_attack_interaction(target, &damage_source, true);
+                self.damage_stats_and_hearts(entity, old_entity_living_health);
+                self.cause_food_exhaustion(food_constants::EXHAUSTION_ATTACK);
+            } else {
+                self.play_server_side_sound(&sound_events::ENTITY_PLAYER_ATTACK_NODAMAGE);
+            }
+        }
+
         enchantment_helper::do_post_piercing_attack_effects(&world, self.as_ref());
         was_hurt
+    }
+
+    /// Vanilla `Player.playServerSideSound`: a sound at the player heard by
+    /// everyone, the player included.
+    fn play_server_side_sound(&self, sound: SoundEventRef) {
+        self.get_world()
+            .play_sound_at(sound, self.sound_source(), self.position(), 1.0, 1.0, None);
+    }
+
+    /// Vanilla `Player.canCriticalAttack`.
+    fn can_critical_attack(&self, entity: &dyn Entity) -> bool {
+        self.fall_distance() > 0.0
+            && !self.on_ground()
+            && !self.on_climbable()
+            && !self.is_in_water()
+            && self.mob_effect(vanilla_mob_effects::BLINDNESS).is_none()
+            && !self.is_passenger()
+            && entity.as_living_entity().is_some()
+            && !self.is_sprinting()
+    }
+
+    /// Vanilla `Player.isSweepAttack`: a full-strength, grounded, slow sword
+    /// hit that is neither critical nor a sprint knockback.
+    fn is_sweep_attack(
+        &self,
+        full_strength_attack: bool,
+        critical_attack: bool,
+        knockback_attack: bool,
+    ) -> bool {
+        if !full_strength_attack || critical_attack || knockback_attack || !self.on_ground() {
+            return false;
+        }
+        let movement = self.known_movement();
+        let approximate_speed_sq = movement.x * movement.x + movement.z * movement.z;
+        // Vanilla `Player.getSpeed` reads the movement speed attribute.
+        let speed = self
+            .attributes()
+            .lock()
+            .required_value(vanilla_attributes::MOVEMENT_SPEED) as f32;
+        let max_speed_for_sweep_attack = f64::from(speed * 2.5);
+        if approximate_speed_sq >= max_speed_for_sweep_attack * max_speed_for_sweep_attack {
+            return false;
+        }
+        let inventory = self.inventory.lock();
+        inventory
+            .get_item_in_hand(InteractionHand::MainHand)
+            .item()
+            .has_tag(&ItemTag::SWORDS)
+    }
+
+    /// Vanilla `Player.doSweepAttack`: damages and knocks back the living
+    /// entities next to the main target.
+    fn do_sweep_attack(
+        &self,
+        world: &Arc<World>,
+        entity: &dyn Entity,
+        attacking_item: &ItemStack,
+        base_damage: f32,
+        damage_source: &DamageSource,
+        attack_strength_scale: f32,
+    ) {
+        self.play_server_side_sound(&sound_events::ENTITY_PLAYER_ATTACK_SWEEP);
+        let sweeping_damage_ratio =
+            self.attributes()
+                .lock()
+                .required_value(vanilla_attributes::SWEEPING_DAMAGE_RATIO) as f32;
+        let sweep_damage = 1.0 + sweeping_damage_ratio * base_damage;
+        let (yaw, _) = self.rotation();
+        let yaw_radians = yaw.to_radians();
+        let yaw_sin = f64::from(trig::sin(yaw_radians));
+        let yaw_cos = f64::from(trig::cos(yaw_radians));
+        let area = entity.bounding_box().inflate_xyz(1.0, 0.25, 1.0);
+        // Vanilla `getEntitiesOfClass` skips spectators.
+        let nearby_entities = world.get_entities_in_aabb_matching(&area, |nearby| {
+            !nearby.is_spectator() && nearby.as_living_entity().is_some()
+        });
+        for nearby in nearby_entities {
+            let Some(living) = nearby.as_living_entity() else {
+                continue;
+            };
+            if nearby.id() == self.id()
+                || nearby.id() == entity.id()
+                || self.is_allied_to(nearby.as_ref())
+                || nearby.is_marker_armor_stand()
+                || self.distance_to_sqr(nearby.position()) >= 9.0
+            {
+                continue;
+            }
+            let context = EnchantmentDamageContext::new(
+                nearby.entity_type(),
+                Some(self.entity_type()),
+                Some(self.entity_type()),
+                damage_source,
+            );
+            let enchanted_damage =
+                enchantment_helper::modify_damage(attacking_item, &context, sweep_damage)
+                    * attack_strength_scale;
+            if nearby.hurt(world, damage_source, enchanted_damage) {
+                living.knockback(0.4, yaw_sin, -yaw_cos);
+                let post_attack_context = EnchantmentPostAttackContext::new(&nearby, damage_source);
+                enchantment_helper::do_post_attack_effects_with_item_source(
+                    world,
+                    nearby.as_ref(),
+                    attacking_item,
+                    &post_attack_context,
+                );
+            }
+        }
+
+        let dx = -yaw_sin;
+        let dz = yaw_cos;
+        let position = self.position();
+        world.send_particles(
+            ParticleData::simple(&vanilla_particle_types::SWEEP_ATTACK),
+            DVec3::new(
+                position.x + dx,
+                position.y + f64::from(self.base().dimensions().height) * 0.5,
+                position.z + dz,
+            ),
+            0,
+            DVec3::new(dx, 0.0, dz),
+            0.0,
+        );
+    }
+
+    /// Vanilla `Player.attackVisualEffects`.
+    #[expect(
+        clippy::fn_params_excessive_bools,
+        reason = "mirrors Vanilla's attackVisualEffects parameters"
+    )]
+    fn attack_visual_effects(
+        &self,
+        entity: &dyn Entity,
+        critical_attack: bool,
+        sweep_attack: bool,
+        full_strength_attack: bool,
+        stab_attack: bool,
+        magic_boost: f32,
+    ) {
+        if critical_attack {
+            self.play_server_side_sound(&sound_events::ENTITY_PLAYER_ATTACK_CRIT);
+            self.send_attack_animation(CAnimate::critical_hit(entity.id()));
+        }
+        if !critical_attack && !sweep_attack && !stab_attack {
+            self.play_server_side_sound(if full_strength_attack {
+                &sound_events::ENTITY_PLAYER_ATTACK_STRONG
+            } else {
+                &sound_events::ENTITY_PLAYER_ATTACK_WEAK
+            });
+        }
+        if magic_boost > 0.0 {
+            self.send_attack_animation(CAnimate::magic_critical_hit(entity.id()));
+        }
+    }
+
+    /// Vanilla `ServerPlayer.crit` / `magicCrit`: the animation goes to the
+    /// player's trackers and the player.
+    fn send_attack_animation(&self, packet: CAnimate) {
+        self.get_world()
+            .broadcast_to_entity_trackers(self.id(), packet.clone(), None);
+        self.send_packet(packet);
     }
 
     fn item_attack_interaction(
@@ -738,31 +959,31 @@ impl Player {
         self.broadcast_inventory_changes();
     }
 
-    /// Awards stats and sends particles when an entity gets attacked by this player.
+    /// Vanilla `Player.damageStatsAndHearts`: awards the damage stat and sends
+    /// damage indicator particles for hits over one heart.
     pub fn damage_stats_and_hearts(&self, entity: &dyn Entity, old_entity_living_health: f32) {
-        const PARTICLES_PER_HEALTH: f32 = 0.5;
-        const PARTICLE_SPREAD_XZ: f64 = 0.1;
-        const PARTICLE_SPEED: f64 = 0.2;
-
-        if let Some(entity) = entity.as_living_entity() {
-            let actual_damage = old_entity_living_health - entity.get_health();
-            self.award_custom_stat_with_count(
-                &vanilla_custom_stats::DAMAGE_DEALT,
-                (actual_damage * 10.0).round() as i32,
-            );
-
-            let count = (actual_damage * 0.5).round() as i32;
-            let offset = DVec3::new(
-                0.0,
-                f64::from(entity.base().dimensions().height * PARTICLES_PER_HEALTH),
-                0.0,
-            );
+        let Some(entity) = entity.as_living_entity() else {
+            return;
+        };
+        let actual_damage = old_entity_living_health - entity.get_health();
+        // Java `Math.round(float)`.
+        self.award_custom_stat_with_count(
+            &vanilla_custom_stats::DAMAGE_DEALT,
+            (actual_damage * 10.0 + 0.5).floor() as i32,
+        );
+        if actual_damage > 2.0 {
+            let count = (actual_damage * 0.5) as i32;
+            let position = entity.position();
             self.get_world().send_particles(
                 ParticleData::simple(&vanilla_particle_types::DAMAGE_INDICATOR),
-                entity.position().add(offset),
+                DVec3::new(
+                    position.x,
+                    position.y + f64::from(entity.base().dimensions().height) * 0.5,
+                    position.z,
+                ),
                 count,
-                DVec3::new(PARTICLE_SPREAD_XZ, 0.0, PARTICLE_SPREAD_XZ),
-                PARTICLE_SPEED,
+                DVec3::new(0.1, 0.0, 0.1),
+                0.2,
             );
         }
     }
