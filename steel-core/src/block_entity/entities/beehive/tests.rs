@@ -10,9 +10,9 @@ use steel_utils::BlockPos;
 
 use super::{BEEHIVE_MAX_OCCUPANTS, BeehiveBlockEntity, LEVEL_HONEY};
 use crate::block_entity::BlockEntity as _;
-use crate::test_support::fresh_test_world;
+use crate::test_support::{TestWorld, fresh_test_world};
 
-fn new_hive(name: &'static str) -> (crate::test_support::TestWorld, BeehiveBlockEntity) {
+fn new_hive(name: &'static str) -> (TestWorld, BeehiveBlockEntity) {
     init_vanilla_registry();
     let fixture = fresh_test_world(name);
     let hive = BeehiveBlockEntity::new(
