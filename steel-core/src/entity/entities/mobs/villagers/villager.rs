@@ -13,6 +13,7 @@ use simdnbt::borrow::NbtCompound as BorrowedNbtCompoundView;
 use simdnbt::owned::{NbtCompound, NbtTag};
 use steel_macros::entity_behavior;
 use steel_protocol::packets::game::SoundSource;
+use steel_registry::blocks::BlockRef;
 use steel_registry::data_components::vanilla_components::{VILLAGER_FOOD, VILLAGER_VARIANT};
 use steel_registry::entity_type::{EntityDimensions, EntityTypeRef};
 use steel_registry::item_stack::ItemStack;
@@ -23,9 +24,9 @@ use steel_registry::vanilla_item_tags::ItemTag;
 use steel_registry::villager_profession::VillagerProfessionRef;
 use steel_registry::villager_type::VillagerTypeRef;
 use steel_registry::{
-    REGISTRY, RegistryExt as _, sound_events, vanilla_attributes, vanilla_custom_stats,
-    vanilla_entities, vanilla_items, vanilla_mob_effects, vanilla_villager_professions,
-    vanilla_villager_types,
+    REGISTRY, RegistryExt as _, sound_events, vanilla_attributes, vanilla_blocks,
+    vanilla_custom_stats, vanilla_entities, vanilla_items, vanilla_mob_effects, vanilla_timelines,
+    vanilla_villager_professions, vanilla_villager_types,
 };
 use steel_utils::entity_events::EntityStatus;
 use steel_utils::locks::SyncMutex;
@@ -37,7 +38,7 @@ use text_components::translation::TranslatedMessage;
 use uuid::Uuid;
 
 use super::trading::{
-    MerchantOffers, TradeContext, add_offers_from_trade_set, profession_trade_set,
+    MerchantOffer, MerchantOffers, TradeContext, add_offers_from_trade_set, profession_trade_set,
 };
 use super::villager_data::{
     MIN_VILLAGER_LEVEL, can_level_up, max_xp_per_level, read_villager_data, villager_type_at,
@@ -90,6 +91,12 @@ const UNHAPPY_TICKS: i32 = 40;
 const TAG_OFFERS: &str = "Offers";
 /// Vanilla `GOSSIP_DECAY_INTERVAL`.
 const GOSSIP_DECAY_INTERVAL: i64 = 24_000;
+/// Vanilla `allowedToRestock`: restocks a villager gets per day.
+const MAX_RESTOCKS_PER_DAY: i32 = 2;
+/// Vanilla `allowedToRestock`: ticks between the restocks of a day.
+const RESTOCK_INTERVAL: i64 = 2_400;
+/// Vanilla `shouldRestock`: ticks after a restock that count as a new day.
+const HALF_DAY: i64 = 12_000;
 /// Vanilla `VillagerProfession.requestedItems`: only farmers ask for wheat,
 /// seeds and bone meal.
 fn is_requested_item(profession: VillagerProfessionRef, item: ItemRef) -> bool {
@@ -104,6 +111,17 @@ fn is_requested_item(profession: VillagerProfessionRef, item: ItemRef) -> bool {
         .any(|requested| requested.key == item.key)
 }
 
+/// Vanilla `VillagerProfession.secondaryPoi`: the blocks a profession
+/// walks between while working; only farmers have them.
+pub(super) fn secondary_poi(profession: VillagerProfessionRef) -> &'static [BlockRef] {
+    static FARMER_SECONDARY_POI: [BlockRef; 1] = [&vanilla_blocks::FARMLAND];
+    if profession.key == vanilla_villager_professions::FARMER.key {
+        &FARMER_SECONDARY_POI
+    } else {
+        &[]
+    }
+}
+
 /// The plain fields of vanilla `Villager`.
 #[derive(Debug, Default)]
 struct VillagerState {
@@ -113,6 +131,8 @@ struct VillagerState {
     villager_xp: i32,
     last_restock_game_time: i64,
     number_of_restocks_today: i32,
+    /// Vanilla `lastRestockCheckDay`: not saved, like vanilla.
+    last_restock_check_day: i64,
     /// Vanilla `AbstractVillager.offers`: `None` until first needed.
     offers: Option<MerchantOffers>,
     /// Vanilla `AbstractVillager.tradingPlayer`.
@@ -599,6 +619,93 @@ impl VillagerEntity {
     /// Vanilla `playWorkSound`.
     pub fn play_work_sound(&self) {
         self.make_sound(self.profession().work_sound);
+    }
+
+    /// Vanilla `restock`: refills every offer, once per call.
+    pub fn restock(&self, game_time: i64) {
+        self.update_demand();
+        self.with_offers(|offers| {
+            for offer in offers.iter_mut() {
+                offer.reset_uses();
+            }
+        });
+        if let Some(player) = trading_player_of(self) {
+            self.update_special_prices(&player);
+        }
+        let mut state = self.state.lock();
+        state.last_restock_game_time = game_time;
+        state.number_of_restocks_today += 1;
+    }
+
+    /// Vanilla `needsToRestock`.
+    fn needs_to_restock(&self) -> bool {
+        self.with_offers(|offers| offers.iter().any(MerchantOffer::needs_restock))
+    }
+
+    /// Vanilla `allowedToRestock`: twice a day, two minutes apart.
+    fn allowed_to_restock(&self, game_time: i64) -> bool {
+        let state = self.state.lock();
+        state.number_of_restocks_today == 0
+            || state.number_of_restocks_today < MAX_RESTOCKS_PER_DAY
+                && game_time > state.last_restock_game_time + RESTOCK_INTERVAL
+    }
+
+    /// Vanilla `shouldRestock`: a new day (half a day since the last
+    /// restock, or a new overworld day) resets the restock count first.
+    pub fn should_restock(&self, world: &World) -> bool {
+        let game_time = world.game_time();
+        let current_day = world
+            .clock_total_ticks(vanilla_timelines::DAY.clock)
+            .map_or(0, |ticks| {
+                i64::from(vanilla_timelines::DAY.period_count(ticks))
+            });
+        let is_new_day = {
+            let mut state = self.state.lock();
+            let is_new_day = game_time > state.last_restock_game_time + HALF_DAY
+                || state.last_restock_check_day > 0 && current_day > state.last_restock_check_day;
+            state.last_restock_check_day = current_day;
+            if is_new_day {
+                state.last_restock_game_time = game_time;
+            }
+            is_new_day
+        };
+        if is_new_day {
+            self.reset_number_of_restocks();
+        }
+        self.allowed_to_restock(game_time) && self.needs_to_restock()
+    }
+
+    /// Vanilla `catchUpDemand`: the demand updates of the restocks it missed.
+    fn catch_up_demand(&self) {
+        let missed_updates = MAX_RESTOCKS_PER_DAY - self.state.lock().number_of_restocks_today;
+        if missed_updates > 0 {
+            self.with_offers(|offers| {
+                for offer in offers.iter_mut() {
+                    offer.reset_uses();
+                }
+            });
+        }
+        for _ in 0..missed_updates {
+            self.update_demand();
+        }
+        if let Some(player) = trading_player_of(self) {
+            self.update_special_prices(&player);
+        }
+    }
+
+    /// Vanilla `updateDemand`.
+    fn update_demand(&self) {
+        self.with_offers(|offers| {
+            for offer in offers.iter_mut() {
+                offer.update_demand();
+            }
+        });
+    }
+
+    /// Vanilla `resetNumberOfRestocks`.
+    fn reset_number_of_restocks(&self) {
+        self.catch_up_demand();
+        self.state.lock().number_of_restocks_today = 0;
     }
 
     /// Vanilla `AbstractVillager.playCelebrateSound`.

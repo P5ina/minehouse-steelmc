@@ -451,6 +451,8 @@ pub static LIKED_NOTEBLOCK_POSITION: MemoryModuleType<GlobalPos> =
     MemoryModuleType::with_codec("liked_noteblock", global_pos_codec());
 pub static LIKED_NOTEBLOCK_COOLDOWN_TICKS: MemoryModuleType<i32> =
     MemoryModuleType::with_codec("liked_noteblock_cooldown_ticks", int_codec());
+pub static SECONDARY_JOB_SITE: MemoryModuleType<Vec<GlobalPos>> =
+    MemoryModuleType::new("secondary_job_site");
 
 /// Vanilla `BlockPos.CODEC` writes an `[x, y, z]` int array.
 const fn block_pos_codec() -> MemoryCodec<BlockPos> {

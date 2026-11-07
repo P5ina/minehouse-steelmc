@@ -106,7 +106,7 @@ fn as_villager(entity: &SharedEntity) -> Option<&VillagerEntity> {
 
 /// Whether `pos`'s center is closer than `distance` to the body (vanilla
 /// `Vec3i.closerToCenterThan`).
-fn closer_to_center_than(pos: BlockPos, body: &VillagerEntity, distance: f64) -> bool {
+pub(super) fn closer_to_center_than(pos: BlockPos, body: &VillagerEntity, distance: f64) -> bool {
     let (x, y, z) = pos.get_center();
     glam::DVec3::new(x, y, z).distance_squared(body.position()) < distance * distance
 }
