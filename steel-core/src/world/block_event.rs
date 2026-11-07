@@ -88,6 +88,17 @@ impl World {
         });
     }
 
+    /// The queued block events as `(pos, block, param_a, param_b)`, oldest first.
+    #[cfg(test)]
+    pub(crate) fn queued_block_events(&self) -> Vec<(BlockPos, BlockRef, i32, i32)> {
+        self.block_events
+            .lock()
+            .events
+            .iter()
+            .map(|event| (event.pos, event.block, event.param_a, event.param_b))
+            .collect()
+    }
+
     /// Runs queued block events in Vanilla insertion order.
     ///
     /// Vanilla gates this queue only on simulation range and may synchronously

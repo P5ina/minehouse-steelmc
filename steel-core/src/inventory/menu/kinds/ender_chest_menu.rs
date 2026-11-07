@@ -42,9 +42,24 @@ impl MenuKind for EnderChestKind {
         self.container.lock().still_valid(player)
     }
 
-    /// `PlayerEnderChestContainer.stopOpen`
-    /// drops the active chest so a later validity check can't consult a stale one.
-    fn removed(&mut self, _behavior: &mut MenuBehavior, _player: &Player) {
+    /// `PlayerEnderChestContainer.startOpen`: the active chest counts the
+    /// viewer. The container lock is released first, since the chest's viewer
+    /// check reads it back.
+    fn start_open(&mut self, player: &Player) {
+        let active_chest = self.container.lock().active_chest();
+        if let Some(active_chest) = active_chest {
+            active_chest.start_open(player);
+        }
+    }
+
+    /// `PlayerEnderChestContainer.stopOpen`: the active chest drops the viewer,
+    /// then the container forgets it so a later validity check can't consult
+    /// a stale one.
+    fn removed(&mut self, _behavior: &mut MenuBehavior, player: &Player) {
+        let active_chest = self.container.lock().active_chest();
+        if let Some(active_chest) = active_chest {
+            active_chest.stop_open(player);
+        }
         self.container.lock().clear_active_chest();
     }
 }

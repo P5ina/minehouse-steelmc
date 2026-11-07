@@ -28,9 +28,7 @@ pub fn chest(
         container_id,
         container.clone(),
         rows,
-        ChestKind {
-            containers: vec![container],
-        },
+        ChestKind::new(vec![container]),
     )
 }
 
@@ -67,9 +65,7 @@ pub fn chest_halves(
     builder.route(chest.clone(), player.all(), FillDirection::Backward);
     builder.route(player.all(), chest, FillDirection::Forward);
 
-    builder.build(ChestKind {
-        containers: containers.to_vec(),
-    })
+    builder.build(ChestKind::new(containers.to_vec()))
 }
 
 /// Builds the same layout as [`chest`] under a caller-supplied menu kind.
@@ -121,17 +117,24 @@ pub fn menu_type_for_rows(rows: usize) -> MenuTypeRef {
     }
 }
 
-/// Per-menu chest state: just the backing containers for the validity check.
+/// Per-menu chest state: the backing containers, for the validity check and
+/// their viewer counts (Vanilla `ChestMenu` over a `CompoundContainer`).
 pub struct ChestKind {
     /// The backing containers.
     containers: Vec<ContainerRef>,
+    /// Whether `startOpen` reached the containers, so `stopOpen` is never
+    /// sent for a menu that was not opened.
+    opened: bool,
 }
 
 impl ChestKind {
     /// Creates a kind that stays valid while every container does.
     #[must_use]
     pub const fn new(containers: Vec<ContainerRef>) -> Self {
-        Self { containers }
+        Self {
+            containers,
+            opened: false,
+        }
     }
 }
 
@@ -148,6 +151,37 @@ impl MenuKind for ChestKind {
         self.containers
             .iter()
             .all(|container| container.still_valid(player))
+    }
+
+    /// `ChestMenu`'s constructor: `container.startOpen(player)`, which a
+    /// `CompoundContainer` forwards to both halves in order.
+    fn start_open(&mut self, player: &Player) {
+        if self.opened {
+            return;
+        }
+        self.opened = true;
+        for container in &self.containers {
+            container.start_open(player);
+        }
+    }
+
+    fn chest_menu_containers(&self) -> Vec<ContainerId> {
+        self.containers
+            .iter()
+            .map(ContainerRef::container_id)
+            .collect()
+    }
+
+    /// `ChestMenu.removed`: `container.stopOpen(player)` after the items are
+    /// handed back.
+    fn removed(&mut self, _behavior: &mut MenuBehavior, player: &Player) {
+        if !self.opened {
+            return;
+        }
+        self.opened = false;
+        for container in &self.containers {
+            container.stop_open(player);
+        }
     }
 }
 
