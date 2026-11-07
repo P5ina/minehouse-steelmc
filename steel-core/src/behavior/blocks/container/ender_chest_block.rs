@@ -10,6 +10,7 @@ use steel_registry::{vanilla_block_entity_types, vanilla_custom_stats};
 use steel_utils::{BlockPos, BlockStateId, Downcast as _, translations};
 use text_components::TextComponent;
 
+use super::anger_nearby_piglins;
 use crate::behavior::InventoryAccess;
 use crate::behavior::block::{BlockBehavior, BlockEntityCreation};
 use crate::behavior::context::{BlockHitResult, BlockPlaceContext, InteractionResult};
@@ -83,7 +84,7 @@ impl BlockBehavior for EnderChestBlock {
         );
 
         player.award_custom_stat(&vanilla_custom_stats::OPEN_ENDERCHEST);
-        // TODO: Anger nearby piglins
+        anger_nearby_piglins(world, player, true);
 
         InteractionResult::Success
     }

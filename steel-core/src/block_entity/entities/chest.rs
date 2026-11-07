@@ -13,7 +13,6 @@ use steel_protocol::packets::game::SoundSource;
 use steel_registry::blocks::block_state_ext::BlockStateExt as _;
 use steel_registry::blocks::properties::{BlockStateProperties, ChestType};
 use steel_registry::sound_event::SoundEventRef;
-use steel_registry::{sound_events, vanilla_blocks};
 
 use simdnbt::ToNbtTag;
 use simdnbt::borrow::{BaseNbtCompound as BorrowedNbtCompound, NbtCompound as NbtCompoundView};
@@ -24,7 +23,7 @@ use steel_registry::vanilla_block_entity_types;
 use steel_utils::{BlockPos, BlockStateId, DowncastType, DowncastTypeKey, locks::SyncMutex};
 use text_components::TextComponent;
 
-use crate::behavior::blocks::connected_direction;
+use crate::behavior::blocks::{chest_lid_sounds, connected_direction};
 use crate::block_entity::container_openers::{
     ContainerOpenersCounter, ContainerOpenersHooks, container_sound_pitch,
 };
@@ -121,6 +120,16 @@ impl ChestBlockEntity {
         self.openers.opener_count()
     }
 
+    /// Whether a player near the chest still has it open, Vanilla
+    /// `!getEntitiesWithContainerOpen().isEmpty()`.
+    #[must_use]
+    pub fn has_viewers(&self, world: &World) -> bool {
+        !self
+            .openers
+            .players_with_container_open(self, world, self.base.pos())
+            .is_empty()
+    }
+
     fn is_trapped(&self) -> bool {
         self.base.block_entity_type() == &vanilla_block_entity_types::TRAPPED_CHEST
     }
@@ -152,16 +161,17 @@ impl ChestBlockEntity {
 }
 
 impl ContainerOpenersHooks for ChestBlockEntity {
-    /// Only blocks that are a Vanilla `ChestBlock` have a chest sound.
+    /// Only blocks that are a Vanilla `ChestBlock` have a chest sound; copper
+    /// chests sound by their oxidation.
     fn on_open(&self, world: &Arc<World>, pos: BlockPos, state: BlockStateId) {
-        if is_chest_block(state) {
-            Self::play_sound(world, pos, state, &sound_events::BLOCK_CHEST_OPEN);
+        if let Some((open, _)) = chest_lid_sounds(state.get_block()) {
+            Self::play_sound(world, pos, state, open);
         }
     }
 
     fn on_close(&self, world: &Arc<World>, pos: BlockPos, state: BlockStateId) {
-        if is_chest_block(state) {
-            Self::play_sound(world, pos, state, &sound_events::BLOCK_CHEST_CLOSE);
+        if let Some((_, close)) = chest_lid_sounds(state.get_block()) {
+            Self::play_sound(world, pos, state, close);
         }
     }
 
@@ -192,11 +202,6 @@ impl ContainerOpenersHooks for ChestBlockEntity {
 
 /// Block event that sets a chest's open count on clients.
 const EVENT_SET_OPEN_COUNT: i32 = 1;
-
-fn is_chest_block(state: BlockStateId) -> bool {
-    let block = state.get_block();
-    block == &vanilla_blocks::CHEST || block == &vanilla_blocks::TRAPPED_CHEST
-}
 
 impl BlockEntity for ChestBlockEntity {
     fn base(&self) -> &BlockEntityBase {
