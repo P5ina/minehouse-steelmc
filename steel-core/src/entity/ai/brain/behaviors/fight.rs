@@ -125,10 +125,10 @@ pub fn set_walk_target_from_attack_target_if_target_out_of_reach<E: Mob + ?Sized
             let Some(living) = target.as_living_entity() else {
                 return false;
             };
-            let visible = memories
-                .lock()
-                .get_ref(&NEAREST_VISIBLE_LIVING_ENTITIES)
-                .is_some_and(|entities| entities.contains(target.id()));
+            // Clone the memory out first: the lazy visibility test locks the
+            // body's memories again.
+            let nearest_visible = memories.lock().get(&NEAREST_VISIBLE_LIVING_ENTITIES);
+            let visible = nearest_visible.is_some_and(|entities| entities.contains(target.id()));
             if visible && is_within_attack_range(body, living, PROJECTILE_ATTACK_RANGE_BUFFER) {
                 memories.lock().erase(&WALK_TARGET);
             } else {
@@ -168,10 +168,10 @@ pub fn melee_attack<E: Mob + ?Sized>(cooldown_between_attacks: i32) -> impl Beha
             };
             let holding_usable_non_melee_weapon =
                 body.is_holding(&mut |item| body.can_use_non_melee_weapon(item));
-            let visible = memories
-                .lock()
-                .get_ref(&NEAREST_VISIBLE_LIVING_ENTITIES)
-                .is_some_and(|entities| entities.contains(target.id()));
+            // Clone the memory out first: the lazy visibility test locks the
+            // body's memories again.
+            let nearest_visible = memories.lock().get(&NEAREST_VISIBLE_LIVING_ENTITIES);
+            let visible = nearest_visible.is_some_and(|entities| entities.contains(target.id()));
             if holding_usable_non_melee_weapon
                 || !body.is_within_melee_attack_range(living)
                 || !visible
