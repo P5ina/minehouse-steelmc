@@ -6,6 +6,7 @@ mod c_block_destruction;
 mod c_block_entity_data;
 mod c_block_event;
 mod c_block_update;
+mod c_boss_event;
 mod c_bundle_delimiter;
 mod c_change_difficulty;
 mod c_clear_titles;
@@ -112,6 +113,9 @@ pub use c_block_destruction::CBlockDestruction;
 pub use c_block_entity_data::CBlockEntityData;
 pub use c_block_event::CBlockEvent;
 pub use c_block_update::CBlockUpdate;
+pub use c_boss_event::{
+    BossBarColor, BossBarFlags, BossBarOverlay, BossEventOperation, CBossEvent,
+};
 pub use c_bundle_delimiter::CBundleDelimiter;
 pub use c_change_difficulty::CChangeDifficulty;
 pub use c_clear_titles::CClearTitles;
