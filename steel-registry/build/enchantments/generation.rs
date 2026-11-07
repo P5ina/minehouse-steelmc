@@ -1,9 +1,9 @@
 use super::{
     EnchantmentEffectsJson, ToShoutySnakeCase, TokenStream, generate_attribute_effects,
-    generate_conditional_entity_effects, generate_conditional_value_effects,
-    generate_crossbow_charging_sounds, generate_damage_immunity_effects,
-    generate_optional_value_effect, generate_sound_event_refs, generate_targeted_entity_effects,
-    generate_targeted_value_effects, quote,
+    generate_conditional_entity_effects, generate_conditional_location_effects,
+    generate_conditional_value_effects, generate_crossbow_charging_sounds,
+    generate_damage_immunity_effects, generate_optional_value_effect, generate_sound_event_refs,
+    generate_targeted_entity_effects, generate_targeted_value_effects, quote,
 };
 
 pub(super) fn generate_enchantment_effects(
@@ -161,9 +161,19 @@ pub(super) fn generate_enchantment_effects(
         counter,
     );
 
+    let location_changed = generate_conditional_location_effects(
+        &format!("{prefix}_LOCATION_CHANGED"),
+        &effects.location_changed,
+        statics,
+        counter,
+    );
     let hit_block = !effects.hit_block.is_empty();
-    let location_changed = !effects.location_changed.is_empty();
-    let tick = !effects.tick.is_empty();
+    let tick = generate_conditional_entity_effects(
+        &format!("{prefix}_TICK"),
+        &effects.tick,
+        statics,
+        counter,
+    );
     let prevent_equipment_drop = effects.prevent_equipment_drop.is_some();
     let prevent_armor_change = effects.prevent_armor_change.is_some();
 

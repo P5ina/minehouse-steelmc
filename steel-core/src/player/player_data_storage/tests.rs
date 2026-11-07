@@ -1,4 +1,4 @@
-use crate::entity::DEFAULT_MAX_AIR_SUPPLY;
+use crate::entity::{ActiveMobEffect, DEFAULT_MAX_AIR_SUPPLY};
 use crate::permission::PermissionSet;
 use crate::player::KnownPlayer;
 use crate::player::advancement::progress::AdvancementProgress;
@@ -20,6 +20,7 @@ use std::{
 use steel_registry::stat::vanilla_stat_types;
 use steel_registry::{
     REGISTRY, init_vanilla_registry, vanilla_blocks, vanilla_custom_stats, vanilla_items,
+    vanilla_mob_effects,
 };
 use tokio::fs;
 
@@ -45,6 +46,7 @@ fn sample_player_file(data_version: i32) -> PlayerDataFile {
         was_in_powder_snow: false,
         has_visual_fire: false,
         health: 20.0,
+        active_effects: Vec::new(),
         game_mode: 2,
         prev_game_mode: Some(0),
         abilities: AbilitiesFile {
@@ -461,6 +463,89 @@ fn player_file_roundtrip_preserves_domain_world_data() {
     assert!(decoded.seen_credits);
     assert_eq!(decoded.shoulder_entity_left, vec![10, 0, 0, 0]);
     assert_eq!(decoded.shoulder_entity_right, Vec::<u8>::new());
+}
+
+#[test]
+fn player_file_roundtrip_preserves_active_effects() {
+    init_vanilla_registry();
+    let hidden = steel_registry::MobEffectInstanceDetails::new(0, 9600, false, true, true, None);
+    let speed = steel_registry::MobEffectInstance::new(
+        vanilla_mob_effects::SPEED,
+        600,
+        2,
+        true,
+        false,
+        true,
+        Some(hidden),
+    );
+    let night_vision =
+        steel_registry::MobEffectInstance::simple(vanilla_mob_effects::NIGHT_VISION, -1, 0);
+    let effects =
+        [speed, night_vision].map(|effect| ActiveMobEffect::from_registry_instance(&effect));
+
+    let mut persistent = sample_player_file(PLAYER_DATA_VERSION)
+        .into_persistent()
+        .expect("sample player file should convert");
+    persistent.active_effects = effects.to_vec();
+    let file = PlayerDataFile::from_persistent(&persistent).expect("player file should build");
+    let encoded = encode_player_file(&file).expect("player file should encode");
+    let decoded = decode_player_file(&encoded)
+        .expect("player file should decode")
+        .into_persistent()
+        .expect("player file should convert");
+
+    assert_eq!(decoded.active_effects, effects);
+    assert_eq!(
+        decoded.active_effects[0].to_registry_instance(),
+        effects[0].to_registry_instance(),
+        "the hidden effect is kept"
+    );
+}
+
+/// A player file written by storage version 10, before effects were saved: the sample player
+/// file with five diamonds in slot 3.
+const PLAYER_FILE_WITHOUT_EFFECTS: &[u8] = include_bytes!("fixtures/player_storage_v10.dat");
+
+#[test]
+fn player_files_from_before_effects_still_load() {
+    init_vanilla_registry();
+    let persistent = decode_player_file(PLAYER_FILE_WITHOUT_EFFECTS)
+        .expect("a storage version 10 file should decode")
+        .into_persistent()
+        .expect("a storage version 10 file should convert");
+
+    assert_eq!(persistent.active_effects, []);
+    assert_eq!(persistent.data_version, PLAYER_DATA_VERSION);
+    assert_eq!(persistent.world, "lobby:void");
+    assert_eq!(persistent.experience_total, 32);
+    assert!(persistent.seen_credits);
+    let [slot] = persistent.inventory.as_slice() else {
+        panic!("the old file has one item: {:?}", persistent.inventory);
+    };
+    assert_eq!(slot.slot, 3);
+    assert!(slot.item.is(&vanilla_items::DIAMOND));
+    assert_eq!(slot.item.count(), 5);
+
+    // Saving writes the current version.
+    let file = PlayerDataFile::from_persistent(&persistent).expect("player file should build");
+    let encoded = encode_player_file(&file).expect("player file should encode");
+    assert_eq!(stored_version(&encoded), Some(PLAYER_STORAGE_VERSION));
+}
+
+#[test]
+fn player_files_with_shoulders_but_without_effects_still_load() {
+    // Storage version 11 is the current layout without the trailing active effects.
+    let file = sample_player_file(8);
+    let mut payload = wincode::serialize(&file).expect("player file should serialize");
+    let effects = wincode::serialize(&file.active_effects).expect("effects should serialize");
+    payload.truncate(payload.len() - effects.len());
+    let encoded = encode_file(PLAYER_MAGIC, 11, Ok(payload)).expect("v11 file should encode");
+
+    let decoded = decode_player_file(&encoded).expect("a storage version 11 file should decode");
+    assert_eq!(decoded.data_version, PLAYER_DATA_VERSION);
+    assert_eq!(decoded.shoulder_entity_left, vec![10, 0, 0, 0]);
+    assert_eq!(decoded.shoulder_entity_right, Vec::<u8>::new());
+    assert_eq!(decoded.active_effects, Vec::<Vec<u8>>::new());
 }
 
 #[test]

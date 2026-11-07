@@ -181,7 +181,7 @@ pub trait ItemBehavior: Send + Sync {
         if let Some(consumable) = stack.get(CONSUMABLE)
             && should_emit_consume_particles_and_sounds(consumable, ticks_remaining)
         {
-            emit_consume_particles_and_sounds(consumable, user.living());
+            emit_consume_particles_and_sounds(consumable, stack, user.living());
         }
     }
 
@@ -297,7 +297,11 @@ fn should_emit_consume_particles_and_sounds(consumable: &Consumable, ticks_remai
     ticks_used > wait_ticks && ticks_remaining % 4 == 0
 }
 
-fn emit_consume_particles_and_sounds(consumable: &Consumable, user: &dyn LivingEntity) {
+fn emit_consume_particles_and_sounds(
+    consumable: &Consumable,
+    stack: &ItemStack,
+    user: &dyn LivingEntity,
+) {
     // TODO: spawn item-crumb particles when `has_consume_particles()` is set.
     let (volume, pitch) = if consumable.animation() == ItemUseAnimation::Drink {
         (0.5, 0.9 + rand::random::<f32>() * 0.1)
@@ -306,7 +310,11 @@ fn emit_consume_particles_and_sounds(consumable: &Consumable, user: &dyn LivingE
         let pitch = 1.0 + 0.2 * (rand::random::<f32>() - rand::random::<f32>());
         (volume, pitch)
     };
-    if let Some(sound) = consumable.sound().registry_ref() {
+    // Vanilla `Consumable.OverrideConsumeSound`.
+    let sound = user
+        .consume_sound_override(stack)
+        .or_else(|| consumable.sound().registry_ref());
+    if let Some(sound) = sound {
         user.play_sound(sound, volume, pitch);
     }
 }
@@ -323,7 +331,7 @@ pub(crate) fn finish_consuming_stack(
         return apply_use_remainder(stack, stack.copy_with_count(stack.count()), user);
     };
 
-    emit_consume_particles_and_sounds(consumable, user);
+    emit_consume_particles_and_sounds(consumable, stack, user);
 
     if let Some(food) = stack.get(FOOD) {
         if let Some(sound) = consumable.sound().registry_ref() {

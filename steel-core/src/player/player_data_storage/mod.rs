@@ -25,6 +25,7 @@ use super::player_data::{
 };
 use crate::chunk_saver::PersistentEntity;
 use crate::config::StorageSelection;
+use crate::entity::ActiveMobEffect;
 use crate::level_data::RespawnData;
 use crate::permission::PermissionSubjectIndex;
 #[cfg(test)]
@@ -33,12 +34,13 @@ use crate::player::KnownPlayers;
 use crate::player::Player;
 use crate::player::player_data_storage::file_storage::FilePlayerDataStorage;
 use crate::player::player_data_storage::memory_storage::MemoryPlayerDataStorage;
+use steel_registry::MobEffectInstance as RegistryMobEffectInstance;
 use steel_registry::item_stack::ItemStack;
 use steel_utils::{BlockPos, Identifier};
 
 const PLAYER_MAGIC: [u8; 4] = *b"STLP";
 const GLOBAL_MAGIC: [u8; 4] = *b"STLG";
-const PLAYER_STORAGE_VERSION: u16 = 11;
+const PLAYER_STORAGE_VERSION: u16 = 12;
 const GLOBAL_STORAGE_VERSION: u16 = 1;
 const GLOBAL_PLAYER_DATA_VERSION: i32 = 1;
 
@@ -95,6 +97,8 @@ struct PlayerDataFile {
     ender_items: Vec<SlotFile>,
     shoulder_entity_left: Vec<u8>,
     shoulder_entity_right: Vec<u8>,
+    /// Each effect encoded with vanilla `MobEffectInstance.CODEC`.
+    active_effects: Vec<Vec<u8>>,
 }
 
 #[derive(SchemaWrite, SchemaRead)]
@@ -322,6 +326,11 @@ impl PlayerDataFile {
             was_in_powder_snow: data.was_in_powder_snow,
             has_visual_fire: data.has_visual_fire,
             health: data.health,
+            active_effects: data
+                .active_effects
+                .iter()
+                .map(effect_to_nbt_bytes)
+                .collect::<io::Result<_>>()?,
             game_mode: data.game_mode,
             prev_game_mode: data.prev_game_mode,
             abilities: AbilitiesFile {
@@ -409,6 +418,11 @@ impl PlayerDataFile {
             was_in_powder_snow: self.was_in_powder_snow,
             has_visual_fire: self.has_visual_fire,
             health: self.health,
+            active_effects: self
+                .active_effects
+                .iter()
+                .map(|bytes| effect_from_nbt_bytes(bytes))
+                .collect::<io::Result<_>>()?,
             game_mode: self.game_mode,
             prev_game_mode: self.prev_game_mode,
             abilities: PersistentAbilities {
@@ -522,6 +536,28 @@ fn item_from_nbt_bytes(bytes: &[u8]) -> io::Result<ItemStack> {
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "invalid item stack data"))
 }
 
+fn effect_to_nbt_bytes(effect: &ActiveMobEffect) -> io::Result<Vec<u8>> {
+    let NbtTag::Compound(compound) = effect.to_registry_instance().to_nbt_tag_ref() else {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "mob effect did not serialize to a compound",
+        ));
+    };
+    let mut bytes = Vec::new();
+    compound.write(&mut bytes);
+    Ok(bytes)
+}
+
+fn effect_from_nbt_bytes(bytes: &[u8]) -> io::Result<ActiveMobEffect> {
+    let invalid = |reason: String| io::Error::new(io::ErrorKind::InvalidData, reason);
+    let nbt = read_borrowed_compound(&mut Cursor::new(bytes))
+        .map_err(|e| invalid(format!("failed to parse mob effect NBT: {e}")))?;
+    let tag = NbtTag::Compound(simdnbt::borrow::NbtCompound::from(&nbt).to_owned());
+    let effect = RegistryMobEffectInstance::from_owned_nbt(&tag)
+        .ok_or_else(|| invalid("invalid mob effect data".to_owned()))?;
+    Ok(ActiveMobEffect::from_registry_instance(&effect))
+}
+
 fn encode_player_file(file: &PlayerDataFile) -> io::Result<Vec<u8>> {
     encode_file(
         PLAYER_MAGIC,
@@ -531,9 +567,37 @@ fn encode_player_file(file: &PlayerDataFile) -> io::Result<Vec<u8>> {
 }
 
 fn decode_player_file(bytes: &[u8]) -> io::Result<PlayerDataFile> {
-    let payload = decode_file(PLAYER_MAGIC, PLAYER_STORAGE_VERSION, bytes)?;
-    wincode::deserialize(&payload)
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))
+    let invalid = |reason: String| io::Error::new(io::ErrorKind::InvalidData, reason);
+    // Older layouts are the current one without its newest trailing fields, so the missing
+    // fields are appended empty before decoding: (storage version, data version, missing).
+    let legacy = match stored_version(bytes) {
+        // Before shoulder entities and active effects.
+        Some(10) => Some((10, 7, 3)),
+        // Before active effects.
+        Some(11) => Some((11, 8, 1)),
+        _ => None,
+    };
+    let Some((storage_version, data_version, missing_fields)) = legacy else {
+        let payload = decode_file(PLAYER_MAGIC, PLAYER_STORAGE_VERSION, bytes)?;
+        return wincode::deserialize(&payload).map_err(|e| invalid(e.to_string()));
+    };
+    let mut payload = decode_file(PLAYER_MAGIC, storage_version, bytes)?;
+    let empty = wincode::serialize(&Vec::<u8>::new()).map_err(|e| invalid(e.to_string()))?;
+    for _ in 0..missing_fields {
+        payload.extend_from_slice(&empty);
+    }
+    let mut file: PlayerDataFile =
+        wincode::deserialize(&payload).map_err(|e| invalid(e.to_string()))?;
+    if file.data_version == data_version {
+        file.data_version = PLAYER_DATA_VERSION;
+    }
+    Ok(file)
+}
+
+/// Storage version in a player or global file header, if the header is there.
+fn stored_version(bytes: &[u8]) -> Option<u16> {
+    let header = bytes.get(..6)?;
+    Some(u16::from_le_bytes([header[4], header[5]]))
 }
 
 fn encode_global_file(file: &GlobalPlayerDataFile) -> io::Result<Vec<u8>> {

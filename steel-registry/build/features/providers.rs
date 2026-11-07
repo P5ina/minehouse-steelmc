@@ -162,7 +162,7 @@ pub(super) fn generate_int_provider(provider: &IntProvider) -> TokenStream {
     }
 }
 
-pub(super) fn generate_float_provider(provider: FloatProvider) -> TokenStream {
+pub(crate) fn generate_float_provider(provider: FloatProvider) -> TokenStream {
     match provider {
         FloatProvider::Constant(value) => quote! { FloatProvider::Constant(#value) },
         FloatProvider::Uniform {

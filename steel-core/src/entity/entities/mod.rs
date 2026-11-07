@@ -18,7 +18,7 @@ pub use mobs::passive::*;
 pub use mobs::raiders::{
     EvokerEntity, IllusionerEntity, PillagerEntity, RavagerEntity, VindicatorEntity, WitchEntity,
 };
-pub use mobs::villagers::VillagerEntity;
+pub use mobs::villagers::{VillagerEntity, WanderingTraderEntity};
 pub use objects::display_ui::{BlockDisplayEntity, ItemFrameEntity, LeashFenceKnotEntity};
 pub use objects::effects::{AreaEffectCloudEntity, LightningBoltEntity};
 pub use objects::explosives::{EndCrystalEntity, PrimedTntEntity};
@@ -26,8 +26,8 @@ pub use objects::items::{ExperienceOrbEntity, FallingBlockEntity, ItemEntity};
 pub use objects::projectiles::{
     ArrowEntity, EnderPearlEntity, EvokerFangsEntity, EyeOfEnderEntity, Fireball,
     FireworkRocketEntity, FishingHookEntity, LargeFireballEntity, LingeringPotionEntity,
-    SmallFireballEntity, SnowballEntity, SpectralArrowEntity, SplashPotionEntity, ThrownEggEntity,
-    ThrownTridentEntity,
+    LlamaSpitEntity, SmallFireballEntity, SnowballEntity, SpectralArrowEntity, SplashPotionEntity,
+    ThrownEggEntity, ThrownTridentEntity,
 };
 pub use objects::technical::{InteractionEntity, MarkerEntity};
 pub use objects::vehicles::ChestMinecartEntity;

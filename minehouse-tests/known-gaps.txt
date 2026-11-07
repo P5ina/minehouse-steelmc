@@ -16,7 +16,6 @@ minehouse_mob_frog
 minehouse_mob_goat
 minehouse_mob_happy_ghast
 minehouse_mob_hoglin
-minehouse_mob_llama
 minehouse_mob_panda
 minehouse_mob_pig
 minehouse_mob_piglin
@@ -26,9 +25,7 @@ minehouse_mob_shulker
 minehouse_mob_sniffer
 minehouse_mob_sulfur_cube
 minehouse_mob_tadpole
-minehouse_mob_trader_llama
 minehouse_mob_turtle
-minehouse_mob_wandering_trader
 minehouse_mob_warden
 minehouse_mob_wither
 minehouse_mob_zoglin
