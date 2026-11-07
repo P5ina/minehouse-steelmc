@@ -88,6 +88,7 @@ mod timelines;
 mod trim_materials;
 mod trim_patterns;
 mod villager_professions;
+mod villager_trades;
 mod villager_types;
 mod wolf_sound_variants;
 mod wolf_variants;
@@ -180,6 +181,7 @@ const CONFIGURED_FEATURES: &str = "configured_features";
 const PLACED_FEATURES: &str = "placed_features";
 const CUSTOM_STATS: &str = "custom_stats";
 const SUSPICIOUS_STEW_EFFECTS: &str = "suspicious_stew_effects";
+const VILLAGER_TRADES: &str = "villager_trades";
 
 pub fn main() {
     // Rerun build script when any file in the build/ directory changes
@@ -277,6 +279,7 @@ pub fn main() {
         (custom_stats::build(), CUSTOM_STATS),
         (suspicious_stew_effects::build(), SUSPICIOUS_STEW_EFFECTS),
         (advancements::build(), ADVANCEMENTS),
+        (villager_trades::build(), VILLAGER_TRADES),
     ];
 
     // Track which files we're generating this run

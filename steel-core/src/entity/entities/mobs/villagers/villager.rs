@@ -8,7 +8,7 @@ use std::sync::{Arc, Weak};
 
 use glam::DVec3;
 use simdnbt::borrow::NbtCompound as BorrowedNbtCompoundView;
-use simdnbt::owned::NbtCompound;
+use simdnbt::owned::{NbtCompound, NbtTag};
 use steel_macros::entity_behavior;
 use steel_protocol::packets::game::SoundSource;
 use steel_registry::data_components::vanilla_components::{VILLAGER_FOOD, VILLAGER_VARIANT};
@@ -26,10 +26,14 @@ use steel_registry::{
 };
 use steel_utils::entity_events::EntityStatus;
 use steel_utils::locks::SyncMutex;
+use steel_utils::random::xoroshiro::Xoroshiro;
 use steel_utils::types::{Difficulty, InteractionHand};
 use steel_utils::{BlockPos, DowncastType, DowncastTypeKey, Identifier};
 use uuid::Uuid;
 
+use super::trading::{
+    MerchantOffers, TradeContext, add_offers_from_trade_set, profession_trade_set,
+};
 use super::villager_data::{
     MIN_VILLAGER_LEVEL, read_villager_data, villager_type_at, write_villager_data,
 };
@@ -63,6 +67,8 @@ const REQUIRED_PATH_LENGTH: f32 = 48.0;
 const DEFAULT_FOLLOW_RANGE: f64 = 16.0;
 /// Vanilla `setUnhappy`: ticks the villager shakes its head.
 const UNHAPPY_TICKS: i32 = 40;
+/// Vanilla `AbstractVillager` offers NBT key.
+const TAG_OFFERS: &str = "Offers";
 /// Vanilla `GOSSIP_DECAY_INTERVAL`.
 const GOSSIP_DECAY_INTERVAL: i64 = 24_000;
 /// Vanilla `VillagerProfession.requestedItems`: only farmers ask for wheat,
@@ -88,6 +94,8 @@ struct VillagerState {
     villager_xp: i32,
     last_restock_game_time: i64,
     number_of_restocks_today: i32,
+    /// Vanilla `AbstractVillager.offers`: `None` until first needed.
+    offers: Option<MerchantOffers>,
 }
 
 /// A villager.
@@ -218,8 +226,11 @@ impl VillagerEntity {
         else {
             return;
         };
-        // TODO(villager trades): a new profession drops the offers.
         let mut data = *self.entity_data.lock().villager_data.get();
+        // Vanilla `setVillagerData`: a new profession drops the old offers.
+        if data.profession != profession_id {
+            self.state.lock().offers = None;
+        }
         data.villager_type = type_id;
         data.profession = profession_id;
         data.level = level.max(MIN_VILLAGER_LEVEL);
@@ -347,6 +358,53 @@ impl VillagerEntity {
         }
     }
 
+    /// Vanilla `AbstractVillager.getOffers`: rolls the first trades on first use.
+    pub fn with_offers<T>(&self, f: impl FnOnce(&mut MerchantOffers) -> T) -> T {
+        let missing = self.state.lock().offers.is_none();
+        if missing {
+            let mut offers = MerchantOffers::new();
+            self.update_trades(&mut offers);
+            let mut state = self.state.lock();
+            let offers = state.offers.get_or_insert(offers);
+            return f(offers);
+        }
+        let mut state = self.state.lock();
+        let offers = state.offers.get_or_insert_with(MerchantOffers::new);
+        f(offers)
+    }
+
+    /// Vanilla `Villager.updateTrades`: adds the trade set of the current
+    /// profession and level.
+    // TODO(trading menu): `updateSpecialPrices` for the trading player.
+    fn update_trades(&self, offers: &mut MerchantOffers) {
+        let Some(trade_set) = profession_trade_set(self.profession(), self.villager_level()) else {
+            return;
+        };
+        // Vanilla seeds the trade set's random sequence from the world; Steel has no
+        // random sequences yet, so every roll gets a fresh seed.
+        let mut random = Xoroshiro::from_seed(rand::random());
+        let mut ctx = TradeContext {
+            random: &mut random,
+            merchant_variant: Some(self.villager_type()),
+        };
+        add_offers_from_trade_set(&mut ctx, offers, trade_set);
+    }
+
+    /// Vanilla `Villager.increaseMerchantCareer`: levels up and adds that level's trades.
+    pub fn increase_merchant_career(&self) {
+        self.set_villager_data(
+            self.villager_type(),
+            self.profession(),
+            self.villager_level() + 1,
+        );
+        // Vanilla `updateTrades` goes through `getOffers`, which first rolls the
+        // new level's trades when the villager never had offers.
+        self.with_offers(|_| ());
+        let mut offers = self.state.lock().offers.take().unwrap_or_default();
+        self.update_trades(&mut offers);
+        self.state.lock().offers = Some(offers);
+    }
+
     /// Vanilla `playWorkSound`.
     pub fn play_work_sound(&self) {
         self.make_sound(self.profession().work_sound);
@@ -383,6 +441,9 @@ impl VillagerEntity {
         nbt.insert("LastRestock", state.last_restock_game_time);
         nbt.insert("LastGossipDecay", state.last_gossip_decay_time);
         nbt.insert("RestocksToday", state.number_of_restocks_today);
+        if let Some(offers) = &state.offers {
+            nbt.insert(TAG_OFFERS, NbtTag::Compound(offers.to_nbt()));
+        }
     }
 
     fn load_villager(&self, nbt: BorrowedNbtCompoundView<'_, '_>) {
@@ -414,6 +475,7 @@ impl VillagerEntity {
         state.last_restock_game_time = nbt.long("LastRestock").unwrap_or(0);
         state.last_gossip_decay_time = nbt.long("LastGossipDecay").unwrap_or(0);
         state.number_of_restocks_today = nbt.int("RestocksToday").unwrap_or(0);
+        state.offers = nbt.compound(TAG_OFFERS).and_then(MerchantOffers::from_nbt);
         // TODO(villager brain): vanilla `refreshBrain` after loading.
     }
 }
@@ -517,7 +579,6 @@ impl Entity for VillagerEntity {
     fn save_additional(&self, nbt: &mut NbtCompound) {
         self.save_mob(nbt);
         self.save_ageable_mob(nbt);
-        // TODO(villager trades): vanilla `AbstractVillager` saves "Offers".
         save_inventory(&self.inventory, nbt);
         self.save_villager(nbt);
     }
