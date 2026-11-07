@@ -543,8 +543,19 @@ impl LivingEntity for WitchEntity {
         Mob::mob_server_ai_step(self, entity);
     }
 
+    fn die(&self, source: &DamageSource) {
+        self.die_raider(source);
+        self.default_die(source);
+    }
+
+    fn hurt_server(&self, world: &World, source: &DamageSource, amount: f32) -> bool {
+        self.hurt_server_raider(world);
+        self.default_hurt_server(world, source, amount)
+    }
+
     fn ai_step(&self, entity: &SharedEntity) -> Option<MoveResult> {
         self.witch_ai_step();
+        self.raider_ai_step(entity);
         Monster::monster_ai_step(self, entity)
     }
 }
@@ -568,6 +579,10 @@ impl Mob for WitchEntity {
 
     fn remove_when_far_away(&self, dist_sqr: f64) -> bool {
         self.remove_when_far_away_raider(dist_sqr)
+    }
+
+    fn requires_custom_persistence(&self) -> bool {
+        self.requires_custom_persistence_raider()
     }
 
     fn finalize_spawn(

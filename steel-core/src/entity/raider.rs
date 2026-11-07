@@ -1,9 +1,9 @@
 //! Raid members (Vanilla `Raider`) and the ominous banner they carry.
 //!
-//! Raids themselves come later; until then a raider never has a current raid,
-//! so the raid-only behavior (joining raids, banner pickup, celebrating, raid
-//! goals) stays inactive exactly as it is for a raider outside a raid.
+//! The raid itself lives in [`crate::world::raid`]; a raider keeps a handle to
+//! its current raid the way vanilla keeps the `Raid` object.
 
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 
 use simdnbt::borrow::NbtCompound as BorrowedNbtCompoundView;
@@ -18,14 +18,19 @@ use steel_registry::item_stack::ItemStack;
 use steel_registry::registry::RegistryHolder;
 use steel_registry::sound_event::SoundEventRef;
 use steel_registry::{vanilla_banner_patterns, vanilla_entities, vanilla_items};
+use steel_utils::locks::SyncMutex;
 use steel_utils::translations;
 use text_components::TextComponent;
 
-use crate::entity::{EntitySpawnReason, PatrollingMonster};
+use crate::entity::damage::DamageSource;
+use crate::entity::{EntitySpawnReason, LivingEntity, PatrollingMonster, SharedEntity};
 use crate::inventory::prelude::EquipmentSlot;
+use crate::world::World;
+use crate::world::raid::{Raid, Raids};
 
 const TAG_WAVE: &str = "Wave";
 const TAG_CAN_JOIN_RAID: &str = "CanJoinRaid";
+const TAG_RAID_ID: &str = "RaidId";
 /// Vanilla `Raider.updateNoActionTime`: raiders idle twice as fast as other mobs.
 const RAIDER_NO_ACTION_TIME_INCREMENT: i32 = 2;
 
@@ -65,6 +70,7 @@ pub struct RaiderState {
     wave: AtomicI32,
     can_join_raid: AtomicBool,
     ticks_outside_raid: AtomicI32,
+    raid: SyncMutex<Option<Arc<Raid>>>,
 }
 
 impl RaiderState {
@@ -74,6 +80,7 @@ impl RaiderState {
             wave: AtomicI32::new(0),
             can_join_raid: AtomicBool::new(false),
             ticks_outside_raid: AtomicI32::new(0),
+            raid: SyncMutex::new(None),
         }
     }
 }
@@ -85,8 +92,7 @@ impl Default for RaiderState {
 }
 
 /// Vanilla `Raider`.
-// TODO: Raids: current raid, `getRaidAt` joining in `aiStep`, leader/hero bookkeeping in
-// `die`, banner pickup, boss bar on hurt, and the `ObtainRaidLeaderBannerGoal`,
+// TODO: banner pickup (`pickUpItem`) and the `ObtainRaidLeaderBannerGoal`,
 // `PathfindToRaidGoal`, `RaiderMoveThroughVillageGoal` and `RaiderCelebration` goals.
 pub trait Raider: PatrollingMonster {
     fn raider_state(&self) -> &RaiderState;
@@ -129,10 +135,92 @@ pub trait Raider: PatrollingMonster {
             .store(ticks, Ordering::Relaxed);
     }
 
+    /// Vanilla `getCurrentRaid`.
+    fn current_raid(&self) -> Option<Arc<Raid>> {
+        self.raider_state().raid.lock().clone()
+    }
+
+    /// Vanilla `setCurrentRaid`.
+    fn set_current_raid(&self, raid: Option<Arc<Raid>>) {
+        *self.raider_state().raid.lock() = raid;
+    }
+
     /// Vanilla `hasActiveRaid`.
     fn has_active_raid(&self) -> bool {
-        // TODO: `getCurrentRaid() != null && getCurrentRaid().isActive()` once raids exist.
-        false
+        self.current_raid().is_some_and(|raid| raid.is_active())
+    }
+
+    /// Vanilla `hasRaid`.
+    fn has_raid(&self) -> bool {
+        self.level().is_some_and(|world| {
+            self.current_raid().is_some() || world.get_raid_at(self.block_position()).is_some()
+        })
+    }
+
+    /// Vanilla `applyRaidBuffs`, with the raid's `getEnchantOdds` passed in.
+    fn apply_raid_buffs(&self, _world: &Arc<World>, _wave: i32, _enchant_odds: f32) {}
+
+    /// The raid part of Vanilla `Raider.aiStep`, run before the mob's own.
+    fn raider_ai_step(&self, entity: &SharedEntity) {
+        let Some(world) = self.level() else {
+            return;
+        };
+        if !LivingEntity::is_alive(self) || !self.can_join_raid() {
+            return;
+        }
+        match self.current_raid() {
+            None => {
+                if world.game_time() % 20 == 0
+                    && let Some(nearby) = world.get_raid_at(self.block_position())
+                    && entity.as_raider().is_some_and(Raids::can_join_raid)
+                {
+                    nearby.join_raid(&world, nearby.groups_spawned(), entity, None);
+                }
+            }
+            Some(_) => {
+                if let Some(target) = self.target()
+                    && (target.entity_type() == &vanilla_entities::PLAYER
+                        || target.entity_type() == &vanilla_entities::IRON_GOLEM)
+                {
+                    self.set_no_action_time(0);
+                }
+            }
+        }
+    }
+
+    /// The raid part of Vanilla `Raider.die`, run before `super.die`.
+    fn die_raider(&self, source: &DamageSource) {
+        let Some(world) = self.level() else {
+            return;
+        };
+        let Some(raid) = self.current_raid() else {
+            return;
+        };
+        if self.is_patrol_leader() {
+            raid.remove_leader(self.wave());
+        }
+        if let Some(killer) = source.causing_entity()
+            && killer.entity_type() == &vanilla_entities::PLAYER
+        {
+            raid.add_hero_of_the_village(killer.uuid());
+        }
+        if let Some(raider) = self.as_raider() {
+            raid.remove_from_raid(&world, raider, false);
+        }
+    }
+
+    /// The raid part of Vanilla `Raider.hurtServer`, run before `super.hurtServer`.
+    fn hurt_server_raider(&self, world: &World) {
+        if let Some(raid) = self.current_raid()
+            && raid.is_active()
+        {
+            raid.update_bossbar(world);
+        }
+    }
+
+    /// Vanilla `Raider.requiresCustomPersistence`.
+    fn requires_custom_persistence_raider(&self) -> bool {
+        self.is_passenger() || self.is_leashed() || self.current_raid().is_some()
     }
 
     /// Vanilla `isCaptain`: a patrol leader wearing the ominous banner.
@@ -155,9 +243,9 @@ pub trait Raider: PatrollingMonster {
         self.set_no_action_time(self.no_action_time() + RAIDER_NO_ACTION_TIME_INCREMENT);
     }
 
-    /// Vanilla `Raider.removeWhenFarAway`: no current raid, so the patrol rule applies.
+    /// Vanilla `Raider.removeWhenFarAway`: raid members stay, others follow the patrol rule.
     fn remove_when_far_away_raider(&self, dist_sqr: f64) -> bool {
-        self.remove_when_far_away_patrolling(dist_sqr)
+        self.current_raid().is_none() && self.remove_when_far_away_patrolling(dist_sqr)
     }
 
     /// The raider and patrol part of Vanilla `finalizeSpawn`, run before the mob's own.
@@ -173,11 +261,31 @@ pub trait Raider: PatrollingMonster {
         self.save_patrolling(nbt);
         nbt.insert(TAG_WAVE, self.wave());
         nbt.insert(TAG_CAN_JOIN_RAID, i8::from(self.can_join_raid()));
+        if let Some(raid) = self.current_raid()
+            && let Some(world) = self.level()
+            && let Some(id) = world.raids().get_id(&raid)
+        {
+            nbt.insert(TAG_RAID_ID, id);
+        }
     }
 
     fn load_raider(&self, nbt: BorrowedNbtCompoundView<'_, '_>) {
         self.load_patrolling(nbt);
         self.set_wave(nbt.int(TAG_WAVE).unwrap_or(0));
         self.set_can_join_raid(nbt.byte(TAG_CAN_JOIN_RAID).is_some_and(|b| b != 0));
+        if let Some(raid_id) = nbt.int(TAG_RAID_ID)
+            && let Some(world) = self.level()
+        {
+            let raid = world.raids().get(raid_id);
+            self.set_current_raid(raid.clone());
+            if let Some(raid) = raid
+                && let Some(raider) = self.as_raider()
+            {
+                raid.add_wave_mob(&world, self.wave(), raider, false);
+                if self.is_patrol_leader() {
+                    raid.set_leader(self.wave(), raider);
+                }
+            }
+        }
     }
 }

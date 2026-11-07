@@ -157,6 +157,37 @@ pub(crate) fn insert_full_chunk(
     pos: ChunkPos,
     block_ticking_ready: bool,
 ) -> Arc<ChunkHolder> {
+    insert_full_chunk_at_level(
+        world,
+        pos,
+        ChunkTicketLevel::BLOCK_TICKING_CHUNK,
+        block_ticking_ready,
+        false,
+    )
+}
+
+/// Inserts a ready full chunk whose entities tick, like one inside a player's
+/// simulation distance.
+pub(crate) fn insert_entity_ticking_full_chunk(
+    world: &Arc<World>,
+    pos: ChunkPos,
+) -> Arc<ChunkHolder> {
+    insert_full_chunk_at_level(
+        world,
+        pos,
+        ChunkTicketLevel::ENTITY_TICKING_CHUNK,
+        true,
+        true,
+    )
+}
+
+fn insert_full_chunk_at_level(
+    world: &Arc<World>,
+    pos: ChunkPos,
+    level: ChunkTicketLevel,
+    block_ticking_ready: bool,
+    entity_ticking_ready: bool,
+) -> Arc<ChunkHolder> {
     let min_y = world.get_min_y();
     let height = world.get_height();
     let sections = (0..height / 16)
@@ -171,18 +202,18 @@ pub(crate) fn insert_full_chunk(
         Arc::downgrade(world),
     );
     let _ = proto.promote_to_full();
-    let holder = Arc::new(ChunkHolder::new(
-        pos,
-        ChunkTicketLevel::BLOCK_TICKING_CHUNK,
-        Some(ChunkTicketLevel::BLOCK_TICKING_CHUNK),
-        min_y,
-        height,
-    ));
+    let holder = Arc::new(ChunkHolder::new(pos, level, Some(level), min_y, height));
     holder.insert_chunk(proto, ChunkStatus::Full);
     if block_ticking_ready {
         assert_eq!(
             holder.transition_ticking_readiness(TickingReadiness::BlockTicking),
             Some(TickingReadiness::Unready)
+        );
+    }
+    if entity_ticking_ready {
+        assert_eq!(
+            holder.transition_ticking_readiness(TickingReadiness::EntityTicking),
+            Some(TickingReadiness::BlockTicking)
         );
     }
     let _ = world.chunk_map.chunks.insert_sync(pos, Arc::clone(&holder));

@@ -1,14 +1,11 @@
 //! `RaidOmenMobEffect` behavior.
 
 use super::MobEffectBehavior;
-use crate::entity::LivingEntity;
+use crate::entity::{Entity as _, LivingEntity};
 use crate::world::World;
 
-/// Raid omen mob effect behavior.
-// TODO: `applyEffectTick` checks the mob is a non-spectator `ServerPlayer`
-// with a pending raid-omen position, then calls `level.getRaids()
-// .createOrExtendRaid(player, pos)` and clears the position, removing this
-// effect (returns `false`).
+/// Raid omen mob effect behavior: on its last tick the remembered position
+/// starts or extends a raid.
 pub struct RaidOmenBehavior;
 
 impl MobEffectBehavior for RaidOmenBehavior {
@@ -16,7 +13,18 @@ impl MobEffectBehavior for RaidOmenBehavior {
         tick_count == 1
     }
 
-    fn apply_effect_tick(&self, _world: &World, _user: &dyn LivingEntity, _amplifier: i32) -> bool {
-        true
+    fn apply_effect_tick(&self, world: &World, user: &dyn LivingEntity, _amplifier: i32) -> bool {
+        let Some(player) = user.as_player() else {
+            return true;
+        };
+        if player.is_spectator() {
+            return true;
+        }
+        let Some(pos) = player.raid_omen_position() else {
+            return true;
+        };
+        world.raids().create_or_extend_raid(world, player, pos);
+        player.clear_raid_omen_position();
+        false
     }
 }
