@@ -320,3 +320,17 @@ impl MemoryValue for Path {
 }
 
 pub static PATH: MemoryModuleType<Path> = MemoryModuleType::new("path");
+
+pub static NEAREST_VISIBLE_ATTACKABLE_PLAYERS: MemoryModuleType<Vec<SharedEntity>> =
+    MemoryModuleType::new("nearest_visible_targetable_players");
+pub static NEAREST_REPELLENT: MemoryModuleType<BlockPos> =
+    MemoryModuleType::new("nearest_repellent");
+pub static PACIFIED: MemoryModuleType<bool> = MemoryModuleType::new("pacified");
+pub static NEAREST_VISIBLE_ADULT_PIGLIN: MemoryModuleType<SharedEntity> =
+    MemoryModuleType::new("nearest_visible_adult_piglin");
+pub static NEAREST_VISIBLE_ADULT_HOGLINS: MemoryModuleType<Vec<SharedEntity>> =
+    MemoryModuleType::new("nearest_visible_adult_hoglins");
+pub static VISIBLE_ADULT_PIGLIN_COUNT: MemoryModuleType<i32> =
+    MemoryModuleType::new("visible_adult_piglin_count");
+pub static VISIBLE_ADULT_HOGLIN_COUNT: MemoryModuleType<i32> =
+    MemoryModuleType::new("visible_adult_hoglin_count");

@@ -14,6 +14,7 @@ pub use mobs::hostile::{
     WitherSkeletonEntity, ZombieEntity, ZombieGroupData, ZombieVillagerEntity,
 };
 pub use mobs::hostile::{ElderGuardianEntity, Guardian, GuardianEntity};
+pub use mobs::hostile::{HoglinEntity, ZoglinEntity};
 pub use mobs::neutral::{PolarBearEntity, WolfEntity};
 pub use mobs::passive::*;
 pub use mobs::raiders::{
