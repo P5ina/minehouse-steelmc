@@ -40,3 +40,5 @@ pub use sheep::SheepEntity;
 pub use squid::{GlowSquidEntity, Squid, SquidEntity};
 mod strider;
 pub use strider::StriderEntity;
+mod panda;
+pub use panda::{PandaEntity, PandaGene};
