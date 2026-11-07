@@ -15,6 +15,7 @@ mod nautilus;
 mod parrot;
 mod pig;
 mod sheep;
+mod sniffer;
 mod squid;
 
 pub use armadillo::ArmadilloEntity;
@@ -37,6 +38,7 @@ pub use nautilus::{AbstractNautilus, NautilusEntity, ZombieNautilusEntity};
 pub use parrot::ParrotEntity;
 pub use pig::PigEntity;
 pub use sheep::SheepEntity;
+pub use sniffer::SnifferEntity;
 pub use squid::{GlowSquidEntity, Squid, SquidEntity};
 mod strider;
 pub use strider::StriderEntity;
