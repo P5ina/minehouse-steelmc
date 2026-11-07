@@ -176,25 +176,79 @@ pub(crate) fn air_and_water_random_pos(
 ) -> Option<DVec3> {
     let restrict = mob_restricted(mob, f64::from(horizontal_dist));
     generate_random_pos(mob, || {
-        let direction = {
-            let mut random = LegacyRandom::from_seed(rand::random());
-            generate_random_direction_within_radians(
-                &mut random,
-                0.0,
-                f64::from(horizontal_dist),
-                vertical_dist,
-                flying_height,
-                x_dir,
-                z_dir,
-                max_xz_radians_difference,
-            )
-        }?;
-        let pos = generate_random_pos_toward_direction(mob, f64::from(horizontal_dist), direction);
-        if is_outside_limits(mob, pos) || is_restricted(restrict, mob, pos) {
-            return None;
-        }
-        let pos = move_up_out_of_solid(mob, pos)?;
-        (!has_malus(mob, pos)).then_some(pos)
+        air_and_water_generate_random_pos(
+            mob,
+            horizontal_dist,
+            vertical_dist,
+            flying_height,
+            x_dir,
+            z_dir,
+            max_xz_radians_difference,
+            restrict,
+        )
+    })
+}
+
+/// Vanilla `AirAndWaterRandomPos.generateRandomPos`.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "vanilla air-and-water position helper takes these values independently"
+)]
+fn air_and_water_generate_random_pos(
+    mob: &(impl PathfinderMob + ?Sized),
+    horizontal_dist: i32,
+    vertical_dist: i32,
+    flying_height: i32,
+    x_dir: f64,
+    z_dir: f64,
+    max_xz_radians_difference: f64,
+    restrict: bool,
+) -> Option<BlockPos> {
+    let direction = {
+        let mut random = LegacyRandom::from_seed(rand::random());
+        generate_random_direction_within_radians(
+            &mut random,
+            0.0,
+            f64::from(horizontal_dist),
+            vertical_dist,
+            flying_height,
+            x_dir,
+            z_dir,
+            max_xz_radians_difference,
+        )
+    }?;
+    let pos = generate_random_pos_toward_direction(mob, f64::from(horizontal_dist), direction);
+    if is_outside_limits(mob, pos) || is_restricted(restrict, mob, pos) {
+        return None;
+    }
+    let pos = move_up_out_of_solid(mob, pos)?;
+    (!has_malus(mob, pos)).then_some(pos)
+}
+
+/// Vanilla `AirRandomPos.getPosTowards`: an open, dry position toward
+/// `towards_pos`, `flying_height` blocks above or below the mob on average.
+pub(crate) fn air_random_pos_towards(
+    mob: &(impl PathfinderMob + ?Sized),
+    horizontal_dist: i32,
+    vertical_dist: i32,
+    flying_height: i32,
+    towards_pos: DVec3,
+    max_xz_radians_from_dir: f64,
+) -> Option<DVec3> {
+    let dir = towards_pos - mob.position();
+    let restrict = mob_restricted(mob, f64::from(horizontal_dist));
+    generate_random_pos(mob, || {
+        let pos = air_and_water_generate_random_pos(
+            mob,
+            horizontal_dist,
+            vertical_dist,
+            flying_height,
+            dir.x,
+            dir.z,
+            max_xz_radians_from_dir,
+            restrict,
+        )?;
+        (!is_water(mob, pos)).then_some(pos)
     })
 }
 

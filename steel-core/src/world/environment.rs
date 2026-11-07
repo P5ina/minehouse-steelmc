@@ -10,6 +10,7 @@ use super::clock::WorldClockManager;
 const SKY_LIGHT_LEVEL_ATTRIBUTE: &str = "minecraft:gameplay/sky_light_level";
 const SUN_ANGLE_ATTRIBUTE: &str = "minecraft:visual/sun_angle";
 const MONSTERS_BURN_ATTRIBUTE: &str = "minecraft:gameplay/monsters_burn";
+const BEES_STAY_IN_HIVE_ATTRIBUTE: &str = "minecraft:gameplay/bees_stay_in_hive";
 const MOON_PHASE_ATTRIBUTE: &str = "minecraft:visual/moon_phase";
 const CAT_WAKING_UP_GIFT_CHANCE_ATTRIBUTE: &str = "minecraft:gameplay/cat_waking_up_gift_chance";
 const CAN_PILLAGER_PATROL_SPAWN_ATTRIBUTE: &str = "minecraft:gameplay/can_pillager_patrol_spawn";
@@ -100,6 +101,32 @@ pub(super) fn monsters_burn(
     for_each_timeline(dimension_type, |timeline| {
         value = apply_timeline_bool_track(value, timeline, clock_manager, MONSTERS_BURN_ATTRIBUTE);
     });
+    value
+}
+
+/// Samples `BEES_STAY_IN_HIVE`: false by default, set by the overworld night
+/// timeline, and by the rain and thunder weather layers while either is above
+/// zero (vanilla booleans switch on any weather level).
+#[must_use]
+pub(super) fn bees_stay_in_hive(
+    dimension_type: DimensionTypeRef,
+    clock_manager: &WorldClockManager,
+    rain_level: f32,
+    thunder_level: f32,
+    can_have_weather: bool,
+) -> bool {
+    let mut value = false;
+    for_each_timeline(dimension_type, |timeline| {
+        value =
+            apply_timeline_bool_track(value, timeline, clock_manager, BEES_STAY_IN_HIVE_ATTRIBUTE);
+    });
+    if can_have_weather {
+        let thunder = thunder_level * rain_level;
+        let rain = rain_level - thunder;
+        if rain > 0.0 || thunder > 0.0 {
+            value = true;
+        }
+    }
     value
 }
 
