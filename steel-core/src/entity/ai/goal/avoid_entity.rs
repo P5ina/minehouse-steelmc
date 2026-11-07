@@ -47,6 +47,17 @@ impl AvoidEntityGoal {
         }
     }
 
+    /// Adds a filter that also sees the fleeing mob, for vanilla predicates
+    /// that read the mob's own state. Called with `(target, mob, world)`.
+    #[must_use]
+    pub(crate) fn with_targeter_selector(
+        mut self,
+        selector: impl Fn(&dyn LivingEntity, &dyn LivingEntity, &World) -> bool + Send + Sync + 'static,
+    ) -> Self {
+        self.avoid_entity_targeting = self.avoid_entity_targeting.targeter_selector(selector);
+        self
+    }
+
     /// The entity the last successful `can_use` found to flee from.
     pub(crate) const fn to_avoid(&self) -> Option<&SharedEntity> {
         self.to_avoid.as_ref()

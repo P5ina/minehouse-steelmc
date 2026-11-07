@@ -298,8 +298,11 @@ pub trait Animal: AgeableMob {
         &self,
         world: &Arc<World>,
         partner: &dyn Animal,
-        _offspring: Option<&dyn Animal>,
+        offspring: Option<&dyn Animal>,
     ) {
+        if let Some(offspring) = offspring {
+            self.on_bred_offspring(world, partner, offspring);
+        }
         if self
             .love_cause_uuid()
             .or_else(|| partner.love_cause_uuid())
@@ -326,6 +329,17 @@ pub trait Animal: AgeableMob {
                 log::debug!("failed to add breeding experience orb: {error}");
             }
         }
+    }
+
+    /// Runs before the parents' breeding cooldown starts, for animals whose
+    /// vanilla `BreedGoal.breed` override touches the cub (the fox trusts its
+    /// parents' love causes).
+    fn on_bred_offspring(
+        &self,
+        _world: &Arc<World>,
+        _partner: &dyn Animal,
+        _offspring: &dyn Animal,
+    ) {
     }
 
     /// Ticks vanilla animal love state.
