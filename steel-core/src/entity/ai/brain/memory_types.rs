@@ -3,6 +3,7 @@
 //! Only memories with a Steel user are listed; add more as brains need them.
 
 use glam::DVec3;
+use simdnbt::borrow::NbtCompound as BorrowedNbtCompound;
 use simdnbt::owned::{NbtCompound, NbtList, NbtTag};
 use steel_utils::{BlockPos, DowncastTypeKey, GlobalPos, Identifier, UuidExt as _};
 use uuid::Uuid;
@@ -50,6 +51,10 @@ impl MemoryValue for Vec<SharedEntity> {
     fn is_empty_collection(&self) -> bool {
         self.is_empty()
     }
+}
+
+impl MemoryValue for GlobalPos {
+    const KEY: DowncastTypeKey = DowncastTypeKey::new("steel:brain_memory/global_pos");
 }
 
 impl MemoryValue for Vec<GlobalPos> {
@@ -227,24 +232,47 @@ const fn unit_codec() -> MemoryCodec<()> {
     }
 }
 
-/// Vanilla `Codec.list(GlobalPos.CODEC)`: compounds of `dimension` and an
-/// `[x, y, z]` int array `pos`; entries that fail to decode are skipped.
+/// Vanilla `GlobalPos.CODEC`: a compound of `dimension` and an `[x, y, z]`
+/// int array `pos`.
+fn global_pos_to_nbt(global: &GlobalPos) -> NbtCompound {
+    let mut compound = NbtCompound::new();
+    compound.insert("dimension", global.dimension.to_string());
+    compound.insert(
+        "pos",
+        NbtTag::IntArray(vec![global.pos.x(), global.pos.y(), global.pos.z()]),
+    );
+    compound
+}
+
+/// Reads a [`global_pos_to_nbt`] compound.
+fn global_pos_from_nbt(compound: &BorrowedNbtCompound<'_, '_>) -> Option<GlobalPos> {
+    let dimension = compound
+        .string("dimension")?
+        .to_str()
+        .parse::<Identifier>()
+        .ok()?;
+    let pos = match compound.int_array("pos")?.as_slice() {
+        [x, y, z] => BlockPos::new(*x, *y, *z),
+        _ => return None,
+    };
+    Some(GlobalPos::new(dimension, pos))
+}
+
+/// Vanilla `GlobalPos.CODEC`.
+const fn global_pos_codec() -> MemoryCodec<GlobalPos> {
+    MemoryCodec {
+        save: |global| NbtTag::Compound(global_pos_to_nbt(global)),
+        load: |tag| global_pos_from_nbt(&tag.compound()?),
+    }
+}
+
+/// Vanilla `Codec.list(GlobalPos.CODEC)`; entries that fail to decode are
+/// skipped.
 const fn global_pos_list_codec() -> MemoryCodec<Vec<GlobalPos>> {
     MemoryCodec {
         save: |positions| {
             NbtTag::List(NbtList::Compound(
-                positions
-                    .iter()
-                    .map(|global| {
-                        let mut compound = NbtCompound::new();
-                        compound.insert("dimension", global.dimension.to_string());
-                        compound.insert(
-                            "pos",
-                            NbtTag::IntArray(vec![global.pos.x(), global.pos.y(), global.pos.z()]),
-                        );
-                        compound
-                    })
-                    .collect(),
+                positions.iter().map(global_pos_to_nbt).collect(),
             ))
         },
         load: |tag| {
@@ -252,18 +280,7 @@ const fn global_pos_list_codec() -> MemoryCodec<Vec<GlobalPos>> {
             Some(
                 compounds
                     .into_iter()
-                    .filter_map(|compound| {
-                        let dimension = compound
-                            .string("dimension")?
-                            .to_str()
-                            .parse::<Identifier>()
-                            .ok()?;
-                        let pos = match compound.int_array("pos")?.as_slice() {
-                            [x, y, z] => BlockPos::new(*x, *y, *z),
-                            _ => return None,
-                        };
-                        Some(GlobalPos::new(dimension, pos))
-                    })
+                    .filter_map(|compound| global_pos_from_nbt(&compound))
                     .collect(),
             )
         },
@@ -395,6 +412,14 @@ pub static GOLEM_DETECTED_RECENTLY: MemoryModuleType<bool> =
     MemoryModuleType::with_codec("golem_detected_recently", bool_codec());
 pub static SNIFF_COOLDOWN: MemoryModuleType<()> =
     MemoryModuleType::with_codec("sniff_cooldown", unit_codec());
+pub static HOME: MemoryModuleType<GlobalPos> =
+    MemoryModuleType::with_codec("home", global_pos_codec());
+pub static JOB_SITE: MemoryModuleType<GlobalPos> =
+    MemoryModuleType::with_codec("job_site", global_pos_codec());
+pub static POTENTIAL_JOB_SITE: MemoryModuleType<GlobalPos> =
+    MemoryModuleType::with_codec("potential_job_site", global_pos_codec());
+pub static MEETING_POINT: MemoryModuleType<GlobalPos> =
+    MemoryModuleType::with_codec("meeting_point", global_pos_codec());
 pub static SNIFFER_EXPLORED_POSITIONS: MemoryModuleType<Vec<GlobalPos>> =
     MemoryModuleType::with_codec("sniffer_explored_positions", global_pos_list_codec());
 pub static SNIFFER_SNIFFING_TARGET: MemoryModuleType<BlockPos> =

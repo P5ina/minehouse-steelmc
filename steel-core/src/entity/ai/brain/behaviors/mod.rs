@@ -13,6 +13,7 @@ mod make_love;
 mod memory_ops;
 mod move_to_target;
 mod panic;
+mod poi;
 mod ram;
 mod stroll;
 mod swim;
@@ -40,6 +41,7 @@ pub use make_love::AnimalMakeLove;
 pub use memory_ops::become_passive_if_memory_present;
 pub use move_to_target::MoveToTargetSink;
 pub use panic::AnimalPanic;
+pub use poi::{SCAN_RANGE, acquire_poi, find_path_to_pois, validate_bed_poi, validate_nearby_poi};
 pub use ram::PrepareRamNearestTarget;
 pub use stroll::{
     inside_brownian_walk, set_walk_target_away_from_entity, village_bound_random_stroll,
