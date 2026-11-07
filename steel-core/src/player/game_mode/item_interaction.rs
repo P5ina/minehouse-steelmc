@@ -11,7 +11,7 @@ use steel_registry::stat::vanilla_stat_types;
 /// This implements the logic from Java's `ServerPlayerGameMode.useItemOn()`.
 ///
 /// # Flow
-/// 1. Spectator mode: Only allow opening menus (currently returns Pass)
+/// 1. Spectator mode: Only allow opening menus and teleporting through portal blocks
 /// 2. Check if block interaction should be suppressed (sneaking + holding items)
 /// 3. If not suppressed: Call block's `use_item_on` method
 /// 4. If block returns `TryEmptyHandInteraction` and main hand: Call block's `use_without_item`
@@ -26,9 +26,17 @@ pub fn use_item_on(
     let pos = hit_result.block_pos;
     let state = world.get_block_state(pos);
 
-    // Spectator mode: can only open menus
-    // TODO: Implement menu providers for blocks like chests
+    // Spectator mode: vanilla opens the block's menu provider, or teleports
+    // through a right-clicked portal block, and passes otherwise.
     if player.game_mode() == GameType::Spectator {
+        // TODO: Open block menu providers (chests, furnaces...) for spectators.
+        let Some(block) = REGISTRY.blocks.by_state_id(state) else {
+            return InteractionResult::Pass;
+        };
+        if let Some(portal) = BLOCK_BEHAVIORS.get_behavior(block).portal_kind() {
+            player.use_portal_as_spectator(world, portal, pos);
+            return InteractionResult::Consume;
+        }
         return InteractionResult::Pass;
     }
 

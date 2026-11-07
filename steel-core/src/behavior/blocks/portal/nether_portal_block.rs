@@ -39,6 +39,10 @@ impl NetherPortalBlock {
 }
 
 impl BlockBehavior for NetherPortalBlock {
+    fn portal_kind(&self) -> Option<PortalKind> {
+        Some(PortalKind::Nether)
+    }
+
     fn update_shape(
         &self,
         state: BlockStateId,

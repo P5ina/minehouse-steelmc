@@ -43,6 +43,7 @@ use crate::entity::{
 use crate::fluid::is_water_fluid;
 use crate::physics::collide;
 use crate::player::Player;
+use crate::portal::PortalKind;
 use crate::world::game_event::SharedGameEventListener;
 use crate::world::{
     BlockInteraction, ClipHitResult, ConditionalBlockSetResult, Explosion, LevelAccessor,
@@ -1003,6 +1004,15 @@ pub trait BlockBehavior: Send + Sync {
         effect_collector: &mut InsideBlockEffectCollector,
         is_precise: bool,
     ) {
+    }
+
+    /// Returns the portal this block is, mirroring vanilla `block instanceof Portal`.
+    ///
+    /// Only nether portals, end portals and end gateways implement vanilla's
+    /// `Portal` interface. Spectators use this to teleport by right-clicking
+    /// a portal block (`ServerPlayerGameMode.useItemOn`).
+    fn portal_kind(&self) -> Option<PortalKind> {
+        None
     }
 
     /// Called when an entity is inside this block's collision area.

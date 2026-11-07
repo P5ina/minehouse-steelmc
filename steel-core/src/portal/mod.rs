@@ -14,12 +14,14 @@ use steel_math::{
     DEGREE_90,
     vector::{x_rot, y_rot},
 };
-use steel_protocol::packets::game::RelativeMovement;
+use steel_protocol::packets::game::{CSetCamera, RelativeMovement};
 use steel_registry::game_rules::GameRuleRef;
 use steel_registry::vanilla_game_rules::{
     PLAYERS_NETHER_PORTAL_CREATIVE_DELAY, PLAYERS_NETHER_PORTAL_DEFAULT_DELAY,
 };
-use steel_utils::BlockPos;
+use steel_utils::{BlockPos, translations};
+use text_components::format::Color;
+use text_components::{Modifier, TextComponent};
 
 pub(crate) mod end_gateway;
 pub(crate) mod end_portal;
@@ -481,7 +483,44 @@ pub enum WorldChangeRequest {
         portal_pos: BlockPos,
         /// Runtime token proving this request still owns the entity's pending transition.
         pending_token: PendingWorldChangeToken,
+        /// True when a spectator right-clicked the portal block instead of
+        /// standing in it (vanilla `ServerPlayerGameMode.useItemOn`).
+        ///
+        /// Vanilla tells such a spectator `spectator.cannot_teleport` when the
+        /// portal has no destination.
+        spectator_use: bool,
     },
+}
+
+/// Vanilla `ServerPlayerGameMode.useItemOn` calls `setCamera(player)` right
+/// before a spectator's portal right-click teleports, so a spectator watching
+/// through a mob's eyes is pulled back into its own body first.
+///
+/// Steel does not track the camera entity server-side yet, so the packet is
+/// sent unconditionally; when the camera already is the player the client
+/// ignores it, matching vanilla's `camera != player` guard.
+pub(crate) fn reset_spectator_camera(entity: &dyn Entity, spectator_use: bool) {
+    if !spectator_use {
+        return;
+    }
+    if let Some(player) = entity.as_player() {
+        player.send_packet(CSetCamera {
+            camera_id: player.id(),
+        });
+    }
+}
+
+/// Sends vanilla's red `spectator.cannot_teleport` overlay when a spectator's
+/// portal right-click found no destination (`getPortalDestination` returned null).
+pub(crate) fn notify_spectator_cannot_teleport(entity: &dyn Entity, spectator_use: bool) {
+    if !spectator_use {
+        return;
+    }
+    if let Some(player) = entity.as_player() {
+        player.send_overlay_message(
+            &TextComponent::from(translations::SPECTATOR_CANNOT_TELEPORT.msg()).color(Color::Red),
+        );
+    }
 }
 
 #[cfg(test)]

@@ -23,6 +23,7 @@ use crate::block_entity::entities::{SignBlockEntity, SignText};
 use crate::entity::{Entity as _, entities::ItemEntity};
 use crate::inventory::container::Container as _;
 use crate::player::Player;
+use crate::portal::{PortalKind, WorldChangeRequest};
 use crate::test_support::{
     TestPlayerBuilder, TestWorld, fresh_test_world, insert_ready_full_chunk,
 };
@@ -382,4 +383,95 @@ fn honeycomb_can_wax_blank_signs_without_consuming_in_creative() {
     assert_eq!(sign.get_player_who_may_edit(), None);
     assert_eq!(interaction.count(&vanilla_items::HONEYCOMB), 1);
     assert_eq!(interaction.used(&vanilla_items::HONEYCOMB), 1);
+}
+
+fn queued_portal_requests(interaction: &Interaction) -> Vec<(PortalKind, BlockPos, bool)> {
+    interaction
+        .world_fixture
+        .world
+        .drain_world_changes()
+        .into_iter()
+        .filter_map(|(_, request)| match request {
+            WorldChangeRequest::Portal {
+                portal,
+                portal_pos,
+                spectator_use,
+                ..
+            } => Some((portal, portal_pos, spectator_use)),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn spectator_right_click_on_portal_blocks_queues_an_immediate_portal_teleport() {
+    for (name, block, portal) in [
+        (
+            "spectator-click-nether-portal",
+            &vanilla_blocks::NETHER_PORTAL,
+            PortalKind::Nether,
+        ),
+        (
+            "spectator-click-end-portal",
+            &vanilla_blocks::END_PORTAL,
+            PortalKind::End,
+        ),
+        (
+            "spectator-click-end-gateway",
+            &vanilla_blocks::END_GATEWAY,
+            PortalKind::EndGateway,
+        ),
+    ] {
+        let interaction = Interaction::new(name);
+        interaction.block(block.default_state());
+        interaction
+            .player
+            .restore_game_modes(GameType::Spectator, None);
+
+        assert_eq!(
+            interaction.use_on(InteractionHand::MainHand),
+            InteractionResult::Consume
+        );
+        assert_eq!(
+            queued_portal_requests(&interaction),
+            vec![(portal, interaction.pos, true)]
+        );
+        assert!(interaction.player.is_world_change_pending());
+
+        // A second click while the first teleport is still being prepared is ignored.
+        assert_eq!(
+            interaction.use_on(InteractionHand::MainHand),
+            InteractionResult::Consume
+        );
+        assert_eq!(queued_portal_requests(&interaction), vec![]);
+    }
+}
+
+#[test]
+fn spectator_right_click_on_other_blocks_passes_without_teleporting() {
+    let interaction = Interaction::new("spectator-click-stone");
+    interaction.block(vanilla_blocks::STONE.default_state());
+    interaction
+        .player
+        .restore_game_modes(GameType::Spectator, None);
+
+    assert_eq!(
+        interaction.use_on(InteractionHand::MainHand),
+        InteractionResult::Pass
+    );
+    assert_eq!(queued_portal_requests(&interaction), vec![]);
+    assert!(!interaction.player.is_world_change_pending());
+}
+
+#[test]
+fn survival_right_click_on_a_nether_portal_does_not_teleport() {
+    let interaction = Interaction::new("survival-click-nether-portal");
+    interaction.block(vanilla_blocks::NETHER_PORTAL.default_state());
+
+    assert_ne!(
+        interaction.use_on(InteractionHand::MainHand),
+        InteractionResult::Consume
+    );
+    assert_eq!(queued_portal_requests(&interaction), vec![]);
+    assert!(!interaction.player.is_world_change_pending());
 }
