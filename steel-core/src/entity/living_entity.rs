@@ -2358,6 +2358,11 @@ pub trait LivingEntity: Entity {
         {
             entity_data.set_arrow_count(count);
         }
+        if let Some(count) = self.living_base().tick_remove_stinger()
+            && let Some(entity_data) = self.living_synced_data()
+        {
+            entity_data.set_stinger_count(count);
+        }
         self.detect_equipment_updates();
 
         if !self.is_removed() {
@@ -3364,6 +3369,19 @@ pub trait LivingEntity: Entity {
         self.living_base().set_arrow_count(count);
         if let Some(entity_data) = self.living_synced_data() {
             entity_data.set_arrow_count(count);
+        }
+    }
+
+    /// Vanilla `getStingerCount`.
+    fn stinger_count(&self) -> i32 {
+        self.living_base().stinger_count()
+    }
+
+    /// Vanilla `setStingerCount`.
+    fn set_stinger_count(&self, count: i32) {
+        self.living_base().set_stinger_count(count);
+        if let Some(entity_data) = self.living_synced_data() {
+            entity_data.set_stinger_count(count);
         }
     }
 

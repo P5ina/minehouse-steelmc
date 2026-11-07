@@ -310,23 +310,6 @@ pub fn set_walk_target_away_from_pos<E: PathfinderMob + ?Sized>(
     )
 }
 
-/// Vanilla `SetWalkTargetAwayFrom.entity`: walk away from the entity in
-/// `memory` while it is closer than `desired_distance`.
-pub fn set_walk_target_away_from_entity<E: PathfinderMob + ?Sized>(
-    memory: &'static MemoryModuleType<SharedEntity>,
-    speed_modifier: f32,
-    desired_distance: i32,
-    interrupt_current_walk: bool,
-) -> impl BehaviorControl<E> {
-    set_walk_target_away_from(
-        memory,
-        speed_modifier,
-        desired_distance,
-        interrupt_current_walk,
-        |entity: &SharedEntity| entity.position(),
-    )
-}
-
 fn set_walk_target_away_from<E, T>(
     memory: &'static MemoryModuleType<T>,
     speed_modifier: f32,

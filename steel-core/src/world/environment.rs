@@ -6,10 +6,12 @@ use steel_registry::{REGISTRY, RegistryExt as _, TaggedRegistryExt as _};
 use steel_utils::Identifier;
 
 use super::clock::WorldClockManager;
+use crate::entity::ai::brain::Activity;
 
 const SKY_LIGHT_LEVEL_ATTRIBUTE: &str = "minecraft:gameplay/sky_light_level";
 const SUN_ANGLE_ATTRIBUTE: &str = "minecraft:visual/sun_angle";
 const MONSTERS_BURN_ATTRIBUTE: &str = "minecraft:gameplay/monsters_burn";
+const BEES_STAY_IN_HIVE_ATTRIBUTE: &str = "minecraft:gameplay/bees_stay_in_hive";
 const MOON_PHASE_ATTRIBUTE: &str = "minecraft:visual/moon_phase";
 const CAT_WAKING_UP_GIFT_CHANCE_ATTRIBUTE: &str = "minecraft:gameplay/cat_waking_up_gift_chance";
 const CAN_PILLAGER_PATROL_SPAWN_ATTRIBUTE: &str = "minecraft:gameplay/can_pillager_patrol_spawn";
@@ -100,6 +102,32 @@ pub(super) fn monsters_burn(
     for_each_timeline(dimension_type, |timeline| {
         value = apply_timeline_bool_track(value, timeline, clock_manager, MONSTERS_BURN_ATTRIBUTE);
     });
+    value
+}
+
+/// Samples `BEES_STAY_IN_HIVE`: false by default, set by the overworld night
+/// timeline, and by the rain and thunder weather layers while either is above
+/// zero (vanilla booleans switch on any weather level).
+#[must_use]
+pub(super) fn bees_stay_in_hive(
+    dimension_type: DimensionTypeRef,
+    clock_manager: &WorldClockManager,
+    rain_level: f32,
+    thunder_level: f32,
+    can_have_weather: bool,
+) -> bool {
+    let mut value = false;
+    for_each_timeline(dimension_type, |timeline| {
+        value =
+            apply_timeline_bool_track(value, timeline, clock_manager, BEES_STAY_IN_HIVE_ATTRIBUTE);
+    });
+    if can_have_weather {
+        let thunder = thunder_level * rain_level;
+        let rain = rain_level - thunder;
+        if rain > 0.0 || thunder > 0.0 {
+            value = true;
+        }
+    }
     value
 }
 
@@ -339,6 +367,38 @@ pub(super) fn moon_phase(
             total_ticks,
             |keyframe| match keyframe {
                 KeyframeValue::String(name) => MoonPhase::from_serialized_name(name),
+                _ => None,
+            },
+        ) {
+            value = sample;
+        }
+    });
+    value
+}
+
+/// Samples an activity attribute such as `VILLAGER_ACTIVITY` (vanilla
+/// `AttributeTypes.ACTIVITY`): idle by default, set by the dimension timelines.
+/// Only timelines set these attributes, so the position does not matter.
+#[must_use]
+pub(super) fn scheduled_activity(
+    dimension_type: DimensionTypeRef,
+    clock_manager: &WorldClockManager,
+    attribute: &str,
+) -> Activity {
+    let mut value = Activity::IDLE;
+    for_each_timeline(dimension_type, |timeline| {
+        let Some(track) = timeline.tracks.iter().find(|track| track.name == attribute) else {
+            return;
+        };
+        let Some(total_ticks) = clock_manager.total_ticks(timeline.clock) else {
+            return;
+        };
+        if let Some(sample) = sample_step_track(
+            track,
+            timeline.period_ticks.map(i64::from),
+            total_ticks,
+            |keyframe| match keyframe {
+                KeyframeValue::String(key) => Activity::from_key(key),
                 _ => None,
             },
         ) {
@@ -779,5 +839,39 @@ mod tests {
             &THE_NETHER,
             &clock_manager_at(0)
         ));
+    }
+
+    #[test]
+    fn villager_schedules_follow_the_villager_schedule_timeline() {
+        const ADULT: &str = "minecraft:gameplay/villager_activity";
+        const BABY: &str = "minecraft:gameplay/baby_villager_activity";
+        init_vanilla_registry();
+        let cases = [
+            (ADULT, 9, Activity::REST),
+            (ADULT, 10, Activity::IDLE),
+            (ADULT, 2_000, Activity::WORK),
+            (ADULT, 8_999, Activity::WORK),
+            (ADULT, 9_000, Activity::MEET),
+            (ADULT, 11_000, Activity::IDLE),
+            (ADULT, 12_000, Activity::REST),
+            (ADULT, 24_000 + 2_500, Activity::WORK),
+            (BABY, 3_000, Activity::PLAY),
+            (BABY, 6_000, Activity::IDLE),
+            (BABY, 10_000, Activity::PLAY),
+            (BABY, 23_000, Activity::REST),
+        ];
+        for (attribute, ticks, expected) in cases {
+            assert_eq!(
+                scheduled_activity(&OVERWORLD, &clock_manager_at(ticks), attribute),
+                expected,
+                "{attribute} at {ticks}"
+            );
+        }
+        // The schedule is a `#minecraft:universal` timeline on the overworld
+        // clock, so it runs in every dimension.
+        assert_eq!(
+            scheduled_activity(&THE_NETHER, &clock_manager_at(2_000), ADULT),
+            Activity::WORK
+        );
     }
 }

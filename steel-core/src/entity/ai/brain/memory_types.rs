@@ -389,6 +389,10 @@ pub static VISIBLE_ADULT_PIGLIN_COUNT: MemoryModuleType<i32> =
     MemoryModuleType::new("visible_adult_piglin_count");
 pub static VISIBLE_ADULT_HOGLIN_COUNT: MemoryModuleType<i32> =
     MemoryModuleType::new("visible_adult_hoglin_count");
+pub static VISIBLE_VILLAGER_BABIES: MemoryModuleType<Vec<SharedEntity>> =
+    MemoryModuleType::new("visible_villager_babies");
+pub static GOLEM_DETECTED_RECENTLY: MemoryModuleType<bool> =
+    MemoryModuleType::with_codec("golem_detected_recently", bool_codec());
 pub static SNIFF_COOLDOWN: MemoryModuleType<()> =
     MemoryModuleType::with_codec("sniff_cooldown", unit_codec());
 pub static SNIFFER_EXPLORED_POSITIONS: MemoryModuleType<Vec<GlobalPos>> =
