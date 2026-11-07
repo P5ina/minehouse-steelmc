@@ -120,6 +120,17 @@ impl MoveToBlockGoal {
         self.reached_target
     }
 
+    /// Vanilla `nextStartTick`: ticks left before the next search.
+    #[must_use]
+    pub(crate) const fn start_delay(&self) -> i32 {
+        self.next_start_tick
+    }
+
+    /// Sets vanilla `nextStartTick`, as `Rabbit.RaidGardenGoal` does after eating.
+    pub(crate) const fn set_start_delay(&mut self, next_start_tick: i32) {
+        self.next_start_tick = next_start_tick;
+    }
+
     fn next_start_tick(&self, _mob: &dyn PathfinderMob) -> i32 {
         self.fixed_next_start_tick
             .unwrap_or_else(|| reduced_tick_delay(INTERVAL_TICKS + rand::random_range(0..200)))
