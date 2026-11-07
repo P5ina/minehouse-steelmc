@@ -433,9 +433,7 @@ pub(super) struct BeeGoToKnownFlowerGoal {
 
 impl BeeGoToKnownFlowerGoal {
     pub(super) const fn new() -> Self {
-        Self {
-            traveling_ticks: 0,
-        }
+        Self { traveling_ticks: 0 }
     }
 
     fn can_bee_use(bee: &BeeEntity) -> bool {
