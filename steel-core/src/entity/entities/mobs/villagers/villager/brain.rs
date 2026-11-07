@@ -1,16 +1,16 @@
 //! The villager brain (vanilla `Villager.BRAIN_PROVIDER` and
 //! `VillagerGoalPackages`), with the villager-only behaviors and sensors.
 //!
-//! Not yet ported: working at the job site, sleeping, breeding, gifts to
-//! heroes, trading with other villagers, picking up wanted items, iron
+//! Not yet ported: composting, harvesting farmland, bone meal, sleeping,
+//! breeding, gifts to heroes, trading with other villagers, picking up wanted items, iron
 //! golem calls and raids.
 
 use std::sync::Arc;
 
 use steel_registry::entity_type::{EntityTypeRef, MobCategory};
 use steel_registry::item_stack::ItemStack;
-use steel_registry::vanilla_entities;
 use steel_registry::villager_profession::VillagerProfessionRef;
+use steel_registry::{vanilla_entities, vanilla_villager_professions};
 use steel_utils::entity_events::EntityStatus;
 
 use self::poi::{
@@ -19,6 +19,7 @@ use self::poi::{
     set_walk_target_from_block_memory, yield_job_site,
 };
 pub(super) use self::poi::{held_job_site, is_acquirable_job, is_home, is_meeting};
+use self::work::{SecondaryPoiSensor, WorkAtPoi, stroll_to_poi_list};
 use super::{VillagerEntity, trading_player_of};
 use crate::entity::ai::brain::behavior::{Behavior, OneShot, TimedBehavior};
 use crate::entity::ai::brain::behaviors::{
@@ -32,7 +33,7 @@ use crate::entity::ai::brain::memory::MemoryRequirement;
 use crate::entity::ai::brain::memory_types::{
     BREED_TARGET, GOLEM_DETECTED_RECENTLY, HOME, HURT_BY, HURT_BY_ENTITY, INTERACTION_TARGET,
     JOB_SITE, LOOK_TARGET, MEETING_POINT, NEAREST_HOSTILE, NEAREST_LIVING_ENTITIES,
-    NEAREST_VISIBLE_LIVING_ENTITIES, PATH, POTENTIAL_JOB_SITE, PositionTracker,
+    NEAREST_VISIBLE_LIVING_ENTITIES, PATH, POTENTIAL_JOB_SITE, PositionTracker, SECONDARY_JOB_SITE,
     VISIBLE_VILLAGER_BABIES, WALK_TARGET, WalkTarget,
 };
 use crate::entity::ai::brain::sensors::{HurtBySensor, NearestLivingEntitySensor, PlayerSensor};
@@ -62,10 +63,12 @@ pub(super) fn make_brain(baby: bool, profession: VillagerProfessionRef) -> Brain
     if baby {
         activities.push(play_package());
     } else {
-        activities.push(work_package().with_conditions(vec![MemoryRequirement::new(
-            &JOB_SITE,
-            MemoryStatus::ValuePresent,
-        )]));
+        activities.push(
+            work_package(profession).with_conditions(vec![MemoryRequirement::new(
+                &JOB_SITE,
+                MemoryStatus::ValuePresent,
+            )]),
+        );
     }
     activities.push(core_package(profession));
     activities.push(meet_package().with_conditions(vec![MemoryRequirement::new(
@@ -89,8 +92,8 @@ pub(super) const fn schedule_for(baby: bool) -> &'static str {
 }
 
 fn sensors() -> Vec<Box<dyn Sensor<VillagerEntity>>> {
-    // TODO(villager brain): vanilla also has the nearest item, nearest bed
-    // and secondary POI sensors.
+    // TODO(villager brain): vanilla also has the nearest item and nearest
+    // bed sensors.
     vec![
         Box::new(NearestLivingEntitySensor),
         Box::new(PlayerSensor),
@@ -98,6 +101,7 @@ fn sensors() -> Vec<Box<dyn Sensor<VillagerEntity>>> {
         Box::new(VillagerHostilesSensor),
         Box::new(VillagerBabiesSensor),
         Box::new(GolemSensor),
+        Box::new(SecondaryPoiSensor),
     ]
 }
 
@@ -247,17 +251,33 @@ fn play_package() -> ActivityData<VillagerEntity> {
 }
 
 /// Vanilla `VillagerGoalPackages.getWorkPackage`.
-fn work_package() -> ActivityData<VillagerEntity> {
-    // TODO(villager brain): vanilla also works at the job site (weight 7;
-    // farmers use the composter), strolls between secondary job sites
-    // (weight 5), harvests farmland and uses bone meal here.
+fn work_package(profession: VillagerProfessionRef) -> ActivityData<VillagerEntity> {
+    let farmer = profession.key == vanilla_villager_professions::FARMER.key;
+    let work_at_poi = if farmer {
+        WorkAtPoi::at_composter()
+    } else {
+        WorkAtPoi::new()
+    };
+    // TODO(villager brain): vanilla also harvests farmland (weight 2 for
+    // farmers, else 5) and uses bone meal (4 for farmers, else 7) here.
     let work: Weighted = vec![
+        (Box::new(TimedBehavior::new(work_at_poi)), 7),
         (
             Box::new(stroll_around_poi(&JOB_SITE, STROLL_SPEED_MODIFIER, 4)),
             2,
         ),
         (
             Box::new(stroll_to_poi(&JOB_SITE, STROLL_SPEED_MODIFIER, 1, 10)),
+            5,
+        ),
+        (
+            Box::new(stroll_to_poi_list(
+                &SECONDARY_JOB_SITE,
+                SPEED_MODIFIER,
+                1,
+                6,
+                &JOB_SITE,
+            )),
             5,
         ),
     ];
@@ -1149,6 +1169,7 @@ impl Sensor<VillagerEntity> for GolemSensor {
 }
 
 mod poi;
+mod work;
 
 #[cfg(test)]
 mod tests;
