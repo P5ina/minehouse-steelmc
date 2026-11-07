@@ -38,20 +38,31 @@ impl BlockBehavior for CraftingTableBlock {
         Some(self.block.default_state())
     }
 
-    fn use_without_item(
+    fn open_menu_provider(
         &self,
         _state: BlockStateId,
         _world: &Arc<World>,
         pos: BlockPos,
         player: &Player,
-        _hit_result: &BlockHitResult,
-        _inv: &mut InventoryAccess,
-    ) -> InteractionResult {
+    ) -> bool {
         let inventory = Arc::clone(&player.inventory);
         player.open_menu(
             TextComponent::translated(translations::CONTAINER_CRAFTING.msg()),
             move |context| crafting(inventory, context.container_id, pos),
         );
+        true
+    }
+
+    fn use_without_item(
+        &self,
+        state: BlockStateId,
+        world: &Arc<World>,
+        pos: BlockPos,
+        player: &Player,
+        _hit_result: &BlockHitResult,
+        _inv: &mut InventoryAccess,
+    ) -> InteractionResult {
+        self.open_menu_provider(state, world, pos, player);
         player.award_custom_stat(&vanilla_custom_stats::INTERACT_WITH_CRAFTING_TABLE);
         InteractionResult::Success
     }

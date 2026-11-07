@@ -9,6 +9,7 @@ use super::super::{
 };
 use super::{JobPoll, ServerJob, ServerJobContext};
 use crate::entity::LivingEntity as _;
+use crate::portal::{notify_spectator_cannot_teleport, reset_spectator_camera};
 use crate::world::player_spawn_finder::POLL_TIME_BUDGET;
 
 pub(in crate::server) struct RootVehicleRestoreJob {
@@ -356,10 +357,15 @@ pub(in crate::server) struct NetherPortalTeleportJob {
     approximate_exit_pos: BlockPos,
     to_nether: bool,
     pending_token: PendingWorldChangeToken,
+    spectator_use: bool,
     request: ChunkRequestHandle,
 }
 
 impl NetherPortalTeleportJob {
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "carries every input of vanilla NetherPortalBlock.getPortalDestination"
+    )]
     pub(in crate::server) fn new(
         entity: SharedEntity,
         source_world: Arc<World>,
@@ -368,6 +374,7 @@ impl NetherPortalTeleportJob {
         approximate_exit_pos: BlockPos,
         to_nether: bool,
         pending_token: PendingWorldChangeToken,
+        spectator_use: bool,
     ) -> Self {
         let request = target_world.chunk_map.request_square(
             nether_portal::prewarm_center(approximate_exit_pos),
@@ -383,6 +390,7 @@ impl NetherPortalTeleportJob {
             approximate_exit_pos,
             to_nether,
             pending_token,
+            spectator_use,
             request,
         }
     }
@@ -439,9 +447,11 @@ impl ServerJob for NetherPortalTeleportJob {
             self.approximate_exit_pos,
             self.to_nether,
         ) else {
+            notify_spectator_cannot_teleport(self.entity.as_ref(), self.spectator_use);
             self.clear_pending();
             return JobPoll::Finished;
         };
+        reset_spectator_camera(self.entity.as_ref(), self.spectator_use);
         let changed_entity = change_entity_world(Arc::clone(&self.entity), &transition);
         self.finish_transition(changed_entity);
         JobPoll::Finished
@@ -678,6 +688,7 @@ pub(in crate::server) struct EndGatewayTeleportJob {
     portal_pos: BlockPos,
     source_is_end: bool,
     pending_token: PendingWorldChangeToken,
+    spectator_use: bool,
     phase: EndGatewayTeleportPhase,
 }
 
@@ -693,6 +704,7 @@ impl EndGatewayTeleportJob {
         portal_pos: BlockPos,
         source_is_end: bool,
         pending_token: PendingWorldChangeToken,
+        spectator_use: bool,
     ) -> Option<Self> {
         let preparation = end_gateway::initial_chunks(&source_world, portal_pos, source_is_end)?;
         let phase = match preparation {
@@ -713,6 +725,7 @@ impl EndGatewayTeleportJob {
             portal_pos,
             source_is_end,
             pending_token,
+            spectator_use,
             phase,
         })
     }
@@ -738,6 +751,7 @@ impl ServerJob for EndGatewayTeleportJob {
         let source_world = Arc::clone(&self.source_world);
         let portal_pos = self.portal_pos;
         let source_is_end = self.source_is_end;
+        let spectator_use = self.spectator_use;
         loop {
             match &mut self.phase {
                 EndGatewayTeleportPhase::LoadingReady { request } => match request.poll() {
@@ -756,9 +770,11 @@ impl ServerJob for EndGatewayTeleportJob {
                             portal_pos,
                             source_is_end,
                         ) else {
+                            notify_spectator_cannot_teleport(entity.as_ref(), spectator_use);
                             clear_pending_world_change(&entity, pending_token);
                             return JobPoll::Finished;
                         };
+                        reset_spectator_camera(entity.as_ref(), spectator_use);
                         let changed_entity = change_entity_world(Arc::clone(&entity), &transition);
                         finish_pending_world_change_after_transition(
                             &entity,
@@ -783,6 +799,7 @@ impl ServerJob for EndGatewayTeleportJob {
                             portal_pos,
                             source_is_end,
                         ) else {
+                            notify_spectator_cannot_teleport(entity.as_ref(), spectator_use);
                             clear_pending_world_change(&entity, pending_token);
                             return JobPoll::Finished;
                         };

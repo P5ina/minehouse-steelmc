@@ -91,23 +91,21 @@ impl BlockBehavior for HopperBlock {
         Self::check_powered_state(state, world, pos);
     }
 
-    fn use_without_item(
+    fn open_menu_provider(
         &self,
         _state: BlockStateId,
         world: &Arc<World>,
         pos: BlockPos,
         player: &Player,
-        _hit_result: &BlockHitResult,
-        _inv: &mut InventoryAccess,
-    ) -> InteractionResult {
+    ) -> bool {
         let Some(block_entity) = world.get_block_entity(pos) else {
-            return InteractionResult::Success;
+            return false;
         };
         let Some(hopper_entity) = block_entity.downcast_ref::<HopperBlockEntity>() else {
-            return InteractionResult::Success;
+            return false;
         };
         let Some(container) = block_entity.container_ref() else {
-            return InteractionResult::Success;
+            return false;
         };
         let title = hopper_entity
             .custom_name()
@@ -116,7 +114,21 @@ impl BlockBehavior for HopperBlock {
         player.open_menu(title, move |context| {
             hopper(inventory, context.container_id, container)
         });
-        player.award_custom_stat(&vanilla_custom_stats::INSPECT_HOPPER);
+        true
+    }
+
+    fn use_without_item(
+        &self,
+        state: BlockStateId,
+        world: &Arc<World>,
+        pos: BlockPos,
+        player: &Player,
+        _hit_result: &BlockHitResult,
+        _inv: &mut InventoryAccess,
+    ) -> InteractionResult {
+        if self.open_menu_provider(state, world, pos, player) {
+            player.award_custom_stat(&vanilla_custom_stats::INSPECT_HOPPER);
+        }
         InteractionResult::Success
     }
 

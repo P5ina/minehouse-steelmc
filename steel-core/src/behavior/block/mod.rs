@@ -43,6 +43,7 @@ use crate::entity::{
 use crate::fluid::is_water_fluid;
 use crate::physics::collide;
 use crate::player::Player;
+use crate::portal::PortalKind;
 use crate::world::game_event::SharedGameEventListener;
 use crate::world::{
     BlockInteraction, ClipHitResult, ConditionalBlockSetResult, Explosion, LevelAccessor,
@@ -551,6 +552,28 @@ pub trait BlockBehavior: Send + Sync {
         InteractionResult::Pass
     }
 
+    /// Opens the menu this block provides, mirroring vanilla
+    /// `getMenuProvider` followed by `player.openMenu`.
+    ///
+    /// This is only the menu itself: use statistics, piglin anger and other
+    /// `useWithoutItem` side effects stay in [`Self::use_without_item`].
+    /// Spectators right-clicking a block go through this directly
+    /// (`ServerPlayerGameMode.useItemOn`). Returns `false` when the block has
+    /// no menu provider at this position.
+    #[expect(
+        unused_variables,
+        reason = "default trait implementation ignores all params"
+    )]
+    fn open_menu_provider(
+        &self,
+        state: BlockStateId,
+        world: &Arc<World>,
+        pos: BlockPos,
+        player: &Player,
+    ) -> bool {
+        false
+    }
+
     /// Called when a neighboring block changes (not shape-related).
     ///
     /// This is the Rust equivalent of vanilla's `BlockState.handleNeighborChanged()`.
@@ -1003,6 +1026,15 @@ pub trait BlockBehavior: Send + Sync {
         effect_collector: &mut InsideBlockEffectCollector,
         is_precise: bool,
     ) {
+    }
+
+    /// Returns the portal this block is, mirroring vanilla `block instanceof Portal`.
+    ///
+    /// Only nether portals, end portals and end gateways implement vanilla's
+    /// `Portal` interface. Spectators use this to teleport by right-clicking
+    /// a portal block (`ServerPlayerGameMode.useItemOn`).
+    fn portal_kind(&self) -> Option<PortalKind> {
+        None
     }
 
     /// Called when an entity is inside this block's collision area.
