@@ -8,6 +8,7 @@ use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 
 use simdnbt::borrow::NbtCompound as BorrowedNbtCompoundView;
 use simdnbt::owned::NbtCompound;
+use steel_protocol::packets::game::CTakeItemEntity;
 use steel_registry::data_components::components::{Rarity, TooltipDisplay};
 use steel_registry::data_components::vanilla_components::{
     BANNER_PATTERNS, ITEM_NAME, RARITY, TOOLTIP_DISPLAY,
@@ -18,12 +19,16 @@ use steel_registry::item_stack::ItemStack;
 use steel_registry::registry::RegistryHolder;
 use steel_registry::sound_event::SoundEventRef;
 use steel_registry::{vanilla_banner_patterns, vanilla_entities, vanilla_items};
+use steel_utils::ChunkPos;
 use steel_utils::locks::SyncMutex;
 use steel_utils::translations;
 use text_components::TextComponent;
 
 use crate::entity::damage::DamageSource;
-use crate::entity::{EntitySpawnReason, LivingEntity, PatrollingMonster, SharedEntity};
+use crate::entity::entities::ItemEntity;
+use crate::entity::{
+    Entity as _, EntitySpawnReason, LivingEntity, PatrollingMonster, RemovalReason, SharedEntity,
+};
 use crate::inventory::prelude::EquipmentSlot;
 use crate::world::World;
 use crate::world::raid::{Raid, Raids};
@@ -33,6 +38,8 @@ const TAG_CAN_JOIN_RAID: &str = "CanJoinRaid";
 const TAG_RAID_ID: &str = "RaidId";
 /// Vanilla `Raider.updateNoActionTime`: raiders idle twice as fast as other mobs.
 const RAIDER_NO_ACTION_TIME_INCREMENT: i32 = 2;
+/// Vanilla `Raider.pickUpItem`: the bias against dropping the replaced head item.
+const REPLACED_HEAD_DROP_BIAS: f32 = 0.1;
 
 /// Vanilla `Raid.getOminousBannerInstance`: the white banner raid captains wear.
 #[must_use]
@@ -92,8 +99,6 @@ impl Default for RaiderState {
 }
 
 /// Vanilla `Raider`.
-// TODO: banner pickup (`pickUpItem`) and the `ObtainRaidLeaderBannerGoal`,
-// `PathfindToRaidGoal`, `RaiderMoveThroughVillageGoal` and `RaiderCelebration` goals.
 pub trait Raider: PatrollingMonster {
     fn raider_state(&self) -> &RaiderState;
 
@@ -231,6 +236,44 @@ pub trait Raider: PatrollingMonster {
             !banner.is_empty() && ItemStack::matches(banner, &ominous_banner_instance())
         };
         has_captain_banner && self.is_patrol_leader()
+    }
+
+    /// Vanilla `Raider.pickUpItem`: in an active raid whose wave has no leader,
+    /// the raider takes a dropped ominous banner and leads the wave. Returns
+    /// `false` for any other item, where the caller runs its `super.pickUpItem`.
+    fn pick_up_item_raider(&self, world: &Arc<World>, item_entity: &ItemEntity) -> bool {
+        let item_stack = item_entity.get_item();
+        let Some(raid) = self.current_raid().filter(|raid| raid.is_active()) else {
+            return false;
+        };
+        if raid.leader(self.wave()).is_some()
+            || !ItemStack::matches(&item_stack, &ominous_banner_instance())
+        {
+            return false;
+        }
+        let slot = EquipmentSlot::Head;
+        let current = self.equipment_in_slot(slot);
+        if !current.is_empty()
+            && (rand::random::<f32>() - REPLACED_HEAD_DROP_BIAS).max(0.0)
+                < self.equipment_drop_chance(slot)
+        {
+            let _ = self.spawn_at_location(current, 0.0);
+        }
+        // TODO(advancements): vanilla `onItemPickup` fires
+        // THROWN_ITEM_PICKED_UP_BY_ENTITY here, like `Mob::default_pick_up_item`.
+        let count = item_stack.count();
+        self.set_item_slot(slot, item_stack);
+        world.broadcast_to_nearby(
+            ChunkPos::from_entity_pos(item_entity.position()),
+            CTakeItemEntity::new(item_entity.id(), self.id(), count),
+            None,
+        );
+        item_entity.set_removed(RemovalReason::Discarded);
+        if let Some(raider) = self.as_raider() {
+            raid.set_leader(self.wave(), raider);
+        }
+        self.set_patrol_leader(true);
+        true
     }
 
     /// Vanilla `Raider.canJoinPatrol`.
