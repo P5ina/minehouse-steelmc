@@ -245,9 +245,11 @@ pub trait AgeableMob: Mob {
         group_data: Option<SpawnGroupData>,
     ) -> Option<SpawnGroupData> {
         let mut group_data = match group_data {
-            Some(SpawnGroupData::AgeableMob(group_data) | SpawnGroupData::Horse(group_data, _)) => {
-                group_data
-            }
+            Some(
+                SpawnGroupData::AgeableMob(group_data)
+                | SpawnGroupData::Horse(group_data, _)
+                | SpawnGroupData::Axolotl(group_data, _),
+            ) => group_data,
             // Vanilla only replaces a missing group; other mob groups never reach an ageable mob.
             Some(
                 SpawnGroupData::SpiderEffects(_)
