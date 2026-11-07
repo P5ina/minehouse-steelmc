@@ -76,7 +76,7 @@ const DEFAULT_STEP_HEIGHT: f32 = 0.6;
 const REQUIRED_PATH_LENGTH: f32 = 48.0;
 /// Vanilla `Mob.createMobAttributes` follow range.
 const DEFAULT_FOLLOW_RANGE: f64 = 16.0;
-/// Vanilla `rewardTradeXp`: Regeneration a levelled-up villager gets.
+/// Vanilla `rewardTradeXp`: Regeneration a leveled-up villager gets.
 const LEVEL_UP_REGENERATION_TICKS: i32 = 200;
 /// Vanilla `setUnhappy`: ticks the villager shakes its head.
 const UNHAPPY_TICKS: i32 = 40;
