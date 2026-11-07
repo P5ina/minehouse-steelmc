@@ -25,7 +25,9 @@ pub use fight::{
 };
 pub use gate::run_one;
 pub use long_jump::{LongJumpMidJump, LongJumpToRandomPos};
-pub use look::{LookAtTargetSink, RandomLookAround, set_entity_look_target_sometimes};
+pub use look::{
+    LookAtTargetSink, RandomLookAround, set_entity_look_target, set_entity_look_target_sometimes,
+};
 pub use make_love::AnimalMakeLove;
 pub use move_to_target::MoveToTargetSink;
 pub use panic::AnimalPanic;

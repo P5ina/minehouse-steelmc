@@ -587,56 +587,28 @@ pub trait PathfinderMob: Mob {
         };
 
         let mob_position = self.block_position();
-        let settings = MobPathSettings::from_mob(self);
         let kind = self.mob_base().navigation().lock().kind();
-        let request = NavigationPathRequest {
+        // Vanilla `WalkNodeEvaluator.prepare` and `FlyNodeEvaluator.prepare`
+        // call `onPathfindingStart`; the swim evaluator does not.
+        let notifies_pathfinding = !matches!(kind, NavigationKind::WaterBound { .. });
+        if notifies_pathfinding {
+            self.on_pathfinding_start();
+        }
+        let settings = MobPathSettings::from_mob(self);
+        let path = create_path_with_evaluator(
+            self,
+            world,
+            kind,
+            settings,
             mob_position,
             targets,
             max_path_length,
             reach_range,
-        };
-        if kind == NavigationKind::Flying {
-            let mut evaluator = FlyNodeEvaluator::new(settings);
-            let mut no_collision = |_| false;
-            return self.mob_base().navigation().lock().create_path(
-                &mut evaluator,
-                world.as_ref(),
-                &mut no_collision,
-                request,
-            );
+        );
+        if notifies_pathfinding {
+            self.on_pathfinding_done();
         }
-        if let NavigationKind::WaterBound { allow_breaching } = kind {
-            let mut evaluator = SwimNodeEvaluator::new(settings, allow_breaching);
-            let mut no_collision = |_| false;
-            return self.mob_base().navigation().lock().create_path(
-                &mut evaluator,
-                world.as_ref(),
-                &mut no_collision,
-                request,
-            );
-        }
-
-        let mut evaluator = if kind == NavigationKind::Amphibious {
-            WalkNodeEvaluator::amphibious(settings, false)
-        } else {
-            WalkNodeEvaluator::new(settings)
-        };
-        let collision_world =
-            WorldCollisionProvider::for_path_navigation(world, self.as_entity_event_source());
-        let mut collision = |aabb| {
-            collision_world.has_entity_context_collision(
-                aabb,
-                self.position().y,
-                self.is_descending(),
-            )
-        };
-
-        self.mob_base().navigation().lock().create_path(
-            &mut evaluator,
-            world.as_ref(),
-            &mut collision,
-            request,
-        )
+        path
     }
 }
 
@@ -694,4 +666,65 @@ pub(super) fn find_ground_path_target_surface(
         column_pos = column_pos.above();
     }
     column_pos
+}
+
+/// Builds `mob`'s path with the node evaluator for its navigation kind.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "splits the evaluator dispatch out of path creation"
+)]
+fn create_path_with_evaluator<M: PathfinderMob + ?Sized>(
+    mob: &M,
+    world: &Arc<World>,
+    kind: NavigationKind,
+    settings: MobPathSettings,
+    mob_position: BlockPos,
+    targets: &[BlockPos],
+    max_path_length: f32,
+    reach_range: i32,
+) -> Option<Path> {
+    let request = NavigationPathRequest {
+        mob_position,
+        targets,
+        max_path_length,
+        reach_range,
+    };
+    if kind == NavigationKind::Flying {
+        let mut evaluator = FlyNodeEvaluator::new(settings);
+        let mut no_collision = |_| false;
+        return mob.mob_base().navigation().lock().create_path(
+            &mut evaluator,
+            world.as_ref(),
+            &mut no_collision,
+            request,
+        );
+    }
+    if let NavigationKind::WaterBound { allow_breaching } = kind {
+        let mut evaluator = SwimNodeEvaluator::new(settings, allow_breaching);
+        let mut no_collision = |_| false;
+        return mob.mob_base().navigation().lock().create_path(
+            &mut evaluator,
+            world.as_ref(),
+            &mut no_collision,
+            request,
+        );
+    }
+
+    let mut evaluator = if kind == NavigationKind::Amphibious {
+        WalkNodeEvaluator::amphibious(settings, false)
+    } else {
+        WalkNodeEvaluator::new(settings)
+    };
+    let collision_world =
+        WorldCollisionProvider::for_path_navigation(world, mob.as_entity_event_source());
+    let mut collision = |aabb| {
+        collision_world.has_entity_context_collision(aabb, mob.position().y, mob.is_descending())
+    };
+
+    mob.mob_base().navigation().lock().create_path(
+        &mut evaluator,
+        world.as_ref(),
+        &mut collision,
+        request,
+    )
 }
