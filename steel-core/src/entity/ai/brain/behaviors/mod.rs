@@ -4,6 +4,7 @@ mod attack;
 mod combat;
 mod cooldown;
 mod do_nothing;
+mod door;
 mod fight;
 mod find_land;
 pub mod gate;
@@ -29,13 +30,14 @@ pub use combat::{
 };
 pub use cooldown::CountDownCooldownTicks;
 pub use do_nothing::DoNothing;
+pub use door::interact_with_door;
 pub use fight::{
     erase_memory_if, is_breeding, melee_attack,
     set_walk_target_from_attack_target_if_target_out_of_reach, stop_attacking_if_target_invalid,
     stop_attacking_if_target_invalid_when,
 };
 pub use find_land::{try_find_land, try_find_land_near_liquid, try_lay_spawn_on_fluid_near_land};
-pub use gate::run_one;
+pub use gate::{run_one, trigger_one_shuffled};
 pub use interact::{interact_with_type, set_look_and_interact};
 pub use items::{GoAndGiveItemsToTarget, go_to_wanted_item, stay_close_to_target};
 pub use long_jump::{
@@ -49,7 +51,10 @@ pub use make_love::AnimalMakeLove;
 pub use memory_ops::become_passive_if_memory_present;
 pub use move_to_target::MoveToTargetSink;
 pub use panic::AnimalPanic;
-pub use poi::{SCAN_RANGE, acquire_poi, find_path_to_pois, validate_bed_poi, validate_nearby_poi};
+pub use poi::{
+    SCAN_RANGE, acquire_poi, find_path_to_pois, stroll_around_poi, stroll_to_poi, validate_bed_poi,
+    validate_nearby_poi,
+};
 pub use ram::PrepareRamNearestTarget;
 pub use stroll::{
     inside_brownian_walk, set_walk_target_away_from_entity, village_bound_random_stroll,

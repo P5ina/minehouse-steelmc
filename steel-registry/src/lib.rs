@@ -399,6 +399,11 @@ pub mod vanilla_fluid_tags;
 
 #[expect(warnings)]
 #[rustfmt::skip]
+#[path = "generated/vanilla_game_event_tags.rs"]
+pub mod vanilla_game_event_tags;
+
+#[expect(warnings)]
+#[rustfmt::skip]
 #[path = "generated/vanilla_loot_tables.rs"]
 pub mod vanilla_loot_tables;
 

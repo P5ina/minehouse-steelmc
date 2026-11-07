@@ -106,3 +106,124 @@ fn removing_inventory_items_empties_it() {
     assert_eq!(rest[0].count(), 2);
     assert!(allay.inventory_is_empty());
 }
+
+mod vibrations {
+    use std::sync::Arc;
+
+    use glam::DVec3;
+    use steel_registry::{vanilla_entities, vanilla_game_events};
+    use steel_utils::{BlockPos, ChunkPos, Downcast as _};
+
+    use super::super::AllayEntity;
+    use crate::bootstrap::init_globals;
+    use crate::entity::ai::brain::memory_types::LIKED_NOTEBLOCK_POSITION;
+    use crate::entity::{SharedEntity, next_entity_id};
+    use crate::test_support::{TestWorld, fresh_test_world, insert_ready_full_chunk};
+    use crate::world::game_event::GameEventContext;
+    use crate::world::game_event::vibrations::{VibrationSystem as _, tick_vibrations};
+
+    fn spawned_allay(key: &'static str) -> (TestWorld, SharedEntity) {
+        init_globals();
+        let fixture = fresh_test_world(key);
+        let world = &fixture.world;
+        insert_ready_full_chunk(world, ChunkPos::new(0, 0));
+        let allay: SharedEntity = Arc::new(AllayEntity::new(
+            &vanilla_entities::ALLAY,
+            next_entity_id(),
+            DVec3::new(8.5, 65.0, 8.5),
+            Arc::downgrade(world),
+        ));
+        world
+            .try_add_entity(Arc::clone(&allay))
+            .unwrap_or_else(|error| panic!("allay should join the loaded chunk: {error}"));
+        (fixture, allay)
+    }
+
+    fn as_allay(entity: &SharedEntity) -> &AllayEntity {
+        entity
+            .downcast_ref::<AllayEntity>()
+            .unwrap_or_else(|| panic!("the entity is an allay"))
+    }
+
+    #[test]
+    fn note_block_vibration_reaches_the_allay() {
+        let (fixture, entity) = spawned_allay("allay_hears_note_block");
+        let world = &fixture.world;
+        let allay = as_allay(&entity);
+        let note_block = BlockPos::new(11, 65, 8);
+        let source = DVec3::new(11.5, 65.5, 8.5);
+
+        world.game_event_at(
+            &vanilla_game_events::NOTE_BLOCK_PLAY,
+            source,
+            &GameEventContext::default(),
+        );
+        let Some(candidate) = allay
+            .vibration_data()
+            .lock()
+            .selection_strategy()
+            .chosen_candidate(world.game_time() + 1)
+        else {
+            panic!("the allay listener should schedule the note block vibration");
+        };
+        assert_eq!(
+            candidate.game_event().key,
+            vanilla_game_events::NOTE_BLOCK_PLAY.key
+        );
+
+        allay
+            .vibration_data()
+            .lock()
+            .set_current_vibration(Some(candidate));
+        allay.vibration_data().lock().set_travel_time_in_ticks(1);
+        tick_vibrations(world, allay);
+
+        assert!(allay.vibration_data().lock().current_vibration().is_none());
+        let liked = allay
+            .brain_memories_lock()
+            .get_ref(&LIKED_NOTEBLOCK_POSITION)
+            .cloned();
+        assert_eq!(liked.map(|global| global.pos), Some(note_block));
+    }
+
+    #[test]
+    fn other_events_are_not_scheduled() {
+        let (fixture, entity) = spawned_allay("allay_ignores_block_place");
+        let world = &fixture.world;
+        let allay = as_allay(&entity);
+        world.game_event_at(
+            &vanilla_game_events::BLOCK_PLACE,
+            DVec3::new(11.5, 65.5, 8.5),
+            &GameEventContext::default(),
+        );
+        assert!(
+            allay
+                .vibration_data()
+                .lock()
+                .selection_strategy()
+                .chosen_candidate(i64::MAX)
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn jukebox_events_start_and_stop_the_dance() {
+        let (fixture, entity) = spawned_allay("allay_dances_to_jukebox");
+        let world = &fixture.world;
+        let allay = as_allay(&entity);
+        let jukebox = DVec3::new(10.5, 64.5, 8.5);
+
+        world.game_event_at(
+            &vanilla_game_events::JUKEBOX_PLAY,
+            jukebox,
+            &GameEventContext::default(),
+        );
+        assert!(allay.is_dancing());
+        world.game_event_at(
+            &vanilla_game_events::JUKEBOX_STOP_PLAY,
+            jukebox,
+            &GameEventContext::default(),
+        );
+        assert!(!allay.is_dancing());
+    }
+}

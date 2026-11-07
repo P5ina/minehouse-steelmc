@@ -8,6 +8,8 @@ use crate::entity::entities::mobs::passive::equine::{AbstractHorse, Llama, Playe
 use crate::entity::entities::mobs::villagers::Merchant;
 use crate::entity::entities::{Guardian, LightningBoltEntity, Squid};
 use crate::entity::{leash::Leashable, pushing::EntityPush};
+use crate::world::game_event::DynamicListenerAction;
+use crate::world::game_event::vibrations::VibrationSystem;
 use rand::{RngExt, rng};
 use steel_math::DEGREE_90;
 use steel_utils::nbt::{NbtNumeric, nbt_collection_values};
@@ -1887,6 +1889,27 @@ pub trait Entity: EntityEventSource + ErasedType + Send + Sync + 'static {
     /// Returns true when vanilla block step-on hooks should treat this entity as careful.
     fn is_stepping_carefully(&self) -> bool {
         self.is_suppressing_bounce()
+    }
+
+    /// Vanilla `dampensVibrations`.
+    fn dampens_vibrations(&self) -> bool {
+        false
+    }
+
+    /// Returns this entity as a vibration system, when it listens for vibrations.
+    fn as_vibration_system(&self) -> Option<&dyn VibrationSystem> {
+        None
+    }
+
+    /// Vanilla `updateDynamicGameEventListener`: applies `action` to every
+    /// game event listener that moves with this entity. `this` is the shared
+    /// handle of this same entity.
+    fn update_dynamic_game_event_listeners(
+        &self,
+        _world: &Arc<World>,
+        _this: &SharedEntity,
+        _action: DynamicListenerAction,
+    ) {
     }
 
     /// Returns true when vanilla collision context should treat the entity as descending.

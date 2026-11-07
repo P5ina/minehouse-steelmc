@@ -8,6 +8,7 @@ use super::{
 };
 
 use crate::entity::{EntityCollisionCandidates, selector::EntitySelector};
+use crate::world::game_event::DynamicListenerAction;
 
 pub(super) struct NavigatingMobTracker {
     ids: SyncMutex<FxHashSet<i32>>,
@@ -77,6 +78,17 @@ impl World {
             |id| self.players.get_by_entity_id(id),
         );
         self.track_navigating_mob(entity);
+        self.update_dynamic_game_event_listeners(entity, DynamicListenerAction::Add);
+    }
+
+    /// Vanilla `ServerLevel.EntityCallbacks` `onTrackingStart`, `onTrackingEnd`
+    /// and `onSectionChange`: moves the entity's own game event listeners.
+    pub(crate) fn update_dynamic_game_event_listeners(
+        self: &Arc<Self>,
+        entity: &SharedEntity,
+        action: DynamicListenerAction,
+    ) {
+        entity.update_dynamic_game_event_listeners(self, entity, action);
     }
 
     pub(crate) fn remove_entity_from_tracker(&self, entity_id: i32) {
@@ -92,6 +104,7 @@ impl World {
     ) {
         for entity in changes.tracking_stopped {
             self.remove_entity_from_tracker(entity.id());
+            self.update_dynamic_game_event_listeners(&entity, DynamicListenerAction::Remove);
         }
         for entity in changes.tracking_started {
             self.add_entity_to_tracker(&entity);

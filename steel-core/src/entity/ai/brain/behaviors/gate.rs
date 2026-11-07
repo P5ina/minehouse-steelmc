@@ -87,6 +87,16 @@ pub fn run_one<E: ?Sized>(
     )
 }
 
+/// Fires one of `behaviors`, picked by weighted shuffle, and is done the
+/// same tick (vanilla `TriggerGate.triggerOneShuffled`): one-shot children
+/// run for one tick, like vanilla's triggers.
+#[must_use]
+pub fn trigger_one_shuffled<E: ?Sized>(
+    behaviors: Vec<(Box<dyn BehaviorControl<E>>, i32)>,
+) -> GateBehavior<E> {
+    run_one(Vec::new(), behaviors)
+}
+
 impl<E: LivingEntity + ?Sized> BehaviorControl<E> for GateBehavior<E> {
     fn status(&self) -> BehaviorStatus {
         self.status

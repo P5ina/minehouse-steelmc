@@ -17,18 +17,23 @@ use steel_registry::blocks::block_state_ext::BlockStateExt as _;
 use steel_registry::data_components::vanilla_components::POTION_CONTENTS;
 use steel_registry::enchantment_effect::EnchantmentEffectComponent;
 use steel_registry::entity_type::EntityTypeRef;
+use steel_registry::game_events::GameEventRef;
 use steel_registry::item_stack::ItemStack;
+use steel_registry::position_source::{EntityPositionSource, PositionSource};
 use steel_registry::sound_event::SoundEventRef;
 use steel_registry::vanilla_entity_data::AllayEntityData;
+use steel_registry::vanilla_game_event_tags::GameEventTag;
 use steel_registry::vanilla_item_tags::ItemTag;
 use steel_registry::{
     REGISTRY, TaggedRegistryExt as _, sound_events, vanilla_attributes, vanilla_blocks,
-    vanilla_entities, vanilla_game_events, vanilla_game_rules,
+    vanilla_entities, vanilla_game_events, vanilla_game_rules, vanilla_position_source_types,
 };
 use steel_utils::entity_events::EntityStatus;
 use steel_utils::locks::SyncMutex;
 use steel_utils::types::InteractionHand;
-use steel_utils::{BlockPos, BlockStateId, DowncastType, DowncastTypeKey};
+use steel_utils::{
+    BlockPos, BlockStateId, Downcast as _, DowncastType, DowncastTypeKey, Identifier,
+};
 
 pub use ai::hear_noteblock;
 
@@ -57,6 +62,13 @@ use crate::physics::MoveResult;
 use crate::player::Player;
 use crate::player::player_inventory::Prediction;
 use crate::world::World;
+use crate::world::game_event::vibrations::{
+    VIBRATION_LISTENER_TAG, VibrationData, VibrationListener, VibrationSystem, VibrationUser,
+    tick_vibrations,
+};
+use crate::world::game_event::{
+    DynamicGameEventListener, DynamicListenerAction, GameEventContext, GameEventListener,
+};
 
 /// Vanilla `FlyingMoveControl(this, 20, true)`.
 const ALLAY_MOVE_CONTROL: FlyingMoveControl = FlyingMoveControl {
@@ -97,6 +109,9 @@ pub struct AllayEntity {
     brain: Brain<Self>,
     inventory: SyncMutex<SimpleContainer>,
     state: SyncMutex<AllayState>,
+    vibration_data: SyncMutex<VibrationData>,
+    dynamic_vibration_listener: DynamicGameEventListener,
+    dynamic_jukebox_listener: DynamicGameEventListener,
 }
 
 // SAFETY: This key is owned by Steel and uniquely identifies `AllayEntity`.
@@ -160,6 +175,9 @@ impl AllayEntity {
             ),
             inventory: SyncMutex::new(SimpleContainer::new(TAG_INVENTORY_SIZE)),
             state: SyncMutex::new(AllayState::default()),
+            vibration_data: SyncMutex::new(VibrationData::default()),
+            dynamic_vibration_listener: DynamicGameEventListener::new(),
+            dynamic_jukebox_listener: DynamicGameEventListener::new(),
         }
     }
 
@@ -337,10 +355,14 @@ impl Entity for AllayEntity {
         self.entity_type
     }
 
-    /// Vanilla `Allay.tick`: a panicking allay stops dancing.
+    /// Vanilla `Allay.tick`: vibrations travel, and a panicking allay stops
+    /// dancing.
     fn tick(self: Arc<Self>) {
         let entity = Arc::clone(&self).into_shared_entity();
         self.tick_living_entity(&entity);
+        if let Some(world) = self.level() {
+            tick_vibrations(&world, self.as_ref());
+        }
         if self.is_panicking() {
             self.set_dancing(false);
         }
@@ -380,9 +402,31 @@ impl Entity for AllayEntity {
         self.is_liked_player(Some(other))
     }
 
+    fn as_vibration_system(&self) -> Option<&dyn VibrationSystem> {
+        Some(self)
+    }
+
+    /// Vanilla `updateDynamicGameEventListener`: the vibration and jukebox
+    /// listeners follow the allay.
+    fn update_dynamic_game_event_listeners(
+        &self,
+        world: &Arc<World>,
+        this: &SharedEntity,
+        action: DynamicListenerAction,
+    ) {
+        self.dynamic_vibration_listener
+            .apply(world, action, || Arc::new(VibrationListener::new(this)));
+        self.dynamic_jukebox_listener.apply(world, action, || {
+            Arc::new(JukeboxListener {
+                owner: Arc::downgrade(this),
+            })
+        });
+    }
+
     fn save_additional(&self, nbt: &mut NbtCompound) {
         self.save_mob(nbt);
         save_inventory(&self.inventory, nbt);
+        nbt.insert(VIBRATION_LISTENER_TAG, self.vibration_data.lock().save());
         nbt.insert(
             TAG_DUPLICATION_COOLDOWN,
             self.state.lock().duplication_cooldown,
@@ -393,6 +437,10 @@ impl Entity for AllayEntity {
     fn load_additional(&self, nbt: BorrowedNbtCompoundView<'_, '_>) {
         self.load_mob(nbt);
         load_inventory(&self.inventory, nbt);
+        *self.vibration_data.lock() = nbt
+            .compound(VIBRATION_LISTENER_TAG)
+            .and_then(VibrationData::load)
+            .unwrap_or_default();
         // Vanilla reads the long back with `getIntOr`, which accepts any number.
         let cooldown = nbt
             .long(TAG_DUPLICATION_COOLDOWN)
@@ -612,6 +660,129 @@ impl AllayEntity {
             .inventory
             .lock()
             .mutate_item_in_hand(hand, |item| item.consume(1, has_infinite_materials));
+    }
+}
+
+/// Vanilla `Allay.VibrationUser.VIBRATION_EVENT_LISTENER_RANGE`.
+const VIBRATION_EVENT_LISTENER_RANGE: i32 = 16;
+
+/// Vanilla `EntityPositionSource(allay, eyeHeight)`.
+fn allay_listener_pos(allay: &AllayEntity) -> DVec3 {
+    allay.position() + DVec3::new(0.0, allay.get_eye_height(), 0.0)
+}
+
+/// Vanilla `Allay.VibrationUser`.
+impl VibrationUser for AllayEntity {
+    fn vibration_listener_radius(&self) -> i32 {
+        VIBRATION_EVENT_LISTENER_RANGE
+    }
+
+    fn vibration_position_source(&self) -> PositionSource {
+        PositionSource::new(
+            &vanilla_position_source_types::ENTITY,
+            EntityPositionSource::new(self.id(), self.get_eye_height() as f32),
+        )
+    }
+
+    fn vibration_listener_pos(&self) -> Option<DVec3> {
+        Some(allay_listener_pos(self))
+    }
+
+    /// Vanilla `canReceiveVibration`: only the liked note block, once there
+    /// is one.
+    fn can_receive_vibration(
+        &self,
+        world: &Arc<World>,
+        pos: BlockPos,
+        _event: GameEventRef,
+        _context: &GameEventContext<'_>,
+    ) -> bool {
+        if self.is_no_ai() {
+            return false;
+        }
+        let liked = self
+            .brain_memories_lock()
+            .get_ref(&LIKED_NOTEBLOCK_POSITION)
+            .cloned();
+        liked.is_none_or(|global_pos| {
+            ai::is_close_enough(
+                &global_pos,
+                world,
+                self.block_position(),
+                ai::MAX_NOTEBLOCK_DISTANCE,
+            ) && global_pos.pos == pos
+        })
+    }
+
+    fn on_receive_vibration(
+        &self,
+        world: &Arc<World>,
+        pos: BlockPos,
+        event: GameEventRef,
+        _source_entity: Option<&SharedEntity>,
+        _projectile_owner: Option<&SharedEntity>,
+        _receiving_distance: f32,
+    ) {
+        if event.key == vanilla_game_events::NOTE_BLOCK_PLAY.key {
+            ai::hear_noteblock(self, world, pos);
+        }
+    }
+
+    fn listenable_events(&self) -> Identifier {
+        GameEventTag::ALLAY_CAN_LISTEN
+    }
+}
+
+impl VibrationSystem for AllayEntity {
+    fn vibration_data(&self) -> &SyncMutex<VibrationData> {
+        &self.vibration_data
+    }
+}
+
+/// Vanilla `Allay.JukeboxListener`: starts and stops dancing.
+struct JukeboxListener {
+    owner: Weak<dyn Entity>,
+}
+
+impl JukeboxListener {
+    fn allay(&self) -> Option<SharedEntity> {
+        self.owner.upgrade()
+    }
+}
+
+impl GameEventListener for JukeboxListener {
+    fn listener_pos(&self) -> Option<DVec3> {
+        let owner = self.allay()?;
+        let allay = owner.downcast_ref::<AllayEntity>()?;
+        Some(allay_listener_pos(allay))
+    }
+
+    fn listener_radius(&self) -> i32 {
+        vanilla_game_events::JUKEBOX_PLAY.notification_radius
+    }
+
+    fn handle_game_event(
+        &self,
+        _world: &Arc<World>,
+        event: GameEventRef,
+        _context: &GameEventContext<'_>,
+        source_pos: DVec3,
+    ) -> bool {
+        let Some(owner) = self.allay() else {
+            return false;
+        };
+        let Some(allay) = owner.downcast_ref::<AllayEntity>() else {
+            return false;
+        };
+        let is_playing = if event.key == vanilla_game_events::JUKEBOX_PLAY.key {
+            true
+        } else if event.key == vanilla_game_events::JUKEBOX_STOP_PLAY.key {
+            false
+        } else {
+            return false;
+        };
+        allay.set_jukebox_playing(BlockPos::from(source_pos), is_playing);
+        true
     }
 }
 
