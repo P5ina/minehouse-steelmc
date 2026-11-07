@@ -701,6 +701,10 @@ pub trait Mob: LivingEntity + Leashable {
         InteractionResult::Pass
     }
 
+    /// Vanilla `Mob.onOffspringSpawnedFromEgg`: runs after a spawn egg used on
+    /// this mob made `offspring`.
+    fn on_offspring_spawned_from_egg(&self, _spawner: &Player, _offspring: &dyn Mob) {}
+
     /// Mob-specific interaction hook for concrete mobs to override; does
     /// nothing by default.
     fn mob_interact(&self, _player: &Player, _hand: InteractionHand) -> InteractionResult {
@@ -740,6 +744,10 @@ pub trait Mob: LivingEntity + Leashable {
     fn mob_can_be_leashed(&self) -> bool {
         !self.is_enemy()
     }
+
+    /// Vanilla `onElasticLeashPull` overrides, run after the shared
+    /// fall-distance check.
+    fn mob_on_elastic_leash_pull(&self) {}
 
     /// Returns whether this mob is allowed to pick up dropped items.
     fn can_pick_up_loot(&self) -> bool {
@@ -1904,7 +1912,18 @@ pub trait Mob: LivingEntity + Leashable {
         }
     }
 
+    /// Vanilla `LookControl.resetXRotOnTick`: whether the look control levels
+    /// the head before turning it each tick.
+    fn look_control_resets_x_rot(&self) -> bool {
+        true
+    }
+
     fn tick_look_control(&self) {
+        self.default_tick_look_control();
+    }
+
+    /// The base `LookControl.tick`, for custom look controls to fall back on.
+    fn default_tick_look_control(&self) {
         let look_control = {
             let mut controls = self.mob_base().controls().lock();
             let look_control = controls.look_control;
@@ -1913,7 +1932,9 @@ pub trait Mob: LivingEntity + Leashable {
         };
 
         let mut rotation = self.rotation();
-        rotation.1 = 0.0;
+        if self.look_control_resets_x_rot() {
+            rotation.1 = 0.0;
+        }
         if look_control.is_looking_at_target() {
             let position = self.position();
             let wanted_position = look_control.wanted_position();
@@ -1996,6 +2017,12 @@ pub trait Mob: LivingEntity + Leashable {
     }
 
     fn tick_body_rotation_control(&self) {
+        self.default_tick_body_rotation_control();
+    }
+
+    /// The base `BodyRotationControl.clientTick`, for custom body controls
+    /// to fall back on.
+    fn default_tick_body_rotation_control(&self) {
         let moving = {
             let delta = self.position() - self.old_position();
             delta.x.mul_add(delta.x, delta.z * delta.z) > BODY_ROTATION_MOVING_DISTANCE_SQR
@@ -2040,6 +2067,11 @@ impl<T: Mob> Leashable for T {
     }
 
     /// Drops the leash and disables MOVE until re-leashed at close range.
+    fn on_elastic_leash_pull(&self) {
+        self.check_fall_distance_accumulation();
+        self.mob_on_elastic_leash_pull();
+    }
+
     fn leash_too_far_behaviour(&self) {
         self.drop_leash();
         self.mob_base()

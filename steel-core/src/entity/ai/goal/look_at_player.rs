@@ -4,16 +4,21 @@ use super::reduced_tick_delay;
 use crate::entity::ai::control::{DEFAULT_LOOK_X_MAX_ROT_ANGLE, DEFAULT_LOOK_Y_MAX_ROT_SPEED};
 use crate::entity::ai::goal::selector::{Goal, GoalControls};
 use crate::entity::ai::targeting::TargetingConditions;
+use crate::entity::entities::mobs::villagers::trading_player_of;
 use crate::entity::{LivingEntity, PathfinderMob, SharedEntity};
 use crate::world::World;
 
 const DEFAULT_PROBABILITY: f32 = 0.02;
+/// Vanilla `LookAtTradingPlayerGoal` look distance.
+const TRADING_PLAYER_LOOK_DISTANCE: f64 = 8.0;
 
 type LookAtEntitySelector = Box<dyn Fn(&dyn LivingEntity, &World) -> bool + Send + Sync>;
 
 enum LookAtTargetType {
     Player,
     LivingEntity(LookAtEntitySelector),
+    /// Vanilla `LookAtTradingPlayerGoal`: always the merchant's trading player.
+    TradingPlayer,
 }
 
 pub struct LookAtPlayerGoal {
@@ -67,6 +72,15 @@ impl LookAtPlayerGoal {
         )
     }
 
+    /// Vanilla `LookAtTradingPlayerGoal`: looks at whoever trades with the merchant.
+    #[must_use]
+    pub(crate) fn new_trading_player() -> Self {
+        Self {
+            look_at_type: LookAtTargetType::TradingPlayer,
+            ..Self::new(TRADING_PLAYER_LOOK_DISTANCE)
+        }
+    }
+
     #[must_use]
     pub(super) fn new_for_players_with_controls(
         look_distance: f64,
@@ -113,6 +127,13 @@ impl Goal for LookAtPlayerGoal {
     }
 
     fn can_use(&mut self, mob: &dyn PathfinderMob) -> bool {
+        if matches!(self.look_at_type, LookAtTargetType::TradingPlayer) {
+            self.look_at = mob
+                .as_merchant()
+                .and_then(trading_player_of)
+                .map(|player| -> SharedEntity { player });
+            return self.look_at.is_some();
+        }
         if rand::random::<f32>() >= self.probability {
             return false;
         }
@@ -130,6 +151,7 @@ impl Goal for LookAtPlayerGoal {
                         && self.look_at_context.test(world.as_ref(), Some(mob), player)
                 })
                 .map(|player| -> SharedEntity { player }),
+            LookAtTargetType::TradingPlayer => None,
             LookAtTargetType::LivingEntity(selector) => {
                 let search_box =
                     mob.bounding_box()
