@@ -1298,7 +1298,7 @@ fn convert_villager_to_zombie_villager(zombie: &dyn Entity, villager: &VillagerE
             villager.villager_level(),
         );
         zombie_villager.set_gossips(villager.gossips());
-        // TODO: copy `villager.getOffers()` once villagers have merchant offers.
+        zombie_villager.set_trade_offers(Some(villager.with_offers(|offers| offers.clone())));
         zombie_villager.set_villager_xp(villager.villager_xp());
         if !zombie.is_silent() {
             world.level_event(

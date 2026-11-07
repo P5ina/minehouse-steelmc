@@ -648,6 +648,8 @@ fn zombie_kills_villager(difficulty: Difficulty, name: &'static str) -> (TestWor
         2,
     );
     villager_ref.set_villager_xp(17);
+    let offers = villager_ref.with_offers(|offers| offers.iter().count());
+    assert!(offers > 0, "a farmer rolls trades");
     let source = DamageSource::direct(&vanilla_damage_types::MOB_ATTACK, Arc::clone(&zombie));
     let perished = zombie.killed_entity(
         world,
@@ -683,6 +685,12 @@ fn zombie_infects_a_villager_on_hard() {
     );
     assert_eq!(zombie_villager.villager_level(), 2);
     assert_eq!(zombie_villager.villager_xp(), 17);
+    assert!(
+        zombie_villager
+            .trade_offers()
+            .is_some_and(|offers| offers.iter().count() > 0),
+        "the trades come along"
+    );
     assert!(!zombie_villager.is_baby(), "an adult villager stays adult");
     let villagers = world.get_entities_in_aabb_matching(&around_villager(), |entity| {
         entity.entity_type() == &vanilla_entities::VILLAGER && !entity.is_removed()

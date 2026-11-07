@@ -27,6 +27,7 @@ use uuid::Uuid;
 
 use super::{ZombieState, ZombieVariant, ZombieVariantSaveData, zombie_mob_base};
 use crate::entity::ai::gossip::GossipContainer;
+use crate::entity::entities::mobs::villagers::trading::MerchantOffers;
 use crate::entity::entities::mobs::villagers::villager_data::{
     read_villager_data, villager_type_at, write_villager_data,
 };
@@ -49,9 +50,8 @@ pub(super) struct ZombieVillagerState {
     conversion_starter: Option<Uuid>,
     /// Vanilla `gossips`.
     gossips: Option<GossipContainer>,
-    /// Vanilla `tradeOffers`, kept in its saved `MerchantOffers` form until
-    /// merchant offers exist.
-    trade_offers: Option<NbtTag>,
+    /// Vanilla `tradeOffers`.
+    trade_offers: Option<MerchantOffers>,
     /// Vanilla `villagerXp`.
     villager_xp: i32,
 }
@@ -195,14 +195,14 @@ impl ZombieVillagerEntity {
         self.villager_state.lock().villager_xp = villager_xp;
     }
 
-    /// Vanilla `tradeOffers`, in its saved `MerchantOffers` form.
+    /// Vanilla `tradeOffers`.
     #[must_use]
-    pub fn trade_offers(&self) -> Option<NbtTag> {
+    pub fn trade_offers(&self) -> Option<MerchantOffers> {
         self.villager_state.lock().trade_offers.clone()
     }
 
-    /// Vanilla `setTradeOffers`, in its saved `MerchantOffers` form.
-    pub fn set_trade_offers(&self, trade_offers: Option<NbtTag>) {
+    /// Vanilla `setTradeOffers`.
+    pub fn set_trade_offers(&self, trade_offers: Option<MerchantOffers>) {
         self.villager_state.lock().trade_offers = trade_offers;
     }
 
@@ -339,7 +339,7 @@ impl ZombieVariantSaveData for ZombieVillagerEntity {
         let converting = self.is_converting();
         let state = self.villager_state.lock();
         if let Some(offers) = &state.trade_offers {
-            nbt.insert("Offers", offers.clone());
+            nbt.insert("Offers", offers.to_nbt());
         }
         if let Some(gossips) = &state.gossips {
             nbt.insert("Gossips", gossips.to_nbt());
@@ -382,7 +382,7 @@ impl ZombieVariantSaveData for ZombieVillagerEntity {
 
         {
             let mut state = self.villager_state.lock();
-            state.trade_offers = nbt.get("Offers").map(|tag| tag.to_owned());
+            state.trade_offers = nbt.compound("Offers").and_then(MerchantOffers::from_nbt);
             state.gossips = nbt
                 .list("Gossips")
                 .and_then(|list| list.compounds())
