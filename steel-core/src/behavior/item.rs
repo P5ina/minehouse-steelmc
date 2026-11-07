@@ -6,15 +6,18 @@ use std::sync::Arc;
 use std::borrow::Cow;
 use steel_protocol::packets::game::SoundSource;
 use steel_registry::data_components::Consumable;
+use steel_registry::data_components::components::OminousBottleAmplifier;
 use steel_registry::data_components::vanilla_components::{
-    BLOCKS_ATTACKS, CONSUMABLE, FOOD, KINETIC_WEAPON, USE_REMAINDER,
+    BLOCKS_ATTACKS, CONSUMABLE, FOOD, KINETIC_WEAPON, OMINOUS_BOTTLE_AMPLIFIER, USE_REMAINDER,
 };
 
 use steel_registry::data_components::vanilla_components::ITEM_NAME;
 use steel_registry::item_stack::ItemStack;
 use steel_registry::items::ItemRef;
 use steel_registry::stat::vanilla_stat_types;
-use steel_registry::{REGISTRY, RegistryEntry, RegistryExt, sound_events, vanilla_game_events};
+use steel_registry::{
+    REGISTRY, RegistryEntry, RegistryExt, sound_events, vanilla_game_events, vanilla_mob_effects,
+};
 use steel_utils::types::{InteractionHand, SignTextSlot};
 use text_components::TextComponent;
 
@@ -23,7 +26,7 @@ use crate::behavior::{InteractionResult, InventoryTickContext, UseItemContext, U
 use crate::block_entity::entities::{SignBlockEntity, SignText};
 use crate::entity::consume_effect::apply_consume_effect;
 use crate::entity::damage::DamageSource;
-use crate::entity::{Entity, LivingEntity, LivingEntityRef, SharedEntity};
+use crate::entity::{Entity, LivingEntity, LivingEntityRef, MobEffectInstance, SharedEntity};
 use crate::player::{Player, player_inventory::EquipmentSwapResult};
 use crate::world::World;
 
@@ -360,6 +363,21 @@ pub(crate) fn finish_consuming_stack(
                 None,
             );
         }
+    }
+
+    // Vanilla `OminousBottleAmplifier.onConsume` (a `ConsumableListener`, run
+    // before the `on_consume_effects`).
+    if let Some(amplifier) = stack.get(OMINOUS_BOTTLE_AMPLIFIER) {
+        let _ = user.add_mob_effect(
+            MobEffectInstance::with_duration(
+                vanilla_mob_effects::BAD_OMEN,
+                OminousBottleAmplifier::EFFECT_DURATION,
+                amplifier.value(),
+            )
+            .with_ambient(false)
+            .with_visible(false)
+            .with_show_icon(true),
+        );
     }
 
     for effect in consumable.on_consume_effects() {
