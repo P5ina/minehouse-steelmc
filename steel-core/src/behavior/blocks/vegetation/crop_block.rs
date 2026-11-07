@@ -229,6 +229,10 @@ impl Bonemealable for CropBlock {
 }
 
 impl<T: CropLike + Bonemealable + Send + Sync> BlockBehavior for T {
+    fn crop_is_max_age(&self, state: BlockStateId) -> Option<bool> {
+        Some(self.is_max_age(state))
+    }
+
     fn get_state_for_placement(&self, context: &BlockPlaceContext<'_>) -> Option<BlockStateId> {
         if self.may_place_on(
             context.world.get_block_state(context.place_pos().below()),

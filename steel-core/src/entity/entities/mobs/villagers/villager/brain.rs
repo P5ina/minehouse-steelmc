@@ -1,7 +1,7 @@
 //! The villager brain (vanilla `Villager.BRAIN_PROVIDER` and
 //! `VillagerGoalPackages`), with the villager-only behaviors and sensors.
 //!
-//! Not yet ported: harvesting farmland, bone meal, sleeping,
+//! Not yet ported: sleeping,
 //! breeding, gifts to heroes, trading with other villagers, picking up wanted items, iron
 //! golem calls and raids.
 
@@ -13,6 +13,7 @@ use steel_registry::villager_profession::VillagerProfessionRef;
 use steel_registry::{vanilla_entities, vanilla_villager_professions};
 use steel_utils::entity_events::EntityStatus;
 
+use self::farm::{HarvestFarmland, UseBonemeal};
 use self::poi::{
     GoToPotentialJobSite, acquirable_job_site, assign_profession_from_job_site,
     poi_competitor_scan, reset_profession, set_closest_home_as_walk_target,
@@ -258,8 +259,6 @@ fn work_package(profession: VillagerProfessionRef) -> ActivityData<VillagerEntit
     } else {
         WorkAtPoi::new()
     };
-    // TODO(villager brain): vanilla also harvests farmland (weight 2 for
-    // farmers, else 5) and uses bone meal (4 for farmers, else 7) here.
     let work: Weighted = vec![
         (Box::new(TimedBehavior::new(work_at_poi)), 7),
         (
@@ -279,6 +278,14 @@ fn work_package(profession: VillagerProfessionRef) -> ActivityData<VillagerEntit
                 &JOB_SITE,
             )),
             5,
+        ),
+        (
+            Box::new(TimedBehavior::new(HarvestFarmland::new())),
+            if farmer { 2 } else { 5 },
+        ),
+        (
+            Box::new(TimedBehavior::new(UseBonemeal::new())),
+            if farmer { 4 } else { 7 },
         ),
     ];
     // TODO(villager brain): vanilla also gives gifts to heroes at priority 3.
@@ -1168,6 +1175,7 @@ impl Sensor<VillagerEntity> for GolemSensor {
     }
 }
 
+mod farm;
 mod poi;
 mod work;
 

@@ -21,7 +21,7 @@ use steel_registry::{
 use steel_utils::types::{InteractionHand, SignTextSlot};
 use text_components::TextComponent;
 
-use crate::behavior::items::{DefaultItemBehavior, SpawnEggItem, block_transformer};
+use crate::behavior::items::{BlockItem, DefaultItemBehavior, SpawnEggItem, block_transformer};
 use crate::behavior::{InteractionResult, InventoryTickContext, UseItemContext, UseOnContext};
 use crate::block_entity::entities::{SignBlockEntity, SignText};
 use crate::entity::consume_effect::apply_consume_effect;
@@ -284,6 +284,11 @@ pub trait ItemBehavior: Send + Sync {
 
     /// Returns this item behavior as a `SpawnEggItem`.
     fn as_spawn_egg(&self) -> Option<&SpawnEggItem> {
+        None
+    }
+
+    /// Returns this item behavior as a `BlockItem` (vanilla `instanceof BlockItem`).
+    fn as_block_item(&self) -> Option<&BlockItem> {
         None
     }
 
