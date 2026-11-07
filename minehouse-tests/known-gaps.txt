@@ -3,7 +3,6 @@
 # reported; remove it from the list in the same change that fixes it.
 
 # mobs: the entity (or the mob it converts into) does not exist in SteelMC yet
-minehouse_mob_breeze
 minehouse_mob_cat
 minehouse_mob_creaking
 minehouse_mob_ender_dragon

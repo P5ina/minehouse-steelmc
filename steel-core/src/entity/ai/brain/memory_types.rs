@@ -453,3 +453,31 @@ pub static LIKED_NOTEBLOCK_COOLDOWN_TICKS: MemoryModuleType<i32> =
     MemoryModuleType::with_codec("liked_noteblock_cooldown_ticks", int_codec());
 pub static SECONDARY_JOB_SITE: MemoryModuleType<Vec<GlobalPos>> =
     MemoryModuleType::new("secondary_job_site");
+
+/// Vanilla `BlockPos.CODEC` writes an `[x, y, z]` int array.
+const fn block_pos_codec() -> MemoryCodec<BlockPos> {
+    MemoryCodec {
+        save: |value| NbtTag::IntArray(vec![value.0.x, value.0.y, value.0.z]),
+        load: |tag| match tag.int_array()?.as_slice() {
+            &[x, y, z] => Some(BlockPos::new(x, y, z)),
+            _ => None,
+        },
+    }
+}
+
+pub static BREEZE_JUMP_COOLDOWN: MemoryModuleType<()> =
+    MemoryModuleType::with_codec("breeze_jump_cooldown", unit_codec());
+pub static BREEZE_SHOOT: MemoryModuleType<()> =
+    MemoryModuleType::with_codec("breeze_shoot", unit_codec());
+pub static BREEZE_SHOOT_CHARGING: MemoryModuleType<()> =
+    MemoryModuleType::with_codec("breeze_shoot_charging", unit_codec());
+pub static BREEZE_SHOOT_RECOVERING: MemoryModuleType<()> =
+    MemoryModuleType::with_codec("breeze_shoot_recover", unit_codec());
+pub static BREEZE_SHOOT_COOLDOWN: MemoryModuleType<()> =
+    MemoryModuleType::with_codec("breeze_shoot_cooldown", unit_codec());
+pub static BREEZE_JUMP_INHALING: MemoryModuleType<()> =
+    MemoryModuleType::with_codec("breeze_jump_inhaling", unit_codec());
+pub static BREEZE_JUMP_TARGET: MemoryModuleType<BlockPos> =
+    MemoryModuleType::with_codec("breeze_jump_target", block_pos_codec());
+pub static BREEZE_LEAVING_WATER: MemoryModuleType<()> =
+    MemoryModuleType::with_codec("breeze_leaving_water", unit_codec());
