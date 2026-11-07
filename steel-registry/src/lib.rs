@@ -42,6 +42,7 @@ pub mod dimension_type;
 pub mod dye_color;
 pub mod enchantment;
 pub use enchantment::effect as enchantment_effect;
+pub mod context_int_provider;
 pub mod entity_data;
 pub mod entity_type;
 pub mod entity_variant;
@@ -516,3 +517,8 @@ pub mod vanilla_advancements;
 #[rustfmt::skip]
 #[path = "generated/vanilla_villager_trades.rs"]
 pub mod vanilla_villager_trades;
+
+#[expect(warnings)]
+#[rustfmt::skip]
+#[path = "generated/vanilla_context_int_providers.rs"]
+pub mod vanilla_context_int_providers;

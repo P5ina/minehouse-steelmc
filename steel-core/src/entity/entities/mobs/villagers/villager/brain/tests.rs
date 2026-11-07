@@ -749,3 +749,45 @@ fn farmers_find_farmland_and_stroll_between_it() {
         .map(|target| target.target.current_block_position());
     assert_eq!(target, Some(farmland));
 }
+
+#[test]
+fn farmers_empty_a_ready_composter_and_compost_spare_seeds() {
+    init_vanilla_registry();
+    init_behaviors();
+    let fixture = fresh_test_world("villager_brain_compost");
+    let world = &fixture.world;
+    insert_ready_full_chunk(world, ChunkPos::new(0, 0));
+    let composter = BlockPos::new(2, 64, 1);
+    let level = &BlockStateProperties::LEVEL_COMPOSTER;
+    world.set_block(
+        composter,
+        vanilla_blocks::COMPOSTER
+            .default_state()
+            .set_value(level, 8),
+        UpdateFlags::UPDATE_CLIENTS,
+    );
+    let mob = farmer_in(world);
+    mob.brain
+        .memories()
+        .lock()
+        .set(&JOB_SITE, Some(global(world, composter)));
+    let _ = mob
+        .inventory()
+        .lock()
+        .add_item(&ItemStack::with_count(&vanilla_items::WHEAT_SEEDS, 15));
+
+    WorkAtPoi::at_composter().start(world, &mob, 5);
+
+    assert_eq!(
+        mob.inventory()
+            .lock()
+            .count_item(&vanilla_items::WHEAT_SEEDS),
+        10,
+        "farmers keep ten seeds of each kind"
+    );
+    let filled = world.get_block_state(composter).get_value(level);
+    assert!(
+        (1..=5).contains(&filled),
+        "the emptied composter takes the five spare seeds, level {filled}"
+    );
+}

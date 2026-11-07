@@ -2,15 +2,18 @@
 //! and between secondary job sites (vanilla `SecondaryPoiSensor` and
 //! `StrollToPoiList`).
 
+use std::mem;
 use std::sync::Arc;
 
 use steel_registry::blocks::block_state_ext::BlockStateExt as _;
 use steel_registry::item_stack::ItemStack;
-use steel_registry::{vanilla_blocks, vanilla_items};
-use steel_utils::GlobalPos;
+use steel_registry::items::ItemRef;
+use steel_registry::{level_events, vanilla_blocks, vanilla_items};
+use steel_utils::{BlockPos, BlockStateId, GlobalPos};
 
 use super::super::{VillagerEntity, secondary_poi};
 use super::poi::closer_to_center_than;
+use crate::behavior::blocks::ComposterBlock;
 use crate::entity::Entity as _;
 use crate::entity::ai::brain::behavior::{Behavior, OneShot};
 use crate::entity::ai::brain::memory::{MemoryModuleType, MemoryRequirement};
@@ -32,6 +35,15 @@ const MAX_BREAD: i32 = 36;
 const MAX_BREAD_TO_MAKE: i32 = 3;
 /// Vanilla `WorkAtComposter.makeBread`: wheat per loaf.
 const WHEAT_PER_BREAD: i32 = 3;
+const COMPOSTABLE_ITEM_COUNT: usize = 2;
+/// Vanilla `WorkAtComposter.COMPOSTABLE_ITEMS`.
+fn compostable_items() -> [ItemRef; COMPOSTABLE_ITEM_COUNT] {
+    [&vanilla_items::WHEAT_SEEDS, &vanilla_items::BEETROOT_SEEDS]
+}
+/// Vanilla `WorkAtComposter.compostItems`: seeds composted per session.
+const MAX_ITEMS_TO_COMPOST: i32 = 20;
+/// Vanilla `WorkAtComposter.compostItems`: seeds of each kind it keeps.
+const MIN_SEEDS_KEPT: i32 = 10;
 /// Vanilla `SecondaryPoiSensor.SCAN_RATE`.
 const SECONDARY_POI_SCAN_RATE: i32 = 40;
 /// Vanilla `StrollToPoiList`: ticks before it picks the next site.
@@ -80,18 +92,18 @@ impl WorkAtPoi {
     }
 
     /// Vanilla `useWorkstation`.
-    fn use_workstation(&self, world: &World, body: &VillagerEntity) {
+    fn use_workstation(&self, world: &Arc<World>, body: &VillagerEntity) {
         if !self.composter {
             return;
         }
         let Some(site) = body.brain.memories().lock().get(&JOB_SITE) else {
             return;
         };
-        if world.get_block_state(site.pos).get_block() == &vanilla_blocks::COMPOSTER {
+        // Vanilla reads the job site's position in the villager's own level.
+        let state = world.get_block_state(site.pos);
+        if state.get_block() == &vanilla_blocks::COMPOSTER {
             make_bread(body);
-            // TODO(villager brain): vanilla also empties a full composter and
-            // fills it with spare seeds (`compostItems`) once composters
-            // take items.
+            compost_items(world, body, site.pos, state);
         }
     }
 }
@@ -150,6 +162,69 @@ fn make_bread(body: &VillagerEntity) {
     if !leftover.is_empty() {
         let _dropped = body.spawn_at_location(leftover, 0.5);
     }
+}
+
+/// Vanilla `WorkAtComposter.compostItems`: empties a full composter, then
+/// composts up to 20 seeds, keeping 10 of each kind.
+fn compost_items(world: &Arc<World>, body: &VillagerEntity, pos: BlockPos, state: BlockStateId) {
+    let mut block_state = state;
+    if ComposterBlock::level(block_state) == ComposterBlock::READY {
+        block_state = ComposterBlock::extract_produce(body, block_state, world, pos);
+    }
+    let mut total_items_to_use = MAX_ITEMS_TO_COMPOST;
+    let mut items_seen_so_far = [0_i32; COMPOSTABLE_ITEM_COUNT];
+    let mut temp_state = block_state;
+    let container_size = body.inventory().lock().get_container_size();
+    for slot in (0..container_size).rev() {
+        if total_items_to_use <= 0 {
+            break;
+        }
+        // Taken out of the inventory while the composter changes the world.
+        let mut stack = mem::take(body.inventory().lock().get_item_mut(slot));
+        let item_index = compostable_items()
+            .iter()
+            .position(|item| !stack.is_empty() && stack.is(item));
+        let mut filled = false;
+        if let Some(item_index) = item_index {
+            let stack_size = stack.count();
+            let total_item_count = items_seen_so_far[item_index] + stack_size;
+            items_seen_so_far[item_index] = total_item_count;
+            let items_to_use = (total_item_count - MIN_SEEDS_KEPT)
+                .min(total_items_to_use)
+                .min(stack_size);
+            if items_to_use > 0 {
+                total_items_to_use -= items_to_use;
+                for _ in 0..items_to_use {
+                    temp_state =
+                        ComposterBlock::insert_item(body, temp_state, world, &mut stack, pos);
+                    if ComposterBlock::level(temp_state) == ComposterBlock::MAX_LEVEL {
+                        filled = true;
+                        break;
+                    }
+                }
+            }
+        }
+        body.inventory().lock().set_item(slot, stack);
+        if filled {
+            break;
+        }
+    }
+    spawn_composter_fill_effects(world, block_state, pos, temp_state);
+}
+
+/// Vanilla `WorkAtComposter.spawnComposterFillEffects`.
+fn spawn_composter_fill_effects(
+    world: &World,
+    block_state: BlockStateId,
+    pos: BlockPos,
+    new_state: BlockStateId,
+) {
+    world.level_event(
+        level_events::COMPOSTER_FILL,
+        pos,
+        i32::from(new_state != block_state),
+        None,
+    );
 }
 
 /// Vanilla `SecondaryPoiSensor`: remembers the profession's secondary job

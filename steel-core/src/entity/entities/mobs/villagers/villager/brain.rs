@@ -1,7 +1,7 @@
 //! The villager brain (vanilla `Villager.BRAIN_PROVIDER` and
 //! `VillagerGoalPackages`), with the villager-only behaviors and sensors.
 //!
-//! Not yet ported: composting, harvesting farmland, bone meal, sleeping,
+//! Not yet ported: harvesting farmland, bone meal, sleeping,
 //! breeding, gifts to heroes, trading with other villagers, picking up wanted items, iron
 //! golem calls and raids.
 
