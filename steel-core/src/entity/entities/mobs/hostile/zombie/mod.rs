@@ -255,7 +255,8 @@ struct ZombieState {
     in_water_time: i32,
     /// Vanilla `ConversionTracker.conversionTime`.
     conversion_time: i32,
-    /// A chicken picked at spawn that this baby mounts once it is in the world.
+    /// A chicken (or, for a drowned, a zombie nautilus) picked at spawn that
+    /// this zombie mounts once it is in the world.
     ///
     /// Vanilla calls `startRiding` inside `finalizeSpawn`, before the zombie
     /// joins the level; Steel can only link riders that are already in it.
