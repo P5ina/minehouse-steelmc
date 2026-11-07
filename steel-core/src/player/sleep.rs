@@ -1,3 +1,4 @@
+use crate::player::advancement::criteria;
 use glam::DVec3;
 use steel_protocol::packets::game::{AnimateAction, CAnimate};
 use steel_registry::{
@@ -230,8 +231,9 @@ impl Player {
         }
         self.sync_entity_data();
         self.award_custom_stat(slept_in_stat);
-
-        // TODO: trigger CriteriaTriggers.SLEPT_IN_BED once the foundation for advancements exist.
+        if can_set_spawn {
+            self.trigger_player_criteria(&criteria::SLEPT_IN_BED);
+        }
         if !world.can_sleep_through_nights() {
             self.send_overlay_message(
                 &TranslatedMessage {

@@ -2,6 +2,7 @@
 //!
 //! Groups the advancementPlayer, advancement progress and visibility evaluator
 
+pub(crate) mod criteria;
 pub mod progress;
 pub mod rewards;
 mod saving;
@@ -74,8 +75,9 @@ impl PlayerAdvancement {
                     && player
                         .level()
                         .is_some_and(|level| level.get_game_rule(&SHOW_ADVANCEMENT_MESSAGES))
+                    && let Some(server) = player.server.upgrade()
                 {
-                    player.server().broadcast_system_chat(
+                    server.broadcast_system_chat(
                         &display
                             .frame_type
                             .create_announcement(advancement, player.display_name()),
@@ -89,6 +91,16 @@ impl PlayerAdvancement {
             self.mark_for_visibility_update(advancement);
         }
         result
+    }
+
+    /// Whether a trigger listener is registered for `criterion`: vanilla
+    /// `PlayerAdvancements.registerListeners` registers the criteria that are
+    /// not done of every advancement that is not done, and `award` removes
+    /// them again as they complete.
+    pub(crate) fn is_listening(&self, advancement: AdvancementRef, criterion: &str) -> bool {
+        self.progress
+            .get_progress(advancement)
+            .is_none_or(|progress| !progress.is_done() && !progress.is_criterion_done(criterion))
     }
 
     /// revoke the specified criterion for a player.

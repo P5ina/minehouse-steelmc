@@ -1,68 +1,27 @@
+//! Advancement criteria as they come from the datapack.
+//!
+//! The conditions are kept as their JSON text: matching them needs the world,
+//! entities and players, so `steel-core` parses them into typed trigger
+//! instances (vanilla `CriterionTrigger.codec()`).
+
 use steel_utils::Identifier;
 
-pub struct ImpossibleInstance;
-impl CriterionTriggerInstance for ImpossibleInstance {}
-
-pub struct ImpossibleTrigger;
-impl CriterionTrigger<ImpossibleInstance> for ImpossibleTrigger {
-    fn id(&self) -> Identifier {
-        Identifier::vanilla_static("impossible")
-    }
-
-    fn parse_instance(&self, _instance: String) -> ImpossibleInstance {
-        ImpossibleInstance
-    }
+/// Vanilla `Criterion`: a trigger type and that trigger's conditions.
+#[derive(Debug)]
+pub struct Criterion {
+    /// The trigger type id, such as `minecraft:inventory_changed`.
+    pub trigger: Identifier,
+    /// The `conditions` object as JSON text, `{}` when absent.
+    pub conditions: &'static str,
 }
 
-pub trait AnyCriterion: Send + Sync {
-    fn id(&self) -> Identifier;
-}
-
-impl<T, G> AnyCriterion for Criterion<T, G>
-where
-    T: CriterionTriggerInstance + 'static,
-    G: CriterionTrigger<T> + 'static,
-{
-    fn id(&self) -> Identifier {
-        self.trigger.id()
-    }
-}
-
-#[expect(dead_code)]
-pub struct Criterion<
-    T: CriterionTriggerInstance + 'static,
-    G: CriterionTrigger<T> + ?Sized + 'static,
-> {
-    trigger: &'static G,
-    instance: Box<T>,
-}
-
-static IMPOSSIBLE_TRIGGER: ImpossibleTrigger = ImpossibleTrigger;
-
-impl<T: CriterionTriggerInstance, G: CriterionTrigger<T> + ?Sized> Criterion<T, G> {
-    pub fn new(trigger: &'static G, instance: T) -> Self {
+impl Criterion {
+    /// Creates a criterion from its trigger id and conditions JSON.
+    #[must_use]
+    pub const fn new(trigger: Identifier, conditions: &'static str) -> Self {
         Self {
             trigger,
-            instance: Box::new(instance),
+            conditions,
         }
     }
 }
-
-impl Default for Criterion<ImpossibleInstance, ImpossibleTrigger> {
-    fn default() -> Self {
-        Criterion {
-            trigger: &IMPOSSIBLE_TRIGGER,
-            instance: Box::new(ImpossibleInstance),
-        }
-    }
-}
-
-pub trait CriterionTrigger<T>: Send + Sync
-where
-    T: CriterionTriggerInstance,
-{
-    fn id(&self) -> Identifier;
-    fn parse_instance(&self, instance: String) -> T;
-}
-
-pub trait CriterionTriggerInstance: Send + Sync {}

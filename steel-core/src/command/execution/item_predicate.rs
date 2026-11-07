@@ -103,7 +103,8 @@ enum DataComponentPredicate {
     VillagerType(registered::VillagerTypePredicate),
 }
 
-trait ItemInstanceView {
+/// Read access to an item stack or template, as vanilla `ItemInstance`.
+pub(crate) trait ItemInstanceView {
     fn item_ref(&self) -> ItemRef;
     fn item_count(&self) -> i32;
     fn effective_value_raw(&self, key: &Identifier) -> Option<&ComponentData>;
@@ -353,9 +354,10 @@ fn collection_matches<'a, P, T: 'a>(
     })
 }
 
-fn registered_item_predicate_matches(
+/// Vanilla `ItemPredicate.test`, for stacks and templates alike.
+pub(crate) fn registered_item_predicate_matches<S: ItemInstanceView + ?Sized>(
     predicate: &RegisteredItemPredicate,
-    template: &steel_registry::ItemStackTemplate,
+    template: &S,
 ) -> bool {
     predicate
         .items()

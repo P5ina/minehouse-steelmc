@@ -6,6 +6,7 @@
 //! no longer in the world reads as removed, the same as a removed vanilla
 //! raider object.
 
+use crate::player::advancement::criteria;
 use std::f32::consts::{PI, TAU};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -478,7 +479,7 @@ impl Raid {
         };
         if !first_wave_spawned {
             player.award_custom_stat(&RAID_TRIGGER);
-            // TODO: `CriteriaTriggers.RAID_OMEN` once advancement triggers exist.
+            player.trigger_player_criteria(&criteria::RAID_OMEN);
         }
         true
     }
@@ -828,7 +829,7 @@ impl Raid {
                         );
                         if let Some(player) = entity.as_player() {
                             player.award_custom_stat(&RAID_WIN);
-                            // TODO: `CriteriaTriggers.RAID_WIN` once advancement triggers exist.
+                            player.trigger_player_criteria(&criteria::RAID_WIN);
                         }
                     }
                 }

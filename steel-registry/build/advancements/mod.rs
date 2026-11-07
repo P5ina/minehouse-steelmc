@@ -127,7 +127,7 @@ pub(crate) fn build() -> TokenStream {
     stream.extend(quote! {
         use crate::advancement::display::{AdvancementType,DisplayInfo};
         use crate::advancement::{Advancement,AdvancementRewards,AdvancementRequirement};
-        use crate::advancement::criterion::{Criterion,AnyCriterion,ImpossibleInstance,ImpossibleTrigger};
+        use crate::advancement::criterion::Criterion;
         use crate::advancement::registry::AdvancementRegistry;
         use crate::vanilla_items;
         use crate::vanilla_recipes;

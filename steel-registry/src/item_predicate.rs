@@ -67,7 +67,8 @@ impl IntBounds {
         self.min.is_none() && self.max.is_none()
     }
 
-    pub(crate) fn from_owned_nbt(tag: &NbtTag) -> Option<Self> {
+    #[must_use]
+    pub fn from_owned_nbt(tag: &NbtTag) -> Option<Self> {
         if let Some(value) = tag.codec_i32() {
             return Some(Self::exactly(value));
         }
@@ -148,7 +149,8 @@ impl DoubleBounds {
         self.min.is_none() && self.max.is_none()
     }
 
-    pub(crate) fn from_owned_nbt(tag: &NbtTag) -> Option<Self> {
+    #[must_use]
+    pub fn from_owned_nbt(tag: &NbtTag) -> Option<Self> {
         if let Some(value) = tag.codec_f64() {
             return Some(Self::exactly(value));
         }
@@ -266,7 +268,8 @@ impl StatePropertyValueMatcher {
         }
     }
 
-    pub(crate) fn from_owned_nbt(tag: &NbtTag) -> Option<Self> {
+    #[must_use]
+    pub fn from_owned_nbt(tag: &NbtTag) -> Option<Self> {
         if let Some(value) = tag.string() {
             return Some(Self::Exact(value.to_string()));
         }
@@ -391,7 +394,8 @@ impl StatePropertiesPredicate {
         })
     }
 
-    pub(crate) fn from_owned_nbt(tag: &NbtTag) -> Option<Self> {
+    #[must_use]
+    pub fn from_owned_nbt(tag: &NbtTag) -> Option<Self> {
         let compound = tag.compound()?;
         let mut properties = Vec::with_capacity(compound.len());
         for (name, value) in compound.iter() {
@@ -460,7 +464,8 @@ impl NbtPredicate {
         &self.tag
     }
 
-    pub(crate) fn from_owned_nbt(tag: &NbtTag) -> Option<Self> {
+    #[must_use]
+    pub fn from_owned_nbt(tag: &NbtTag) -> Option<Self> {
         match tag {
             NbtTag::String(value) => {
                 let value = value.to_owned().try_into_string().ok()?;
@@ -576,7 +581,8 @@ impl BlockPredicate {
             .is_none_or(|properties| properties.matches_block_state(state))
     }
 
-    fn from_owned_nbt(tag: &NbtTag) -> Option<Self> {
+    #[must_use]
+    pub fn from_owned_nbt(tag: &NbtTag) -> Option<Self> {
         let compound = tag.compound()?;
         Some(Self::new(
             decode_optional(compound, "blocks", RegistryHolderSet::from_owned_nbt)?,
@@ -770,7 +776,8 @@ impl ItemPredicate {
         &self.components
     }
 
-    pub(crate) fn from_owned_nbt(tag: &NbtTag) -> Option<Self> {
+    #[must_use]
+    pub fn from_owned_nbt(tag: &NbtTag) -> Option<Self> {
         let compound = tag.compound()?;
         Some(Self::new(
             decode_optional(compound, "items", RegistryHolderSet::from_owned_nbt)?,

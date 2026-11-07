@@ -244,7 +244,7 @@ impl Player {
         let result = use_item(self, &world, packet.hand);
         self.swing_after_interaction(packet.hand, animation, result);
 
-        self.broadcast_inventory_changes();
+        self.broadcast_inventory_changes_and_trigger();
     }
 }
 

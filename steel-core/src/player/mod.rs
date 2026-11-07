@@ -30,6 +30,7 @@ pub mod stats_counter;
 mod tick_state;
 mod title;
 
+use crate::player::advancement::criteria;
 use crate::player::player_inventory::Prediction;
 pub use abilities::{Abilities, DEFAULT_FLYING_SPEED};
 use chat::ChatState;
@@ -1897,6 +1898,9 @@ impl LivingEntity for Player {
             let world = self.get_world();
             self.block_breaking.lock().tick(self, &world);
 
+            // Vanilla `ServerPlayer.tick`: the tick trigger, then the attribute
+            // update and the advancement flush.
+            self.trigger_player_criteria(&criteria::TICK);
             self.update_player_attributes();
             self.advancements.lock().flush_dirty(self, true);
             self.living_base.refresh_speed_from_attributes();
@@ -1919,7 +1923,14 @@ impl LivingEntity for Player {
         self.tick_open_menu();
         self.flush_inventory_resync();
         self.broadcast_inventory_changes();
+        self.fire_inventory_slot_changes();
         self.update_pose();
+
+        // Vanilla `ServerPlayer.doTick`: the location trigger every second.
+        if self.tick_count() % 20 == 0 {
+            self.trigger_player_criteria(&criteria::LOCATION);
+        }
+        self.advancements.lock().flush_dirty(self, true);
 
         {
             let health = self.get_health();

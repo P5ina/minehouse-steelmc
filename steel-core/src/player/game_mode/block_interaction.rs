@@ -82,7 +82,7 @@ impl Player {
         self.swing_after_interaction(packet.hand, animation, result);
 
         self.send_block_updates(pos, direction);
-        self.broadcast_inventory_changes();
+        self.broadcast_inventory_changes_and_trigger();
     }
 
     /// Handles a player action packet (block breaking, item dropping, etc.).
@@ -153,7 +153,7 @@ impl Player {
                 let changed = self.inventory.lock().swap_hands();
                 self.stop_using_item();
                 if changed {
-                    self.broadcast_inventory_changes();
+                    self.broadcast_inventory_changes_and_trigger();
                 }
             }
             PlayerAction::Stab => {
