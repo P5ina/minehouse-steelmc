@@ -40,6 +40,7 @@ use crate::entity::ai::path::PathType;
 use crate::entity::entities::ThrownTridentEntity;
 use crate::entity::mob::rotlerp;
 use crate::entity::ranged_attack_mob::default_ranged_attack_uncertainty;
+use crate::entity::spawn::create_entity_instance;
 use crate::entity::{
     Entity, EntityBase, EntityBaseLoad, EntitySpawnReason, LivingEntity, LivingEntityBase, Mob,
     MobBase, Monster, PathfinderMob, RangedAttackMob, SharedEntity, SpawnGroupData, SpawnRule,
@@ -52,6 +53,8 @@ use crate::world::{LevelReader as _, ServerLevelAccessor, World};
 
 /// Vanilla `Drowned.NAUTILUS_SHELL_CHANCE`.
 const NAUTILUS_SHELL_CHANCE: f32 = 0.03;
+/// Vanilla `Drowned.ZOMBIE_NAUTILUS_JOCKEY_CHANCE`.
+const ZOMBIE_NAUTILUS_JOCKEY_CHANCE: f32 = 0.5;
 /// Vanilla `Drowned.populateDefaultEquipmentSlots`: chance of any held item.
 const HELD_ITEM_CHANCE: f32 = 0.9;
 const TRIDENT_ATTACK_INTERVAL: i32 = 40;
@@ -114,9 +117,10 @@ impl DrownedEntity {
         }
     }
 
-    /// Vanilla `Drowned.finalizeSpawn`: the zombie spawn, then a rare
-    /// nautilus shell in the off hand. Vanilla also mounts trident holders on
-    /// a zombie nautilus; zombie nautiluses are not implemented in Steel yet.
+    /// Vanilla `Drowned.finalizeSpawn`: the zombie spawn, a rare nautilus
+    /// shell in the off hand, and a zombie nautilus mount for half of the
+    /// adult trident holders spawned naturally or in structures outside the
+    /// rivers.
     pub(super) fn finalize_spawn_drowned(
         &self,
         world: &Arc<World>,
@@ -134,7 +138,43 @@ impl DrownedEntity {
             );
             self.set_guaranteed_drop(EquipmentSlot::OffHand);
         }
+        if matches!(
+            spawn_reason,
+            EntitySpawnReason::Natural | EntitySpawnReason::Structure
+        ) && self
+            .equipment_in_slot(EquipmentSlot::MainHand)
+            .is(&vanilla_items::TRIDENT)
+            && random.next_f32() < ZOMBIE_NAUTILUS_JOCKEY_CHANCE
+            && !self.is_baby()
+            && !world
+                .biome(self.block_position())
+                .is_some_and(|biome| biome.has_tag(&BiomeTag::MORE_FREQUENT_DROWNED_SPAWNS))
+        {
+            self.spawn_zombie_nautilus_mount(world, spawn_reason);
+        }
         group_data
+    }
+
+    /// The zombie nautilus half of vanilla `Drowned.finalizeSpawn`. Steel
+    /// links riders only once both are in the world, so the drowned mounts on
+    /// its first tick.
+    fn spawn_zombie_nautilus_mount(&self, world: &Arc<World>, spawn_reason: EntitySpawnReason) {
+        let Ok(nautilus) =
+            create_entity_instance(world, &vanilla_entities::ZOMBIE_NAUTILUS, self.position())
+        else {
+            return;
+        };
+        let (yaw, _) = self.rotation();
+        nautilus.set_rotation((yaw, 0.0));
+        if let Some(nautilus_mob) = nautilus.as_mob() {
+            if spawn_reason == EntitySpawnReason::Structure {
+                nautilus_mob.set_persistence_required();
+            }
+            let _ = nautilus_mob.finalize_spawn(world, spawn_reason, None);
+        }
+        if world.try_add_entity(Arc::clone(&nautilus)).is_ok() {
+            self.zombie_state.lock().pending_jockey_mount = Some(nautilus);
+        }
     }
 
     /// Vanilla `Drowned.okTarget`: by day only targets in the water.

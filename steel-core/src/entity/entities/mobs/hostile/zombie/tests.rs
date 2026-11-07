@@ -4,9 +4,11 @@ use std::sync::{Arc, Weak};
 use glam::DVec3;
 use simdnbt::borrow::read_compound as read_borrowed_compound;
 use simdnbt::owned::NbtCompound;
+use steel_registry::item_stack::ItemStack;
 use steel_registry::{
     init_vanilla_registry, vanilla_attributes, vanilla_blocks, vanilla_damage_types,
-    vanilla_entities, vanilla_mob_effects, vanilla_villager_professions, vanilla_villager_types,
+    vanilla_entities, vanilla_items, vanilla_mob_effects, vanilla_villager_professions,
+    vanilla_villager_types,
 };
 use steel_utils::geometry::WorldAabb;
 use steel_utils::types::{Difficulty, UpdateFlags};
@@ -26,6 +28,7 @@ use crate::entity::{
     Entity, EntitySpawnReason, LivingEntity, Mob, SharedEntity, SpawnGroupData, init_entities,
     next_entity_id,
 };
+use crate::inventory::equipment::EquipmentSlot;
 use crate::test_support::{TestWorld, fresh_test_world, insert_ready_full_chunk};
 use crate::world::World;
 
@@ -734,4 +737,51 @@ fn zombie_villager_does_not_drown_into_a_drowned() {
         !zombie_villager_ref.is_under_water_converting(),
         "zombie villagers never convert in water"
     );
+}
+
+/// Spawns `attempts` trident-holding drowned for `spawn_reason` and counts
+/// the ones that end up riding a zombie nautilus.
+fn drowned_nautilus_jockeys(spawn_reason: EntitySpawnReason, attempts: usize) -> usize {
+    let fixture = flooded_world("drowned_nautilus_jockey");
+    let world = &fixture.world;
+    let mut jockeys = 0;
+    for _ in 0..attempts {
+        let drowned = add(
+            world,
+            DrownedEntity::new(
+                &vanilla_entities::DROWNED,
+                next_entity_id(),
+                DVec3::new(8.5, 65.0, 8.5),
+                Arc::downgrade(world),
+            ),
+        );
+        let drowned_ref = drowned
+            .downcast_ref::<DrownedEntity>()
+            .expect("drowned is concrete");
+        let _ = drowned_ref.living_base.equipment().lock().set(
+            EquipmentSlot::MainHand,
+            ItemStack::new(&vanilla_items::TRIDENT),
+        );
+        drowned_ref.finalize_spawn(world, spawn_reason, None);
+        Arc::clone(&drowned).tick();
+        if let Some(vehicle) = drowned.vehicle() {
+            assert_eq!(vehicle.entity_type(), &vanilla_entities::ZOMBIE_NAUTILUS);
+            assert!(!drowned_ref.is_baby(), "babies never ride a nautilus");
+            jockeys += 1;
+        }
+    }
+    jockeys
+}
+
+#[test]
+fn natural_drowned_with_a_trident_may_ride_a_zombie_nautilus() {
+    assert!(
+        drowned_nautilus_jockeys(EntitySpawnReason::Natural, 64) > 0,
+        "about half of the natural trident drowned ride a zombie nautilus"
+    );
+}
+
+#[test]
+fn spawner_drowned_never_rides_a_zombie_nautilus() {
+    assert_eq!(drowned_nautilus_jockeys(EntitySpawnReason::Spawner, 32), 0);
 }
