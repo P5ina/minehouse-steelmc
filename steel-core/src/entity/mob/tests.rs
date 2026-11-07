@@ -11,6 +11,7 @@ use steel_registry::{
     vanilla_world_clocks,
 };
 use steel_utils::locks::SyncMutex;
+use steel_utils::types::{GameType, InteractionHand};
 use steel_utils::{BlockPos, BlockStateId, ChunkPos, Downcast as _, Identifier};
 use steel_worldgen::density_functions::overworld::OverworldNoiseSettings;
 
@@ -1690,4 +1691,23 @@ fn mob_ai_step_gates_daylight_burning_on_burn_in_daylight_tag() {
         !pig.is_on_fire(),
         "aiStep must not burn a mob outside the burn_in_daylight tag"
     );
+}
+
+#[test]
+fn creative_players_keep_the_item_a_mob_uses() {
+    init_vanilla_registry();
+    let fixture = fresh_test_world("mob_use_player_item");
+    let player = TestPlayerBuilder::new(Arc::clone(&fixture.world), "Feeder", 1).build();
+    let pig = PigEntity::new(&vanilla_entities::PIG, 2, DVec3::ZERO, Weak::new());
+    player
+        .inventory
+        .lock()
+        .set_selected_item(ItemStack::with_count(&vanilla_items::CARROT, 3));
+
+    pig.use_player_item(&player, InteractionHand::MainHand);
+    assert_eq!(player.inventory.lock().get_selected_item().count(), 2);
+
+    player.restore_game_modes(GameType::Creative, None);
+    pig.use_player_item(&player, InteractionHand::MainHand);
+    assert_eq!(player.inventory.lock().get_selected_item().count(), 2);
 }
