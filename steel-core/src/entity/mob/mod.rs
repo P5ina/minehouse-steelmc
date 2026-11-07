@@ -717,9 +717,13 @@ pub trait Mob: LivingEntity + Leashable {
         !self.is_vehicle()
     }
 
-    /// Consumes one of the player's held item after this mob uses it in an interaction.
+    /// Consumes one of the player's held item after this mob uses it in an
+    /// interaction. Like vanilla `ItemStack.consume`, players with infinite
+    /// materials (creative) keep the item.
     fn use_player_item(&self, player: &Player, hand: InteractionHand) {
-        player.inventory.lock().shrink_item_in_hand(hand, 1);
+        if !player.has_infinite_materials() {
+            player.inventory.lock().shrink_item_in_hand(hand, 1);
+        }
         // TODO: Apply USE_REMAINDER components once item use-remainder support exists.
     }
 
