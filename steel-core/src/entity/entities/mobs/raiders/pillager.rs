@@ -25,6 +25,7 @@ use crate::entity::SpawnRule;
 use crate::entity::ai::goal::{
     AvoidEntityGoal, FloatGoal, HoldGroundAttackGoal, HurtByTargetGoal, LongDistancePatrolGoal,
     LookAtPlayerGoal, NearestAttackableTargetGoal, RandomStrollGoal, RangedCrossbowAttackGoal,
+    add_raider_goals,
 };
 use crate::entity::damage::DamageSource;
 use crate::entity::entities::ItemEntity;
@@ -122,10 +123,9 @@ impl PillagerEntity {
 
         {
             let mut goal_selector = mob_base.goal_selector().lock();
-            // TODO: Raider goals (`ObtainRaidLeaderBannerGoal` 1, `PathfindToRaidGoal` 3,
-            // `RaiderMoveThroughVillageGoal` 4, `RaiderCelebration` 5) come with raids.
-            // Vanilla `PatrollingMonster.registerGoals`.
+            // Vanilla `PatrollingMonster.registerGoals`, then `Raider.registerGoals`.
             goal_selector.add_goal(4, LongDistancePatrolGoal::new(0.7, 0.595));
+            add_raider_goals(&mut goal_selector);
             goal_selector.add_goal(0, FloatGoal::new(&mob_base));
             goal_selector.add_goal(
                 1,
@@ -421,14 +421,14 @@ impl Mob for PillagerEntity {
     }
 
     fn pick_up_item(&self, world: &Arc<World>, item_entity: &ItemEntity) {
-        let item_stack = item_entity.get_item();
-        if item_stack.item().has_tag(&ItemTag::BANNERS) {
-            // TODO: `Raider.pickUpItem` claims an ominous banner for the raid
-            // leader once raids exist; without a raid it is `Mob.pickUpItem`.
+        // Vanilla `Pillager.pickUpItem`: banners go through `Raider.pickUpItem`.
+        // Its `wantsItem` inventory branch is only reached by white banners,
+        // which are banners too, so it never runs.
+        if item_entity.get_item().item().has_tag(&ItemTag::BANNERS)
+            && !self.pick_up_item_raider(world, item_entity)
+        {
             self.default_pick_up_item(world, item_entity);
         }
-        // TODO: with an active raid, `wantsItem` (a white banner) goes into the
-        // inventory (`InventoryCarrier`); `has_active_raid` is false until raids land.
     }
 
     fn finalize_spawn(

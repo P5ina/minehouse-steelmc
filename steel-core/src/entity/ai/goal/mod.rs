@@ -88,7 +88,7 @@ pub(crate) use move_towards_restriction::MoveTowardsRestrictionGoal;
 pub(crate) use move_towards_target::MoveTowardsTargetGoal;
 pub(crate) use nearest_attackable_target::NearestAttackableTargetGoal;
 pub(crate) use panic_goal::PanicGoal;
-pub(crate) use raider_goals::{HoldGroundAttackGoal, RaiderOpenDoorGoal};
+pub(crate) use raider_goals::{HoldGroundAttackGoal, RaiderOpenDoorGoal, add_raider_goals};
 pub(crate) use random_look_around::RandomLookAroundGoal;
 pub(crate) use random_pos::{default_random_pos_towards, land_random_pos};
 pub(crate) use random_stroll::RandomStrollGoal;

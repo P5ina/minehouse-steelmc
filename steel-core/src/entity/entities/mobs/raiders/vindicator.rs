@@ -25,8 +25,10 @@ use crate::entity::ai::goal::{
     AvoidEntityGoal, FloatGoal, HoldGroundAttackGoal, HurtByTargetGoal, JohnnyFlag,
     LongDistancePatrolGoal, LookAtPlayerGoal, MeleeAttackGoal, NearestAttackableTargetGoal,
     RaiderOpenDoorGoal, RandomStrollGoal, VindicatorBreakDoorGoal, VindicatorJohnnyAttackGoal,
+    add_raider_goals,
 };
 use crate::entity::damage::DamageSource;
+use crate::entity::entities::ItemEntity;
 use crate::entity::mob::spawn_equipment::populate_default_equipment_enchantments;
 use crate::entity::spawn::SpawnGroupData;
 use crate::entity::{
@@ -106,10 +108,9 @@ impl VindicatorEntity {
 
         {
             let mut goal_selector = mob_base.goal_selector().lock();
-            // TODO: Raider goals (`ObtainRaidLeaderBannerGoal` 1, `PathfindToRaidGoal` 3,
-            // `RaiderMoveThroughVillageGoal` 4, `RaiderCelebration` 5) come with raids.
-            // Vanilla `PatrollingMonster.registerGoals`.
+            // Vanilla `PatrollingMonster.registerGoals`, then `Raider.registerGoals`.
             goal_selector.add_goal(4, LongDistancePatrolGoal::new(0.7, 0.595));
+            add_raider_goals(&mut goal_selector);
             goal_selector.add_goal(0, FloatGoal::new(&mob_base));
             goal_selector.add_goal(
                 1,
@@ -368,6 +369,12 @@ impl Mob for VindicatorEntity {
 
     fn requires_custom_persistence(&self) -> bool {
         self.requires_custom_persistence_raider()
+    }
+
+    fn pick_up_item(&self, world: &Arc<World>, item_entity: &ItemEntity) {
+        if !self.pick_up_item_raider(world, item_entity) {
+            self.default_pick_up_item(world, item_entity);
+        }
     }
 
     fn finalize_spawn(
