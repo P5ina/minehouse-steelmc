@@ -14,7 +14,6 @@ minehouse_mob_piglin
 minehouse_mob_piglin_brute
 minehouse_mob_rabbit
 minehouse_mob_sulfur_cube
-minehouse_mob_tadpole
 minehouse_mob_turtle
 minehouse_mob_warden
 minehouse_mob_wither
