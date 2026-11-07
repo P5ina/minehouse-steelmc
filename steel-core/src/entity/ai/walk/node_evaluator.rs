@@ -7,6 +7,9 @@ pub struct WalkNodeEvaluator {
     /// Vanilla `AmphibiousNodeEvaluator`: set when this evaluator walks and
     /// swims, holding `prefersShallowSwimming`.
     amphibious: Option<bool>,
+    /// Vanilla `Frog.FrogNodeEvaluator`: starts at the feet in water and
+    /// treats blocks above `frog_prefer_jump_to` as open.
+    frog: bool,
     /// Vanilla's overridable `getPathType`; subclasses such as
     /// `FlyNodeEvaluator` classify single blocks differently.
     block_path_type: BlockPathTypeFn,
@@ -44,6 +47,7 @@ impl WalkNodeEvaluator {
             settings,
             nodes: NodeStore::new(),
             amphibious: None,
+            frog: false,
             block_path_type: path_type,
         }
     }
@@ -60,7 +64,18 @@ impl WalkNodeEvaluator {
             settings,
             nodes: NodeStore::new(),
             amphibious: Some(prefers_shallow_swimming),
+            frog: false,
             block_path_type: WalkPathEvaluator::path_type,
+        }
+    }
+
+    /// Vanilla `Frog.FrogNodeEvaluator`: an amphibious evaluator that prefers
+    /// shallow swimming.
+    #[must_use]
+    pub fn frog(settings: MobPathSettings) -> Self {
+        Self {
+            frog: true,
+            ..Self::amphibious(settings, true)
         }
     }
 
@@ -79,6 +94,14 @@ impl WalkNodeEvaluator {
         y: i32,
         z: i32,
     ) -> PathType {
+        if self.frog
+            && context
+                .get_block_state(BlockPos::new(x, y - 1, z))
+                .get_block()
+                .has_tag(&BlockTag::FROG_PREFER_JUMP_TO)
+        {
+            return PathType::Open;
+        }
         if self.is_amphibious() {
             let block_path_type = context.get_path_type_from_state(x, y, z);
             if block_path_type == PathType::Water {
@@ -128,7 +151,8 @@ impl NodeEvaluator for WalkNodeEvaluator {
             let bounding_box = self.settings.bounding_box();
             let pos = BlockPos::new(
                 fast_floor(bounding_box.min_x()),
-                fast_floor(bounding_box.min_y() + 0.5),
+                // Vanilla `FrogNodeEvaluator.getStart` drops the half block.
+                fast_floor(bounding_box.min_y() + if self.frog { 0.0 } else { 0.5 }),
                 fast_floor(bounding_box.min_z()),
             );
             return self.get_start_node(context, pos);

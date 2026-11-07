@@ -6,6 +6,9 @@ use crate::entity::ai::brain::memory_types::{
 use crate::entity::{LivingEntity, SharedEntity};
 use std::sync::Arc;
 
+use glam::DVec3;
+use steel_registry::item_stack::ItemStack;
+
 /// Vanilla `BehaviorUtils.entityIsVisible`: whether `target` is among the
 /// body's nearest visible living entities.
 pub fn entity_is_visible(body: &(impl LivingEntity + ?Sized), target: &SharedEntity) -> bool {
@@ -84,4 +87,29 @@ pub fn lock_gaze_and_walk_to_each_other(
         speed_modifier,
         close_enough_dist,
     );
+}
+
+/// Vanilla `BehaviorUtils.throwItem`: drops `item` from the thrower's hand,
+/// tossed toward `target_pos`.
+pub fn throw_item(
+    thrower: &(impl LivingEntity + ?Sized),
+    item: ItemStack,
+    target_pos: DVec3,
+    throw_velocity: DVec3,
+    hand_y_distance_from_eye: f32,
+) {
+    let Some(world) = thrower.level() else {
+        return;
+    };
+    let position = thrower.position();
+    let hand_position = DVec3::new(
+        position.x,
+        thrower.get_eye_y() - f64::from(hand_y_distance_from_eye),
+        position.z,
+    );
+    let velocity = (target_pos - position).normalize_or_zero() * throw_velocity;
+    if let Some(item_entity) = world.spawn_item_with_velocity(hand_position, item, velocity) {
+        item_entity.set_thrower(thrower.uuid());
+        item_entity.set_default_pickup_delay();
+    }
 }

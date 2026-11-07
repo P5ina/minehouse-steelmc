@@ -70,9 +70,10 @@ impl<E: Mob + ?Sized> Behavior<E> for LookAtTargetSink {
         // Vanilla `LookControl.setLookAt(Vec3)` uses the mob's head rotation
         // speed and maximum head pitch.
         let position = target.current_position();
+        let head_rot_speed = body.head_rot_speed();
         body.mob_base().controls().lock().look_control.set_look_at(
             position,
-            body.head_rot_speed(),
+            head_rot_speed,
             body.max_head_x_rot(),
         );
     }

@@ -174,6 +174,15 @@ pub struct EntityPredicate {
     pub sheep_sheared: Option<bool>,
     /// Vanilla `minecraft:components.chicken/variant` entity data component check.
     pub chicken_variant: Option<Identifier>,
+    /// Vanilla `minecraft:type_specific/raider` check.
+    pub raider: Option<RaiderPredicate>,
+}
+
+/// Vanilla `RaiderPredicate`: both flags must match, and only raiders match.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RaiderPredicate {
+    pub has_raid: bool,
+    pub is_captain: bool,
 }
 
 /// Entity flags (`is_on_fire`, `is_sneaking`, etc.)
@@ -429,6 +438,12 @@ impl EntityPredicate {
 
         if let Some(expected_variant) = &self.chicken_variant
             && entity.chicken_variant != Some(expected_variant)
+        {
+            return false;
+        }
+
+        if let Some(expected_raider) = &self.raider
+            && entity.raider != Some(*expected_raider)
         {
             return false;
         }

@@ -9,6 +9,7 @@ mod dolphin;
 pub mod equine;
 mod feline;
 mod fish;
+mod frog;
 mod goat;
 mod mooshroom;
 mod nautilus;
@@ -32,6 +33,7 @@ pub use fish::{
     COMMON_TROPICAL_FISH_VARIANTS, CodEntity, PufferfishEntity, SalmonEntity, SalmonVariant,
     TropicalFishBase, TropicalFishEntity, TropicalFishPattern, TropicalFishVariant,
 };
+pub use frog::FrogEntity;
 pub use goat::GoatEntity;
 pub use mooshroom::MushroomCowEntity;
 pub use nautilus::{AbstractNautilus, NautilusEntity, ZombieNautilusEntity};
@@ -46,3 +48,5 @@ mod panda;
 pub use panda::{PandaEntity, PandaGene};
 mod fox;
 pub use fox::FoxEntity;
+mod allay;
+pub use allay::{AllayEntity, hear_noteblock as allay_hear_noteblock};

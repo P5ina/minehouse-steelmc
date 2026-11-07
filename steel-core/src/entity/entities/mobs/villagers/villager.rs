@@ -6,6 +6,7 @@
 
 use std::borrow::Cow;
 use std::sync::{Arc, Weak};
+use std::{mem, ptr};
 
 use glam::DVec3;
 use simdnbt::borrow::NbtCompound as BorrowedNbtCompoundView;
@@ -30,7 +31,7 @@ use steel_utils::entity_events::EntityStatus;
 use steel_utils::locks::SyncMutex;
 use steel_utils::random::xoroshiro::Xoroshiro;
 use steel_utils::types::{Difficulty, InteractionHand};
-use steel_utils::{BlockPos, DowncastType, DowncastTypeKey, Identifier};
+use steel_utils::{BlockPos, DowncastType, DowncastTypeKey, GlobalPos, Identifier};
 use text_components::TextComponent;
 use text_components::translation::TranslatedMessage;
 use uuid::Uuid;
@@ -51,7 +52,10 @@ use super::{
     spawn_trade_experience, trading_player_of,
 };
 use crate::behavior::InteractionResult;
-use crate::entity::ai::brain::memory_types::LAST_WOKEN;
+use crate::entity::ai::brain::memory::MemoryModuleType;
+use crate::entity::ai::brain::memory_types::{
+    HOME, JOB_SITE, LAST_WOKEN, MEETING_POINT, POTENTIAL_JOB_SITE,
+};
 use crate::entity::ai::brain::{Brain, Memories};
 use crate::entity::ai::gossip::{GossipContainer, GossipType, ReputationEventType};
 use crate::entity::ai::path::PathType;
@@ -115,6 +119,9 @@ struct VillagerState {
     trading_player: Option<Uuid>,
     /// Vanilla `lastTradedPlayer`: rewarded with gossip on the next AI step.
     last_traded_player: Option<Uuid>,
+    /// A behavior changed the profession mid-tick; vanilla rebuilds the
+    /// brain right there, Steel once the brain has finished ticking.
+    brain_refresh_pending: bool,
 }
 
 /// A villager.
@@ -182,7 +189,7 @@ impl VillagerEntity {
         *mob_base.can_pick_up_loot().lock() = true;
         let mut entity_data = VillagerEntityData::new();
         living_base.initialize_synced_data(&mut entity_data);
-        let brain = brain::make_brain(false);
+        let brain = brain::make_brain(false, &vanilla_villager_professions::NONE);
         brain.set_schedule(brain::schedule_for(false));
 
         Self {
@@ -207,7 +214,7 @@ impl VillagerEntity {
         if let Some(world) = &world {
             self.brain.stop_all(world, self);
         }
-        let new_brain = brain::make_brain(baby);
+        let new_brain = brain::make_brain(baby, self.profession());
         // Vanilla `BRAIN_PROVIDER.makeBrain(this, oldBrain.pack())`.
         new_brain.load_packed(&self.brain.save());
         new_brain.set_schedule(brain::schedule_for(baby));
@@ -215,6 +222,54 @@ impl VillagerEntity {
         if let Some(world) = &world {
             self.brain.update_activity_from_schedule(world);
         }
+    }
+
+    /// Asks for [`Self::refresh_brain`] once the brain has finished this
+    /// tick, for behaviors that change the profession while it ticks.
+    fn request_brain_refresh(&self) {
+        self.state.lock().brain_refresh_pending = true;
+    }
+
+    /// Vanilla `releasePoi`: frees the POI remembered in `memory`, if it
+    /// still is the kind of POI that memory holds.
+    fn release_poi(&self, memory: &'static MemoryModuleType<GlobalPos>) {
+        let Some(world) = self.level() else {
+            return;
+        };
+        let Some(global) = self.brain.memories().lock().get(memory) else {
+            return;
+        };
+        // Vanilla looks the POI up in its own dimension; a villager only
+        // reaches its own world's POIs, which is where it claimed them.
+        if global.dimension != world.key {
+            return;
+        }
+        let mut storage = world.poi_storage.lock();
+        let Some(poi_type) = storage.get_type(global.pos) else {
+            return;
+        };
+        let matches = if ptr::eq(memory, &raw const HOME) {
+            brain::is_home(poi_type)
+        } else if ptr::eq(memory, &raw const JOB_SITE) {
+            brain::held_job_site(self.profession(), poi_type)
+        } else if ptr::eq(memory, &raw const POTENTIAL_JOB_SITE) {
+            brain::is_acquirable_job(poi_type)
+        } else if ptr::eq(memory, &raw const MEETING_POINT) {
+            brain::is_meeting(poi_type)
+        } else {
+            false
+        };
+        if matches {
+            let _released = storage.release_ticket(global.pos);
+        }
+    }
+
+    /// Vanilla `releaseAllPois`.
+    fn release_all_pois(&self) {
+        self.release_poi(&HOME);
+        self.release_poi(&JOB_SITE);
+        self.release_poi(&POTENTIAL_JOB_SITE);
+        self.release_poi(&MEETING_POINT);
     }
 
     /// Vanilla `getVillagerData().type()`.
@@ -779,7 +834,7 @@ impl Entity for VillagerEntity {
             Some(&|witch: &dyn Mob| {
                 let _ = witch.finalize_spawn(&level, EntitySpawnReason::Conversion, None);
                 witch.set_persistence_required();
-                // TODO(villager brain): vanilla `releaseAllPois` here.
+                self.release_all_pois();
             }),
         );
         if witch.is_none() {
@@ -831,6 +886,8 @@ impl LivingEntity for VillagerEntity {
 
     /// Vanilla `AbstractVillager.die`: stops trading after dying.
     fn die(&self, source: &DamageSource) {
+        // Vanilla `Villager.die` frees its POIs before `AbstractVillager.die`.
+        self.release_all_pois();
         self.default_die(source);
         self.stop_trading();
     }
@@ -1040,6 +1097,9 @@ impl Mob for VillagerEntity {
     fn custom_server_ai_step(&self) {
         if let Some(world) = self.level() {
             self.brain.tick(&world, self);
+        }
+        if mem::take(&mut self.state.lock().brain_refresh_pending) {
+            self.refresh_brain();
         }
         let last_traded_player = self.state.lock().last_traded_player.take();
         if let Some(player) = last_traded_player {

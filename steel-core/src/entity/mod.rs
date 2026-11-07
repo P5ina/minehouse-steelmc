@@ -37,7 +37,7 @@ use steel_registry::item_stack::ItemStack;
 use steel_registry::items::ItemRef;
 use steel_registry::loot_table::{
     DamageSourceInfo, EntityEquipmentRef, EntityEquipmentSlots, EntityRef, EntityRefFlags,
-    LootContext, LootTableRef,
+    LootContext, LootTableRef, RaiderPredicate,
 };
 use steel_registry::mob_effect::MobEffectRef;
 use steel_registry::particle_type::{BlockParticleOption, ParticleData};
@@ -1474,6 +1474,10 @@ pub(crate) fn entity_loot_ref<'a>(
         sheep_color: sheep.map(|(color, _)| color),
         sheep_sheared: sheep.map(|(_, sheared)| sheared),
         chicken_variant: living_entity.and_then(LivingEntity::chicken_loot_variant),
+        raider: entity.as_raider().map(|raider| RaiderPredicate {
+            has_raid: raider.has_raid(),
+            is_captain: raider.is_captain(),
+        }),
     }
 }
 
