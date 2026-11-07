@@ -4,6 +4,7 @@
 //! riding, feeding and breeding through the [`AbstractHorse`] trait; each
 //! concrete entity only supplies its sounds, offspring and attributes.
 
+mod camel;
 mod chested;
 mod goals;
 mod horse;
@@ -58,6 +59,7 @@ use crate::inventory::container::SimpleContainer;
 use crate::player::Player;
 use crate::world::World;
 
+pub use camel::{Camel, CamelBase, CamelEntity, CamelHuskEntity};
 pub use chested::{DonkeyEntity, MuleEntity};
 pub use horse::HorseEntity;
 pub use llama::{Llama, LlamaBase, LlamaEntity, TraderLlamaEntity};
@@ -1005,8 +1007,7 @@ pub trait AbstractHorse: Animal + PathfinderMob {
 
     /// Vanilla `tickRidden`.
     fn horse_tick_ridden(&self, controller: &Player, ridden_input: DVec3) {
-        let (yaw, pitch) = controller.rotation();
-        self.set_rotation((yaw, pitch * 0.5));
+        self.set_rotation(self.horse_ridden_rotation(controller));
         self.base().set_old_yaw_to_current();
         let yaw = self.rotation().0;
         self.set_y_body_rot(yaw);
@@ -1026,6 +1027,12 @@ pub trait AbstractHorse: Animal + PathfinderMob {
                 *self.horse_base().player_jump_pending_scale.lock() = 0.0;
             }
         }
+    }
+
+    /// Vanilla `getRiddenRotation`, as `(yaw, pitch)`.
+    fn horse_ridden_rotation(&self, controller: &Player) -> (f32, f32) {
+        let (yaw, pitch) = controller.rotation();
+        (yaw, pitch * 0.5)
     }
 
     /// Vanilla `getRiddenInput`.

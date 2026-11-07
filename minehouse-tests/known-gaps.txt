@@ -6,8 +6,6 @@
 minehouse_mob_allay
 minehouse_mob_bee
 minehouse_mob_breeze
-minehouse_mob_camel
-minehouse_mob_camel_husk
 minehouse_mob_cat
 minehouse_mob_creaking
 minehouse_mob_ender_dragon
