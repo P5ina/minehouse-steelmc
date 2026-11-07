@@ -1384,6 +1384,12 @@ pub trait Mob: LivingEntity + Leashable {
     /// evaluator finishes for this mob.
     fn on_pathfinding_done(&self) {}
 
+    /// The home a walking node evaluator keeps this mob within 32 blocks of
+    /// (vanilla `Creaking.HomeNodeEvaluator`); `None` for every other mob.
+    fn path_home_bound(&self) -> Option<BlockPos> {
+        None
+    }
+
     fn is_no_ai(&self) -> bool {
         self.mob_flags() & MOB_FLAG_NO_AI != 0
     }

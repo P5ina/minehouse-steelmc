@@ -716,7 +716,7 @@ fn create_path_with_evaluator<M: PathfinderMob + ?Sized>(
     } else if kind == NavigationKind::Amphibious {
         WalkNodeEvaluator::amphibious(settings, false)
     } else {
-        WalkNodeEvaluator::new(settings)
+        WalkNodeEvaluator::new(settings).with_home_bound(mob.path_home_bound())
     };
     let collision_world =
         WorldCollisionProvider::for_path_navigation(world, mob.as_entity_event_source());
