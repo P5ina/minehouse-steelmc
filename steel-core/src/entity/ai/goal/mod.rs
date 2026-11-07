@@ -48,6 +48,7 @@ mod tamable_goals;
 mod target_goal;
 mod tempt_goal;
 mod try_find_water;
+mod use_item;
 mod vex_goals;
 mod vindicator_goals;
 mod water_avoiding_random_flying;
@@ -71,6 +72,7 @@ pub(crate) use follow_parent::FollowParentGoal;
 pub(crate) use follow_player_ridden_entity::FollowPlayerRiddenEntityGoal;
 pub(crate) use hurt_by_target::HurtByTargetGoal;
 pub(crate) use illusioner_spells::{BlindnessSpell, MirrorSpell};
+pub(crate) use interact::InteractGoal;
 pub(crate) use leap_at_target::LeapAtTargetGoal;
 pub(crate) use llama_goals::{
     LlamaFollowCaravanGoal, TraderLlamaDefendWanderingTraderGoal, is_leashed,
@@ -105,6 +107,7 @@ pub(crate) use tamable_goals::{
 };
 pub(crate) use tempt_goal::TemptGoal;
 pub(crate) use try_find_water::TryFindLiquidGoal;
+pub(crate) use use_item::UseItemGoal;
 pub(crate) use vex_goals::{VexChargeAttackGoal, VexCopyOwnerTargetGoal, VexRandomMoveGoal};
 pub(crate) use vindicator_goals::{
     JohnnyFlag, VindicatorBreakDoorGoal, VindicatorJohnnyAttackGoal,

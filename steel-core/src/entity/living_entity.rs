@@ -1802,6 +1802,13 @@ pub trait LivingEntity: Entity {
         VoxelShape::EMPTY
     }
 
+    /// Vanilla `Consumable.OverrideConsumeSound.getConsumeSound`: the sound this
+    /// entity plays while consuming `stack` instead of the item's own; `None`
+    /// keeps the item's sound.
+    fn consume_sound_override(&self, _stack: &ItemStack) -> Option<SoundEventRef> {
+        None
+    }
+
     /// Checks if the entity is currently using an item.
     fn is_using_item(&self) -> bool {
         self.living_base().is_using_item()
