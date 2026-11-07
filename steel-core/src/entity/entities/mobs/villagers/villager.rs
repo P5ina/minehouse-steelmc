@@ -1,8 +1,8 @@
 //! Villager (Vanilla `Villager` with its `AbstractVillager` parts).
 //!
-//! This part carries the villager's data, gossip, inventory, saving and
-//! lightning. Its brain (schedule, jobs, beds, breeding, golem calls),
-//! trades and restocking come in later parts.
+//! This part carries the villager's data, gossip, inventory, saving,
+//! lightning, trading and its brain (see [`brain`]). Jobs, beds, breeding,
+//! golem calls and restocking come in later parts.
 
 use std::borrow::Cow;
 use std::sync::{Arc, Weak};
@@ -51,6 +51,8 @@ use super::{
     spawn_trade_experience, trading_player_of,
 };
 use crate::behavior::InteractionResult;
+use crate::entity::ai::brain::memory_types::LAST_WOKEN;
+use crate::entity::ai::brain::{Brain, Memories};
 use crate::entity::ai::gossip::{GossipContainer, GossipType, ReputationEventType};
 use crate::entity::ai::path::PathType;
 use crate::entity::conversion::ConversionParams;
@@ -126,6 +128,7 @@ pub struct VillagerEntity {
     entity_data: SyncMutex<VillagerEntityData>,
     inventory: SyncMutex<SimpleContainer>,
     state: SyncMutex<VillagerState>,
+    brain: Brain<Self>,
 }
 
 // SAFETY: The owner-scoped type key uniquely identifies VillagerEntity.
@@ -179,8 +182,8 @@ impl VillagerEntity {
         *mob_base.can_pick_up_loot().lock() = true;
         let mut entity_data = VillagerEntityData::new();
         living_base.initialize_synced_data(&mut entity_data);
-        // TODO(villager brain): vanilla `makeBrain` with the villager sensors
-        // and `VillagerGoalPackages` activities drives everything it does.
+        let brain = brain::make_brain(false);
+        brain.set_schedule(brain::schedule_for(false));
 
         Self {
             base,
@@ -191,6 +194,26 @@ impl VillagerEntity {
             entity_data: SyncMutex::new(entity_data),
             inventory: SyncMutex::new(SimpleContainer::new(INVENTORY_SIZE)),
             state: SyncMutex::new(VillagerState::default()),
+            brain,
+        }
+    }
+
+    /// Vanilla `refreshBrain` and `registerBrainGoals`: rebuilds the brain
+    /// for the villager's age, keeping the saved memories, and picks up its
+    /// schedule right away.
+    fn refresh_brain(&self) {
+        let baby = AgeableMob::is_baby(self);
+        let world = self.level();
+        if let Some(world) = &world {
+            self.brain.stop_all(world, self);
+        }
+        let new_brain = brain::make_brain(baby);
+        // Vanilla `BRAIN_PROVIDER.makeBrain(this, oldBrain.pack())`.
+        new_brain.load_packed(&self.brain.save());
+        new_brain.set_schedule(brain::schedule_for(baby));
+        self.brain.replace_with(new_brain);
+        if let Some(world) = &world {
+            self.brain.update_activity_from_schedule(world);
         }
     }
 
@@ -589,7 +612,11 @@ impl VillagerEntity {
         state.last_gossip_decay_time = nbt.long("LastGossipDecay").unwrap_or(0);
         state.number_of_restocks_today = nbt.int("RestocksToday").unwrap_or(0);
         state.offers = nbt.compound(TAG_OFFERS).and_then(MerchantOffers::from_nbt);
-        // TODO(villager brain): vanilla `refreshBrain` after loading.
+        drop(state);
+        if let Some(brain) = nbt.compound("Brain") {
+            self.brain.memories().lock().load(brain);
+        }
+        self.refresh_brain();
     }
 }
 
@@ -764,6 +791,7 @@ impl Entity for VillagerEntity {
         self.save_mob(nbt);
         self.save_ageable_mob(nbt);
         save_inventory(&self.inventory, nbt);
+        nbt.insert("Brain", self.brain.save());
         self.save_villager(nbt);
     }
 
@@ -822,6 +850,21 @@ impl LivingEntity for VillagerEntity {
         Mob::mob_server_ai_step(self, entity);
     }
 
+    fn brain_memories(&self) -> Option<&SyncMutex<Memories>> {
+        Some(self.brain.memories())
+    }
+
+    /// Vanilla `Villager.stopSleeping`: remembers when it woke up.
+    fn stop_sleeping(&self) {
+        self.default_stop_sleeping();
+        if let Some(world) = self.level() {
+            self.brain
+                .memories()
+                .lock()
+                .set(&LAST_WOKEN, Some(world.game_time()));
+        }
+    }
+
     fn ai_step(&self, entity: &SharedEntity) -> Option<MoveResult> {
         let result = Mob::mob_ai_step(self, entity);
         AgeableMob::tick_ageable_mob(self);
@@ -850,9 +893,13 @@ impl AgeableMob for VillagerEntity {
         self.entity_data.lock().ageable_mob_mut().baby.set(baby);
     }
 
+    /// Vanilla `Villager.ageBoundaryReached`: babies and adults have
+    /// different brains.
     fn age_boundary_changed(&self, _baby: bool) {
         self.refresh_dimensions();
-        // TODO(villager brain): vanilla `refreshBrain` (baby or adult activities).
+        if self.level().is_some() {
+            self.refresh_brain();
+        }
     }
 
     fn breed_variant_key(&self) -> Option<&Identifier> {
@@ -989,8 +1036,11 @@ impl Mob for VillagerEntity {
         InteractionResult::Success
     }
 
-    /// Vanilla `Villager.customServerAiStep`, after the brain.
+    /// Vanilla `Villager.customServerAiStep`.
     fn custom_server_ai_step(&self) {
+        if let Some(world) = self.level() {
+            self.brain.tick(&world, self);
+        }
         let last_traded_player = self.state.lock().last_traded_player.take();
         if let Some(player) = last_traded_player {
             self.on_reputation_event_from(ReputationEventType::Trade, player);
@@ -1018,6 +1068,8 @@ impl Mob for VillagerEntity {
 }
 
 impl PathfinderMob for VillagerEntity {}
+
+mod brain;
 
 #[cfg(test)]
 mod tests;

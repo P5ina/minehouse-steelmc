@@ -378,6 +378,10 @@ pub static CHARGE_COOLDOWN_TICKS: MemoryModuleType<i32> =
     MemoryModuleType::with_codec("charge_cooldown_ticks", int_codec());
 pub static ATTACK_TARGET_COOLDOWN: MemoryModuleType<i32> =
     MemoryModuleType::with_codec("attack_target_cooldown", int_codec());
+pub static VISIBLE_VILLAGER_BABIES: MemoryModuleType<Vec<SharedEntity>> =
+    MemoryModuleType::new("visible_villager_babies");
+pub static GOLEM_DETECTED_RECENTLY: MemoryModuleType<bool> =
+    MemoryModuleType::with_codec("golem_detected_recently", bool_codec());
 pub static SNIFF_COOLDOWN: MemoryModuleType<()> =
     MemoryModuleType::with_codec("sniff_cooldown", unit_codec());
 pub static SNIFFER_EXPLORED_POSITIONS: MemoryModuleType<Vec<GlobalPos>> =
