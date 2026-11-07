@@ -42,3 +42,7 @@ pub use sniffer::SnifferEntity;
 pub use squid::{GlowSquidEntity, Squid, SquidEntity};
 mod strider;
 pub use strider::StriderEntity;
+mod panda;
+pub use panda::{PandaEntity, PandaGene};
+mod fox;
+pub use fox::FoxEntity;

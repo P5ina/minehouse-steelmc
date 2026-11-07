@@ -43,6 +43,7 @@ mod selector;
 mod spellcaster_goals;
 mod squid_flee_goal;
 mod squid_random_movement_goal;
+mod stroll_through_village;
 mod swell_goal;
 mod tamable_goals;
 mod target_goal;
@@ -101,6 +102,7 @@ pub(crate) use selector::{Goal, GoalControl, GoalControls, GoalSelector};
 pub(crate) use spellcaster_goals::{SpellcasterCastingSpellGoal, SpellcasterUseSpellGoal};
 pub(crate) use squid_flee_goal::SquidFleeGoal;
 pub(crate) use squid_random_movement_goal::SquidRandomMovementGoal;
+pub(crate) use stroll_through_village::StrollThroughVillageGoal;
 pub(crate) use swell_goal::SwellGoal;
 pub(crate) use tamable_goals::{
     FollowOwnerGoal, NonTameRandomTargetGoal, OwnerTargetGoal, SitWhenOrderedToGoal,
