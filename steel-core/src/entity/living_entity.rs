@@ -1041,7 +1041,12 @@ pub trait LivingEntity: Entity {
 
     /// Applies knockback velocity in the direction (`xd`, `zd`), scaled by
     /// `power` and reduced by knockback resistance.
-    fn knockback(&self, mut power: f64, mut xd: f64, mut zd: f64) {
+    fn knockback(&self, power: f64, xd: f64, zd: f64) {
+        self.default_knockback(power, xd, zd);
+    }
+
+    /// Vanilla `LivingEntity.knockback`, callable from overrides as `super`.
+    fn default_knockback(&self, mut power: f64, mut xd: f64, mut zd: f64) {
         power *= 1.0 - self.knockback_resistance();
         if power <= 0.0 {
             return;
@@ -1349,6 +1354,11 @@ pub trait LivingEntity: Entity {
 
     /// Ticks the vanilla living death animation and removes the entity at completion.
     fn tick_death(&self) {
+        self.default_tick_death();
+    }
+
+    /// Vanilla `LivingEntity.tickDeath`, callable from overrides as `super`.
+    fn default_tick_death(&self) {
         let death_time = self.living_base().increment_death_time();
         if death_time >= DEATH_DURATION && !self.is_removed() {
             self.broadcast_entity_event(EntityStatus::Poof);

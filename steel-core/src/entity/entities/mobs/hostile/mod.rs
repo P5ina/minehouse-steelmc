@@ -63,3 +63,6 @@ pub use hoglin::{HoglinEntity, ZoglinEntity};
 /// Breeze, the trial chamber wind charge shooter.
 pub mod breeze;
 pub use breeze::BreezeEntity;
+/// Creaking, the pale garden mob bound to a creaking heart.
+pub mod creaking;
+pub use creaking::CreakingEntity;

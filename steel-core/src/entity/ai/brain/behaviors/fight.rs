@@ -164,6 +164,15 @@ pub fn set_walk_target_from_attack_target_if_target_out_of_reach<E: Mob + ?Sized
 /// Hits a visible attack target in melee range, then cools down for
 /// `cooldown_between_attacks` ticks (vanilla `MeleeAttack.create`).
 pub fn melee_attack<E: Mob + ?Sized>(cooldown_between_attacks: i32) -> impl BehaviorControl<E> {
+    melee_attack_when(|_: &E| true, cooldown_between_attacks)
+}
+
+/// [`melee_attack`] that only swings while `can_attack` holds (vanilla
+/// `MeleeAttack.create(Predicate, int)`).
+pub fn melee_attack_when<E: Mob + ?Sized>(
+    can_attack: impl Fn(&E) -> bool + Send + 'static,
+    cooldown_between_attacks: i32,
+) -> impl BehaviorControl<E> {
     OneShot::new(
         vec![
             MemoryRequirement::new(&LOOK_TARGET, MemoryStatus::Registered),
@@ -181,6 +190,9 @@ pub fn melee_attack<E: Mob + ?Sized>(cooldown_between_attacks: i32) -> impl Beha
             let Some(living) = target.as_living_entity() else {
                 return false;
             };
+            if !can_attack(body) {
+                return false;
+            }
             let holding_usable_non_melee_weapon =
                 body.is_holding(&mut |item| body.can_use_non_melee_weapon(item));
             // Clone the memory out first: the lazy visibility test locks the

@@ -284,6 +284,13 @@ impl World {
         environment::scheduled_activity(self.dimension_type, level_data.world_clocks(), attribute)
     }
 
+    /// Vanilla `EnvironmentAttributes.CREAKING_ACTIVE`: true at night in the
+    /// overworld.
+    pub fn creaking_active(&self) -> bool {
+        let level_data = self.level_data.read();
+        environment::creaking_active(self.dimension_type, level_data.world_clocks())
+    }
+
     /// Whether the environment currently permits daylight burning.
     pub fn monsters_burn(&self) -> bool {
         let level_data = self.level_data.read();

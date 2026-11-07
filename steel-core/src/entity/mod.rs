@@ -832,6 +832,7 @@ pub(crate) mod selector;
 mod shearable;
 mod spawn;
 mod spawn_placements;
+pub(crate) mod spawn_util;
 mod spellcaster_illager;
 mod storage;
 mod synced_data;
