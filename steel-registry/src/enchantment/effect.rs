@@ -1,12 +1,18 @@
 use crate::attribute::{AttributeModifierOperation, AttributeRef};
+use crate::blocks::BlockRef;
 use crate::damage_type::DamageTypeRef;
+use crate::feature::{BlockPredicate, BlockStateData};
+use crate::game_events::GameEventRef;
 use crate::items::ItemRef;
 use crate::mob_effect::MobEffectRef;
 use crate::sound_event::SoundEventRef;
-use glam::DVec3;
+use glam::{DVec3, IVec3};
 use steel_utils::Identifier;
 use steel_utils::random::Random;
 use steel_utils::types::GameType;
+use steel_utils::value_providers::FloatProvider;
+
+use crate::particle_type::ParticleTypeRef;
 
 /// Vanilla enchantment effect component keys.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -226,11 +232,15 @@ pub enum EntityTypePredicate {
     Unsupported,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq)]
 pub struct EntityPredicate {
     pub entity_type: EntityTypePredicate,
     pub vehicle: EntityVehiclePredicate,
     pub flags: EntityFlagsPredicate,
+    pub movement: Option<&'static EntityMovementPredicate>,
+    pub movement_affected_by: MovementAffectedByPredicate,
+    /// Vanilla `minecraft:periodic_tick`: matches when `tickCount % period == 0`.
+    pub periodic_tick: Option<i32>,
     pub type_specific: EntityTypeSpecificPredicate,
     pub unsupported: bool,
 }
@@ -244,6 +254,8 @@ pub enum EntityVehiclePredicate {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct EntityFlagsPredicate {
+    pub is_on_ground: Option<bool>,
+    pub is_flying: Option<bool>,
     pub is_fall_flying: Option<bool>,
     pub is_in_water: Option<bool>,
     pub unsupported: bool,
@@ -253,6 +265,8 @@ impl EntityFlagsPredicate {
     #[must_use]
     pub const fn any() -> Self {
         Self {
+            is_on_ground: None,
+            is_flying: None,
             is_fall_flying: None,
             is_in_water: None,
             unsupported: false,
@@ -261,7 +275,92 @@ impl EntityFlagsPredicate {
 
     #[must_use]
     pub const fn has_constraints(&self) -> bool {
-        self.is_fall_flying.is_some() || self.is_in_water.is_some() || self.unsupported
+        self.is_on_ground.is_some()
+            || self.is_flying.is_some()
+            || self.is_fall_flying.is_some()
+            || self.is_in_water.is_some()
+            || self.unsupported
+    }
+}
+
+/// Vanilla `MinMaxBounds.Doubles` as used by generated entity predicates.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct EnchantmentDoubleBounds {
+    pub min: Option<f64>,
+    pub max: Option<f64>,
+}
+
+impl EnchantmentDoubleBounds {
+    pub const ANY: Self = Self {
+        min: None,
+        max: None,
+    };
+
+    /// Vanilla `MinMaxBounds.Doubles.matches`.
+    #[must_use]
+    pub fn matches(&self, value: f64) -> bool {
+        self.min.is_none_or(|min| min <= value) && self.max.is_none_or(|max| max >= value)
+    }
+
+    /// Vanilla `MinMaxBounds.Doubles.matchesSqr`: compares a squared value
+    /// against the squared bounds.
+    #[must_use]
+    pub fn matches_sqr(&self, value_sqr: f64) -> bool {
+        self.min.is_none_or(|min| min * min <= value_sqr)
+            && self.max.is_none_or(|max| max * max >= value_sqr)
+    }
+}
+
+/// Vanilla `minecraft:movement` entity sub-predicate. Velocities are the
+/// entity's known movement scaled to blocks per second.
+#[derive(Debug, PartialEq)]
+pub struct EntityMovementPredicate {
+    pub x: EnchantmentDoubleBounds,
+    pub y: EnchantmentDoubleBounds,
+    pub z: EnchantmentDoubleBounds,
+    pub speed: EnchantmentDoubleBounds,
+    pub horizontal_speed: EnchantmentDoubleBounds,
+    pub vertical_speed: EnchantmentDoubleBounds,
+    pub fall_distance: EnchantmentDoubleBounds,
+}
+
+impl EntityMovementPredicate {
+    /// Vanilla `MovementPredicate.matches(x, y, z, fallDistance)`.
+    #[must_use]
+    pub fn matches(&self, x: f64, y: f64, z: f64, fall_distance: f64) -> bool {
+        self.x.matches(x)
+            && self.y.matches(y)
+            && self.z.matches(z)
+            && self.speed.matches_sqr(x * x + y * y + z * z)
+            && self.horizontal_speed.matches_sqr(x * x + z * z)
+            && self.vertical_speed.matches(y.abs())
+            && self.fall_distance.matches(fall_distance)
+    }
+}
+
+/// Vanilla `minecraft:movement_affected_by` entity sub-predicate, limited to
+/// the location `block.blocks` field used by the vanilla datapack.
+#[derive(Debug, PartialEq, Eq)]
+pub enum MovementAffectedByPredicate {
+    Any,
+    Blocks(EnchantmentBlockSet),
+    Unsupported,
+}
+
+/// Static block holder set used by generated location predicates.
+#[derive(Debug, PartialEq, Eq)]
+pub enum EnchantmentBlockSet {
+    Tag(Identifier),
+    Direct(&'static [Identifier]),
+}
+
+impl EnchantmentBlockSet {
+    #[must_use]
+    pub fn contains(&self, block: BlockRef) -> bool {
+        match self {
+            Self::Tag(tag) => block.has_tag(tag),
+            Self::Direct(blocks) => blocks.contains(&block.key),
+        }
     }
 }
 
@@ -325,6 +424,11 @@ pub enum EnchantmentEffectRequirements {
     MatchTool {
         items: Option<EnchantmentItemSet>,
     },
+    /// Vanilla `minecraft:enchantment_active_check`, only meaningful in the
+    /// `location_changed` context.
+    EnchantmentActiveCheck {
+        active: bool,
+    },
     Unsupported {
         condition: Identifier,
     },
@@ -362,6 +466,7 @@ impl EnchantmentEffectRequirements {
             Self::MatchTool { items } => {
                 Some(items.as_ref().is_none_or(|items| items.contains(item)))
             }
+            Self::EnchantmentActiveCheck { .. } => Some(false),
             Self::EntityProperties { .. }
             | Self::DamageSourceProperties(_)
             | Self::RandomChance { .. }
@@ -424,8 +529,17 @@ pub enum EnchantmentEntityEffect {
     },
     PlaySound {
         sounds: &'static [SoundEventRef],
-        volume: f32,
-        pitch: f32,
+        volume: FloatProvider,
+        pitch: FloatProvider,
+    },
+    /// Vanilla `minecraft:spawn_particles` with an option-less particle type.
+    SpawnParticles {
+        particle: ParticleTypeRef,
+        horizontal_position: ParticlePositionSource,
+        vertical_position: ParticlePositionSource,
+        horizontal_velocity: ParticleVelocitySource,
+        vertical_velocity: ParticleVelocitySource,
+        speed: FloatProvider,
     },
     DamageEntity {
         min_damage: &'static LevelBasedValue,
@@ -442,9 +556,77 @@ pub enum EnchantmentEntityEffect {
         min_amplifier: &'static LevelBasedValue,
         max_amplifier: &'static LevelBasedValue,
     },
+    /// Vanilla `minecraft:replace_disk` with a simple block state provider.
+    ReplaceDisk {
+        radius: &'static LevelBasedValue,
+        height: &'static LevelBasedValue,
+        offset: IVec3,
+        /// Built lazily because feature block predicates own their lists.
+        predicate: Option<fn() -> &'static BlockPredicate>,
+        block_state: BlockStateData,
+        trigger_game_event: Option<GameEventRef>,
+    },
     Unsupported {
         effect_type: Identifier,
     },
+}
+
+/// Vanilla `SpawnParticlesEffect.PositionSourceType`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ParticlePositionSourceType {
+    EntityPosition,
+    InBoundingBox,
+}
+
+/// Vanilla `SpawnParticlesEffect.PositionSource`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ParticlePositionSource {
+    pub source_type: ParticlePositionSourceType,
+    pub offset: f32,
+    pub scale: f32,
+}
+
+impl ParticlePositionSource {
+    /// Vanilla `PositionSource.getCoordinate`.
+    pub fn coordinate<R: Random + ?Sized>(
+        &self,
+        position: f64,
+        center: f64,
+        bounding_box_span: f32,
+        random: &mut R,
+    ) -> f64 {
+        let span = bounding_box_span * self.scale;
+        let coordinate = match self.source_type {
+            ParticlePositionSourceType::EntityPosition => position,
+            ParticlePositionSourceType::InBoundingBox => {
+                center + (random.next_f64() - 0.5) * f64::from(span)
+            }
+        };
+        coordinate + f64::from(self.offset)
+    }
+}
+
+/// Vanilla `SpawnParticlesEffect.VelocitySource`.
+#[derive(Debug, Clone, Copy)]
+pub struct ParticleVelocitySource {
+    pub movement_scale: f32,
+    pub base: FloatProvider,
+}
+
+impl ParticleVelocitySource {
+    /// Vanilla `VelocitySource.getVelocity`.
+    pub fn velocity<R: Random + ?Sized>(&self, movement: f64, random: &mut R) -> f64 {
+        movement * f64::from(self.movement_scale) + f64::from(self.base.sample(random))
+    }
+}
+
+/// Vanilla `EnchantmentLocationBasedEffect`: effects of the
+/// `minecraft:location_changed` component.
+#[derive(Debug)]
+pub enum EnchantmentLocationBasedEffect {
+    AllOf(&'static [&'static EnchantmentLocationBasedEffect]),
+    Attribute(EnchantmentAttributeEffect),
+    Entity(&'static EnchantmentEntityEffect),
 }
 
 #[derive(Debug)]
@@ -484,8 +666,8 @@ pub struct EnchantmentEffects {
     pub hit_block: bool,
     pub item_damage: &'static [ConditionalEnchantmentEffect<EnchantmentValueEffect>],
     pub equipment_drops: &'static [TargetedConditionalEnchantmentEffect<EnchantmentValueEffect>],
-    pub location_changed: bool,
-    pub tick: bool,
+    pub location_changed: &'static [ConditionalEnchantmentEffect<EnchantmentLocationBasedEffect>],
+    pub tick: &'static [ConditionalEnchantmentEffect<EnchantmentEntityEffect>],
     pub ammo_use: &'static [ConditionalEnchantmentEffect<EnchantmentValueEffect>],
     pub projectile_piercing: &'static [ConditionalEnchantmentEffect<EnchantmentValueEffect>],
     pub projectile_spawned: &'static [ConditionalEnchantmentEffect<EnchantmentEntityEffect>],
@@ -520,8 +702,8 @@ impl EnchantmentEffects {
         hit_block: false,
         item_damage: &[],
         equipment_drops: &[],
-        location_changed: false,
-        tick: false,
+        location_changed: &[],
+        tick: &[],
         ammo_use: &[],
         projectile_piercing: &[],
         projectile_spawned: &[],
@@ -558,8 +740,8 @@ impl EnchantmentEffects {
             EnchantmentEffectComponent::HitBlock => self.hit_block,
             EnchantmentEffectComponent::ItemDamage => !self.item_damage.is_empty(),
             EnchantmentEffectComponent::EquipmentDrops => !self.equipment_drops.is_empty(),
-            EnchantmentEffectComponent::LocationChanged => self.location_changed,
-            EnchantmentEffectComponent::Tick => self.tick,
+            EnchantmentEffectComponent::LocationChanged => !self.location_changed.is_empty(),
+            EnchantmentEffectComponent::Tick => !self.tick.is_empty(),
             EnchantmentEffectComponent::AmmoUse => !self.ammo_use.is_empty(),
             EnchantmentEffectComponent::ProjectilePiercing => !self.projectile_piercing.is_empty(),
             EnchantmentEffectComponent::ProjectileSpawned => !self.projectile_spawned.is_empty(),

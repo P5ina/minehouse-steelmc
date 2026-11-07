@@ -14,7 +14,7 @@ use steel_registry::dimension_type::DimensionTypeRef;
 use steel_registry::fluid::FluidRef;
 use steel_registry::game_events::GameEventRef;
 use steel_registry::sound_event::SoundEventRef;
-use steel_utils::{BlockPos, BlockStateId, types::Difficulty, types::UpdateFlags};
+use steel_utils::{BlockPos, BlockStateId, WorldAabb, types::Difficulty, types::UpdateFlags};
 
 use crate::block_entity::SharedBlockEntity;
 use crate::chunk::heightmap::HeightmapType;
@@ -147,6 +147,13 @@ pub trait LevelReader {
     /// from the light-curved brightness at a position.
     fn pathfinding_cost_from_light_levels(&self, pos: BlockPos) -> f32 {
         self.light_level_dependent_magic_value(pos) - 0.5
+    }
+
+    /// Vanilla `EntityGetter.isUnobstructed(null, shape)` for a box shape: no
+    /// live, non-spectator entity that blocks building overlaps `aabb`.
+    #[expect(unused_variables, reason = "default level surfaces hold no entities")]
+    fn is_unobstructed_by_entities_in(&self, aabb: &WorldAabb) -> bool {
+        true
     }
 }
 

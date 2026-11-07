@@ -14,6 +14,8 @@ use steel_protocol::packets::game::{CRemoveMobEffect, CUpdateMobEffect, MobEffec
 use steel_registry::RegistryEntry;
 use steel_registry::attribute::AttributeRef;
 use steel_registry::data_components::vanilla_components::SwingAnimation;
+use steel_registry::enchantment::EnchantmentRef;
+use steel_registry::enchantment_effect::EnchantmentLocationBasedEffect;
 use steel_registry::entity_data::ParticleList;
 use steel_registry::entity_type::EntityTypeRef;
 use steel_registry::item_stack::ItemStack;
@@ -163,6 +165,41 @@ impl MobEffectInstance {
             self.show_icon,
             self.hidden_effect.as_deref().map(Self::to_registry_details),
         )
+    }
+
+    /// Builds runtime state from the registry form, keeping the hidden fallback chain.
+    ///
+    /// Used to restore effects saved with vanilla `MobEffectInstance.CODEC`.
+    #[must_use]
+    pub fn from_registry_instance(instance: &steel_registry::MobEffectInstance) -> Self {
+        Self {
+            effect: instance.effect(),
+            duration: instance.duration(),
+            amplifier: clamp_effect_amplifier(instance.amplifier()),
+            ambient: instance.ambient(),
+            visible: instance.show_particles(),
+            show_icon: instance.show_icon(),
+            hidden_effect: instance
+                .hidden_effect()
+                .map(|hidden| Box::new(Self::from_registry_details(instance.effect(), hidden))),
+        }
+    }
+
+    fn from_registry_details(
+        effect: MobEffectRef,
+        details: &steel_registry::MobEffectInstanceDetails,
+    ) -> Self {
+        Self {
+            effect,
+            duration: details.duration(),
+            amplifier: clamp_effect_amplifier(details.amplifier()),
+            ambient: details.ambient(),
+            visible: details.show_particles(),
+            show_icon: details.show_icon(),
+            hidden_effect: details
+                .hidden_effect()
+                .map(|hidden| Box::new(Self::from_registry_details(effect, hidden))),
+        }
     }
 
     fn to_registry_details(&self) -> steel_registry::MobEffectInstanceDetails {
@@ -759,6 +796,20 @@ pub struct LivingEntityBase {
     pending_equipment_changes: SyncMutex<[Option<ItemStack>; EquipmentSlot::ALL.len()]>,
     equipment_attribute_modifiers:
         SyncMutex<[Vec<EquipmentAttributeModifierKey>; EquipmentSlot::ALL.len()]>,
+    active_location_enchantments: SyncMutex<Vec<ActiveLocationEnchantment>>,
+    last_block_pos: SyncMutex<Option<BlockPos>>,
+}
+
+/// One entry of vanilla `LivingEntity.activeLocationDependentEnchantments`:
+/// the `location_changed` effects of an enchantment that are active in a slot.
+#[derive(Debug)]
+pub struct ActiveLocationEnchantment {
+    /// Slot whose item carries the enchantment.
+    pub slot: EquipmentSlot,
+    /// The enchantment.
+    pub enchantment: EnchantmentRef,
+    /// Active effects, compared by identity.
+    pub effects: Vec<&'static EnchantmentLocationBasedEffect>,
 }
 
 #[derive(Debug)]
@@ -805,7 +856,19 @@ impl LivingEntityBase {
             last_equipment_items: SyncMutex::new(array::from_fn(|_| ItemStack::empty())),
             pending_equipment_changes: SyncMutex::new(array::from_fn(|_| None)),
             equipment_attribute_modifiers: SyncMutex::new(array::from_fn(|_| Vec::new())),
+            active_location_enchantments: SyncMutex::new(Vec::new()),
+            last_block_pos: SyncMutex::new(None),
         }
+    }
+
+    /// Records vanilla `LivingEntity.lastPos`; returns whether it changed.
+    pub fn update_last_block_pos(&self, pos: BlockPos) -> bool {
+        self.last_block_pos.lock().replace(pos) != Some(pos)
+    }
+
+    /// Vanilla `LivingEntity.activeLocationDependentEnchantments`, for all slots.
+    pub const fn active_location_enchantments(&self) -> &SyncMutex<Vec<ActiveLocationEnchantment>> {
+        &self.active_location_enchantments
     }
 
     /// Returns this entity's attribute map.

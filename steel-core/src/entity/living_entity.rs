@@ -83,6 +83,13 @@ pub trait LivingEntity: Entity {
     fn base_tick_living_entity(&self) {
         self.advance_living_rotation_for_base_tick();
         self.living_base().tick_swing_state();
+        // Vanilla `LivingEntity.baseTick`: `EnchantmentHelper.tickEffects`
+        // before `Entity.baseTick`.
+        if let Some(world) = self.level()
+            && let Some(living) = self.as_living_entity()
+        {
+            enchantment_helper::tick_effects(&world, living);
+        }
         self.entity_base_tick();
         self.tick_living_environmental_damage();
         self.living_base().decrement_hurt_time();
@@ -1771,6 +1778,16 @@ pub trait LivingEntity: Entity {
         }
 
         self.tick_living_air_supply();
+
+        // Vanilla `LivingEntity.baseTick`: `onChangedBlock` when the block
+        // position differs from `lastPos`.
+        let pos = self.block_position();
+        if self.living_base().update_last_block_pos(pos)
+            && let Some(world) = self.level()
+            && let Some(living) = self.as_living_entity()
+        {
+            enchantment_helper::run_location_changed_effects(&world, living);
+        }
     }
 
     /// Returns whether this entity is affected by fluid physics; true by default.
@@ -2137,9 +2154,25 @@ pub trait LivingEntity: Entity {
             return;
         }
 
+        // Vanilla `collectEquipmentChanges`: stop the previous items' location
+        // effects first, then install the new items and run theirs.
+        if let Some(living) = self.as_living_entity() {
+            for (slot, previous, _) in &changes {
+                if !previous.is_empty() {
+                    enchantment_helper::stop_location_based_effects_in_slot(living, *slot);
+                }
+            }
+        }
         for (slot, _, current) in &changes {
             self.living_base()
                 .refresh_equipment_attribute_modifiers(*slot, current);
+            if !current.is_empty()
+                && !current.is_broken()
+                && let Some(world) = self.level()
+                && let Some(living) = self.as_living_entity()
+            {
+                enchantment_helper::run_location_changed_effects_in_slot(&world, living, *slot);
+            }
         }
 
         let main_hand = changes
@@ -2201,6 +2234,9 @@ pub trait LivingEntity: Entity {
     fn on_equipped_item_broken(&self, _item: ItemRef, slot: EquipmentSlot) {
         self.broadcast_entity_event(slot.into());
         self.refresh_equipment_attribute_modifiers(slot);
+        if let Some(living) = self.as_living_entity() {
+            enchantment_helper::stop_location_based_effects_in_slot(living, slot);
+        }
     }
 
     /// Returns vanilla `LivingEntity.canFreeze()` after concrete entity exemptions.

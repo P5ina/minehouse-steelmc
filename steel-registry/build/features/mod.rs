@@ -19,25 +19,21 @@ mod placement;
 mod providers;
 mod structures;
 
+pub(crate) use common::generate_block_state_data;
 use common::{
     generate_block_holder_set, generate_block_ref, generate_block_ref_list,
-    generate_block_state_data, generate_block_state_provider_entry_ref, generate_box,
-    generate_configured_feature_entry_ref, generate_direction, generate_fluid_ref_list,
-    generate_fluid_state_data, generate_identifier, generate_offset, generate_option,
-    generate_placed_feature_entry_ref, generate_rotation, generate_vec, generate_vertical_anchor,
-    resource_name, sorted_json_files,
+    generate_block_state_provider_entry_ref, generate_box, generate_configured_feature_entry_ref,
+    generate_direction, generate_fluid_ref_list, generate_fluid_state_data, generate_identifier,
+    generate_offset, generate_option, generate_placed_feature_entry_ref, generate_rotation,
+    generate_vec, generate_vertical_anchor, resource_name, sorted_json_files,
 };
 use configured::generate_configured_feature_kind;
-pub(crate) use data::BlockStateProviderKind;
+pub(crate) use data::{BlockPredicate, BlockStateProviderKind};
 pub(crate) use nbt::generate_block_state_provider_kind_nbt;
-use placement::{
-    generate_block_predicate, generate_placed_feature_data, generate_placed_feature_ref,
-};
-pub(crate) use providers::generate_block_state_provider;
-use providers::{
-    generate_float_provider, generate_height_provider, generate_int_provider,
-    generate_uniform_int_provider,
-};
+pub(crate) use placement::generate_block_predicate;
+use placement::{generate_placed_feature_data, generate_placed_feature_ref};
+pub(crate) use providers::{generate_block_state_provider, generate_float_provider};
+use providers::{generate_height_provider, generate_int_provider, generate_uniform_int_provider};
 use structures::{
     generate_block_column_layer, generate_end_spike, generate_feature_size,
     generate_foliage_placer, generate_geode_block_settings, generate_geode_crack_settings,
@@ -48,15 +44,15 @@ use structures::{
 };
 
 use data::{
-    AboveRootPlacement, BlobFoliagePlacer, BlockColumnLayer, BlockHolderSet, BlockPredicate,
-    BlockStateData, ConfiguredFeatureKind, ConfiguredFeatureRef, DualNoiseProvider, EndSpike,
-    FeatureHeightmap, FeatureNoiseParameters, FeatureSize, FluidStateData, FoliagePlacer,
-    FoliagePlacerBase, GeodeBlockSettings, GeodeCrackSettings, GeodeLayerSettings,
-    HugeMushroomConfiguration, IdentifierList, MangroveRootPlacement, NoiseProvider,
-    NoiseThresholdProvider, OreTarget, PlacedFeatureData, PlacedFeatureRef, PlacementModifier,
-    RootPlacer, RuleBasedStateProviderRule, TemplateEntry, TreeDecorator, TrunkPlacer,
-    TrunkPlacerBase, VegetationPatchConfiguration, VerticalSurface, WeightedBlockState,
-    WeightedPlacedFeature, WeightedRandomPlacedFeature, WeightedTemplateEntry,
+    AboveRootPlacement, BlobFoliagePlacer, BlockColumnLayer, BlockHolderSet, BlockStateData,
+    ConfiguredFeatureKind, ConfiguredFeatureRef, DualNoiseProvider, EndSpike, FeatureHeightmap,
+    FeatureNoiseParameters, FeatureSize, FluidStateData, FoliagePlacer, FoliagePlacerBase,
+    GeodeBlockSettings, GeodeCrackSettings, GeodeLayerSettings, HugeMushroomConfiguration,
+    IdentifierList, MangroveRootPlacement, NoiseProvider, NoiseThresholdProvider, OreTarget,
+    PlacedFeatureData, PlacedFeatureRef, PlacementModifier, RootPlacer, RuleBasedStateProviderRule,
+    TemplateEntry, TreeDecorator, TrunkPlacer, TrunkPlacerBase, VegetationPatchConfiguration,
+    VerticalSurface, WeightedBlockState, WeightedPlacedFeature, WeightedRandomPlacedFeature,
+    WeightedTemplateEntry,
 };
 
 pub(crate) fn build_configured() -> TokenStream {

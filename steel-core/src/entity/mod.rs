@@ -878,10 +878,10 @@ pub use inside_block_effects::{
 pub(crate) use item_based_steering::{ItemBasedSteering, ItemSteerable};
 pub use item_frame::ItemFrame;
 pub use living_base::{
-    ActiveItemUseState, ActiveMobEffect, DEATH_DURATION, DEFAULT_SWING_DURATION,
-    HURT_DURATION_TICKS, LivingEntityBase, LivingRotationState, LivingSwingState,
-    LivingTravelInput, MobEffectInstance, MobEffectSyncChange, MobEffectSyncPacket,
-    sync_dirty_mob_effects,
+    ActiveItemUseState, ActiveLocationEnchantment, ActiveMobEffect, DEATH_DURATION,
+    DEFAULT_SWING_DURATION, HURT_DURATION_TICKS, LivingEntityBase, LivingRotationState,
+    LivingSwingState, LivingTravelInput, MobEffectInstance, MobEffectSyncChange,
+    MobEffectSyncPacket, sync_dirty_mob_effects,
 };
 pub use living_entity::LivingEntity;
 pub(crate) use manager::EntityCollisionCandidates;
