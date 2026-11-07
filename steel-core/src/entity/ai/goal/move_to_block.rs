@@ -120,7 +120,13 @@ impl MoveToBlockGoal {
         self.reached_target
     }
 
-    fn next_start_tick(&self, _mob: &dyn PathfinderMob) -> i32 {
+    /// Vanilla `nextStartTick`, the countdown before the next search.
+    pub(crate) const fn next_start_tick_mut(&mut self) -> &mut i32 {
+        &mut self.next_start_tick
+    }
+
+    /// Vanilla `nextStartTick(mob)`: the delay before the next search.
+    pub(crate) fn next_start_tick(&self, _mob: &dyn PathfinderMob) -> i32 {
         self.fixed_next_start_tick
             .unwrap_or_else(|| reduced_tick_delay(INTERVAL_TICKS + rand::random_range(0..200)))
     }
@@ -140,7 +146,8 @@ impl MoveToBlockGoal {
         self.try_ticks % self.recalculate_path_interval == 0
     }
 
-    fn find_nearest_block(&mut self, mob: &dyn PathfinderMob, level: &World) -> bool {
+    /// Vanilla `findNearestBlock`.
+    pub(crate) fn find_nearest_block(&mut self, mob: &dyn PathfinderMob, level: &World) -> bool {
         let Some(block_pos) = find_nearest_block_from(
             mob.block_position(),
             self.search_range,

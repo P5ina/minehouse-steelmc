@@ -24,12 +24,12 @@ use steel_utils::{BlockPos, BlockStateId, ChunkPos, Downcast as _, DowncastType,
 
 use crate::entity::SpawnRule;
 use crate::entity::ai::goal::{
-    FloatGoal, Goal, GoalControls, HurtByTargetGoal, LeapAtTargetGoal, LookAtPlayerGoal,
-    MeleeAttackGoal, NearestAttackableTargetGoal, RandomLookAroundGoal,
+    AvoidEntityGoal, FloatGoal, Goal, GoalControls, HurtByTargetGoal, LeapAtTargetGoal,
+    LookAtPlayerGoal, MeleeAttackGoal, NearestAttackableTargetGoal, RandomLookAroundGoal,
     WaterAvoidingRandomStrollGoal,
 };
 use crate::entity::damage::DamageSource;
-use crate::entity::entities::SkeletonEntity;
+use crate::entity::entities::{ArmadilloEntity, SkeletonEntity};
 use crate::entity::entity::EntityEventSource as _;
 use crate::entity::spawn::create_entity_instance;
 use crate::entity::{
@@ -41,6 +41,8 @@ use crate::entity::{
 use crate::physics::MoveResult;
 use crate::world::{LevelReader as _, World};
 
+/// Vanilla `Spider.registerGoals` armadillo avoid distance.
+const AVOID_ARMADILLO_DISTANCE: f32 = 6.0;
 const DEFAULT_STEP_HEIGHT: f32 = 0.6;
 const XP_REWARD: i32 = 5;
 const CLIMBING_FLAG: i8 = 1;
@@ -176,8 +178,14 @@ fn spider_mob_base() -> MobBase {
     {
         let mut goal_selector = mob_base.goal_selector().lock();
         goal_selector.add_goal(1, FloatGoal::new(&mob_base));
-        // Vanilla priority 2 avoids armadillos that are not scared; armadillos
-        // are not implemented in Steel yet.
+        goal_selector.add_goal(
+            2,
+            AvoidEntityGoal::with_selector(AVOID_ARMADILLO_DISTANCE, 1.0, 1.2, |target, _| {
+                target
+                    .downcast_ref::<ArmadilloEntity>()
+                    .is_some_and(|armadillo| !armadillo.is_scared())
+            }),
+        );
         goal_selector.add_goal(3, LeapAtTargetGoal::new(0.4));
         goal_selector.add_goal(4, SpiderAttackGoal::new());
         goal_selector.add_goal(5, WaterAvoidingRandomStrollGoal::new(0.8));
