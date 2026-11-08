@@ -100,12 +100,12 @@ fn run(delay: u64, duration: u64) {
     let mut out = String::new();
     let mut by_total: Vec<_> = threads.into_iter().collect();
     by_total.sort_by_key(|(_, (total, _, _))| -*total);
-    for (thread_name, (total, selfs, incl)) in by_total {
+    for (thread_name, (total, self_counts, incl)) in by_total {
         let _ = writeln!(out, "=== thread {thread_name}: {total} samples");
-        let mut selfs: Vec<_> = selfs.into_iter().collect();
-        selfs.sort_by_key(|(_, c)| -*c);
+        let mut self_counts: Vec<_> = self_counts.into_iter().collect();
+        self_counts.sort_by_key(|(_, c)| -*c);
         let _ = writeln!(out, "--- self");
-        for (name, c) in selfs.iter().take(60) {
+        for (name, c) in self_counts.iter().take(60) {
             let _ = writeln!(out, "{:6.2}% {name}", pct(*c, total));
         }
         let mut incl: Vec<_> = incl.into_iter().collect();
