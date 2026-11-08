@@ -240,7 +240,7 @@ fn large_queries_match_the_cell_path_in_query_order() {
             .collect::<Vec<_>>();
         expected.sort_unstable();
         let expected = expected.into_iter().map(|(_, id)| id).collect::<Vec<_>>();
-        assert!(!expected.is_empty());
+        assert_ne!(expected.len(), 0);
         assert_eq!(large, expected);
     }
 }

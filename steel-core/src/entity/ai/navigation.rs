@@ -101,7 +101,7 @@ pub struct PathNavigation {
 
 impl PathNavigation {
     #[must_use]
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             kind: NavigationKind::Ground,
             path: None,

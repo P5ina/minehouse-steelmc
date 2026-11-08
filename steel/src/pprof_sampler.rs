@@ -4,13 +4,15 @@
 //! sampled for the given duration and a self/inclusive time summary per function,
 //! grouped by thread name, is written to `steel-pprof.txt`.
 
-use std::collections::HashMap;
+use rustc_hash::{FxHashMap as HashMap, FxHashSet};
+use std::env;
 use std::fmt::Write as _;
+use std::fs;
 use std::thread;
 use std::time::Duration;
 
 pub fn start_from_env() {
-    let Ok(spec) = std::env::var("STEEL_PPROF") else {
+    let Ok(spec) = env::var("STEEL_PPROF") else {
         return;
     };
     let mut parts = spec.split(':');
@@ -23,6 +25,9 @@ pub fn start_from_env() {
         log::warn!("pprof: failed to spawn sampler thread: {err}");
     }
 }
+
+/// Samples, self counts, and inclusive counts for one thread.
+type ThreadProfile = (isize, HashMap<String, isize>, HashMap<String, isize>);
 
 fn run(delay: u64, duration: u64) {
     thread::sleep(Duration::from_secs(delay));
@@ -48,8 +53,7 @@ fn run(delay: u64, duration: u64) {
     };
 
     // thread -> (total, self per fn, inclusive per fn)
-    let mut threads: HashMap<String, (isize, HashMap<String, isize>, HashMap<String, isize>)> =
-        HashMap::new();
+    let mut threads: HashMap<String, ThreadProfile> = HashMap::default();
     for (frames, count) in &report.data {
         let thread_name = frames
             .thread_name
@@ -65,7 +69,7 @@ fn run(delay: u64, duration: u64) {
         if let Some(first) = names.first() {
             *entry.1.entry(short(first)).or_default() += *count;
         }
-        let mut seen = std::collections::HashSet::new();
+        let mut seen = FxHashSet::default();
         for name in &names {
             let name = short(name);
             if seen.insert(name.clone()) {
@@ -89,7 +93,7 @@ fn run(delay: u64, duration: u64) {
             names.join(";")
         );
     }
-    if let Err(err) = std::fs::write("steel-pprof.folded", folded) {
+    if let Err(err) = fs::write("steel-pprof.folded", folded) {
         log::warn!("pprof: {err}");
     }
 
@@ -111,7 +115,7 @@ fn run(delay: u64, duration: u64) {
             let _ = writeln!(out, "{:6.2}% {name}", pct(*c, total));
         }
     }
-    match std::fs::write("steel-pprof.txt", out) {
+    match fs::write("steel-pprof.txt", out) {
         Ok(()) => log::info!("pprof: wrote steel-pprof.txt"),
         Err(err) => log::warn!("pprof: {err}"),
     }
