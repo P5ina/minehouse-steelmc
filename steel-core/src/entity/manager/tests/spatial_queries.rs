@@ -182,3 +182,65 @@ fn borrowed_query_fallback_preserves_order_and_slot_reuse() {
         .expect("reuse a slot from the unloaded chunk");
     assert_eq!(ids(&manager.get_entities_in_aabb(&query)), [1, 6]);
 }
+
+#[test]
+fn large_queries_match_the_cell_path_in_query_order() {
+    let manager = WorldEntityManager::new();
+    for x in -3..=3 {
+        for z in -3..=3 {
+            load_chunk(&manager, ChunkPos::new(x, z));
+        }
+    }
+
+    let mut next_id = 0;
+    for x in (-40..40).step_by(7) {
+        for z in (-40..40).step_by(9) {
+            for y in [40.0, 64.0, 90.0] {
+                next_id += 1;
+                let position = DVec3::new(f64::from(x) + 0.3, y, f64::from(z) - 0.4);
+                let shared = if next_id % 3 == 0 {
+                    ManagerTestEntity::shared_non_hard(
+                        next_id,
+                        Uuid::from_u128(next_id as u128),
+                        position,
+                    )
+                } else {
+                    entity(next_id, next_id as u128, position)
+                };
+                manager
+                    .add_live_entity(shared, EntityOwnership::ManagerOwned)
+                    .expect("register query entity");
+            }
+        }
+    }
+
+    // Large enough to take the chunk path; the expectation is assembled from small queries.
+    let query = WorldAabb::new(-30.5, 50.0, -27.0, 33.0, 95.0, 31.5);
+    assert!(
+        EntitySpatialCellBounds::from_aabb(&query).direct_probe_count() > MAX_CELL_QUERY_PROBES
+    );
+
+    for candidates in [
+        EntityCollisionCandidates::All,
+        EntityCollisionCandidates::HardCollisionRelevant,
+    ] {
+        let state = manager.state.read();
+        let large = WorldEntityManager::query_entries(&state, &query, candidates, Some(&query))
+            .map(|entry| entry.entity.id())
+            .collect::<Vec<_>>();
+        let mut expected = state
+            .live_by_id
+            .values()
+            .filter(|entry| {
+                entry.bounding_box.intersects(query)
+                    && (candidates == EntityCollisionCandidates::All
+                        || entry.hard_collision_relevant)
+            })
+            .map(|entry| (entry.query_order, entry.entity.id()))
+            .collect::<Vec<_>>();
+        expected.sort_unstable();
+        let expected = expected.into_iter().map(|(_, id)| id).collect::<Vec<_>>();
+        assert!(!expected.is_empty());
+        assert_eq!(large, expected);
+    }
+}

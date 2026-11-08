@@ -68,7 +68,6 @@ pub struct PathNavigation {
     kind: NavigationKind,
     path: Option<Path>,
     path_finder: PathFinder,
-    path_type_cache: PathTypeCache,
     direct_target: Option<DVec3>,
     target_pos: Option<BlockPos>,
     speed_modifier: f64,
@@ -107,7 +106,6 @@ impl PathNavigation {
             kind: NavigationKind::Ground,
             path: None,
             path_finder: PathFinder::new(0),
-            path_type_cache: PathTypeCache::new(),
             direct_target: None,
             target_pos: None,
             speed_modifier: 0.0,
@@ -390,10 +388,6 @@ impl PathNavigation {
         self.tick = self.tick.wrapping_add(1);
     }
 
-    pub fn invalidate_path_type(&mut self, pos: BlockPos) {
-        self.path_type_cache.invalidate(pos);
-    }
-
     pub fn stop(&mut self) {
         self.path = None;
         self.done = true;
@@ -411,10 +405,13 @@ impl PathNavigation {
         self.path_finder.set_max_visited_nodes(max_visited_nodes);
     }
 
+    /// Vanilla `PathNavigation.createPath`. `path_type_cache` is the level's shared
+    /// `ServerLevel.pathTypesByPosCache`, or `None` to compute path types uncached.
     pub fn create_path(
         &mut self,
         evaluator: &mut impl NodeEvaluator,
         level: &dyn LevelReader,
+        path_type_cache: Option<&mut PathTypeCache>,
         collision: &mut impl WalkNodeCollision,
         request: NavigationPathRequest<'_>,
     ) -> Option<Path> {
@@ -425,8 +422,10 @@ impl PathNavigation {
             return Some(path.clone());
         }
 
-        let mut context =
-            PathfindingContext::with_cache(level, request.mob_position, &mut self.path_type_cache);
+        let mut context = match path_type_cache {
+            Some(cache) => PathfindingContext::with_cache(level, request.mob_position, cache),
+            None => PathfindingContext::new(level, request.mob_position),
+        };
         let path = self.path_finder.find_path(
             evaluator,
             &mut context,
@@ -1662,6 +1661,7 @@ mod tests {
         let reused = navigation.create_path(
             &mut evaluator,
             &level,
+            None,
             &mut no_collision,
             NavigationPathRequest {
                 mob_position: BlockPos::new(0, 64, 0),
@@ -1749,6 +1749,7 @@ mod tests {
         let path = navigation.create_path(
             &mut evaluator,
             &level,
+            None,
             &mut no_collision,
             NavigationPathRequest {
                 mob_position: BlockPos::new(0, 64, 0),

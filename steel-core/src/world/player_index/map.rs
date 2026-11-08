@@ -58,13 +58,13 @@ pub struct PlayerMap {
     by_uuid: HashMap<Uuid, Arc<PlayerSlot>>,
     /// Secondary index by entity ID (session-local identifier)
     by_entity_id: HashMap<i32, Arc<PlayerSlot>>,
-    /// Player slots in insertion order for vanilla-visible iteration.
+    /// Players in insertion order for vanilla-visible iteration.
     ///
     /// Rebuilt under `mutations` on insert/remove; readers take a lock-free
     /// snapshot, so iteration does no hash lookups or allocation. Per-tick
     /// callers (spawning chunk checks, nearest-player searches) iterate this
     /// once per chunk and once per mob.
-    order: ArcSwap<Vec<(Uuid, Arc<PlayerSlot>)>>,
+    order: ArcSwap<Vec<(Uuid, Arc<Player>)>>,
     /// Serializes changes to the indexes and their shared slots.
     mutations: SyncMutex<()>,
 }
@@ -114,9 +114,10 @@ impl PlayerMap {
             let _ = self.by_uuid.remove_sync(&uuid);
             panic!("player entity id {entity_id} is already registered");
         }
+        let player = slot.load();
         self.order.rcu(|order| {
             let mut order = Vec::clone(order);
-            order.push((uuid, Arc::clone(&slot)));
+            order.push((uuid, Arc::clone(&player)));
             order
         });
         true
@@ -217,7 +218,22 @@ impl PlayerMap {
             return false;
         }
 
-        slot.replace(expected, replacement)
+        if !slot.replace(expected, Arc::clone(&replacement)) {
+            return false;
+        }
+        self.order.rcu(|order| {
+            order
+                .iter()
+                .map(|(player_uuid, player)| {
+                    if *player_uuid == uuid {
+                        (uuid, Arc::clone(&replacement))
+                    } else {
+                        (*player_uuid, Arc::clone(player))
+                    }
+                })
+                .collect::<Vec<_>>()
+        });
+        true
     }
 
     /// Gets a player by UUID.
@@ -240,10 +256,9 @@ impl PlayerMap {
     where
         F: FnMut(&Uuid, &Arc<Player>) -> bool,
     {
-        let order = self.order.load_full();
-        for (uuid, slot) in order.iter() {
-            let registered = slot.player.load();
-            if !f(uuid, &registered.player) {
+        let order = self.order.load();
+        for (uuid, player) in order.iter() {
+            if !f(uuid, player) {
                 return;
             }
         }

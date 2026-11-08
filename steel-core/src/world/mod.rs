@@ -314,6 +314,10 @@ pub struct World {
     entity_tracker: EntityTracker,
     /// Runtime IDs for pathfinder mobs currently visible to the active world.
     navigating_mobs: NavigatingMobTracker,
+    /// Vanilla `ServerLevel.pathTypesByPosCache`, shared by every mob's pathfinding.
+    /// Pathfinding only `try_lock`s it and runs uncached when it is busy, which gives the
+    /// same paths because the cache only memoizes block-derived path types.
+    pub(crate) path_type_cache: SyncMutex<crate::entity::ai::path::PathTypeCache>,
     /// Weather Data needed for animating starting and stopping of rain clientside
     pub weather: SyncMutex<Weather>,
     /// Per-level recent toggle history used by vanilla redstone-torch burnout.
@@ -484,6 +488,7 @@ impl World {
                 game_event_listener_count: GameEventListenerCount::shared(),
                 entity_tracker: EntityTracker::new(),
                 navigating_mobs: NavigatingMobTracker::new(),
+                path_type_cache: SyncMutex::new(crate::entity::ai::path::PathTypeCache::new()),
                 weather: SyncMutex::new(weather),
                 redstone_torch_toggles: SyncMutex::new(
                     redstone::RedstoneTorchToggleTracker::default(),

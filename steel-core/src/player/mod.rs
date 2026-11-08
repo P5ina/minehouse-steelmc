@@ -58,7 +58,7 @@ pub(crate) use session::PlayerSessionId;
 use simdnbt::owned::{NbtCompound, NbtList, NbtTag};
 use sleep_state::PlayerSleepState;
 use std::ptr;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicI8, Ordering};
 use std::sync::{Arc, LazyLock, Weak};
 use std::time::{Duration, Instant};
 use steel_math::RAD_TO_DEG_F64;
@@ -218,6 +218,10 @@ pub struct Player {
 
     /// Current and previous game mode.
     game_modes: SyncMutex<PlayerGameModeState>,
+    /// Lock-free copy of `game_modes.current`, written under the `game_modes`
+    /// lock. Mobs and natural spawning read it for every player many times a
+    /// tick (spectator checks), where taking the mutex dominated the profile.
+    current_game_mode: AtomicI8,
 
     /// The player's inventory container (shared with `inventory_menu`).
     pub inventory: Shared<PlayerInventory>,
@@ -573,7 +577,7 @@ impl Player {
     /// Returns the player's current game mode.
     #[must_use]
     pub fn game_mode(&self) -> GameType {
-        self.game_modes.lock().current()
+        GameType::from(self.current_game_mode.load(Ordering::Acquire))
     }
 
     /// Returns the player's previous game mode.
@@ -584,12 +588,19 @@ impl Player {
 
     /// Restores current and previous game mode from persistent player data.
     pub(crate) fn restore_game_modes(&self, current: GameType, previous: Option<GameType>) {
-        self.game_modes.lock().set_pair(current, previous);
+        let mut game_modes = self.game_modes.lock();
+        game_modes.set_pair(current, previous);
+        self.current_game_mode
+            .store(current as i8, Ordering::Release);
     }
 
     /// Changes the current game mode and records the old current mode as previous.
     fn change_game_mode_state(&self, game_mode: GameType) -> bool {
-        self.game_modes.lock().change_current(game_mode)
+        let mut game_modes = self.game_modes.lock();
+        let changed = game_modes.change_current(game_mode);
+        self.current_game_mode
+            .store(game_modes.current() as i8, Ordering::Release);
+        changed
     }
 
     /// Creates a new player.
@@ -644,6 +655,7 @@ impl Player {
             last_tracking_view: SyncMutex::new(None),
             client_information: SyncMutex::new(client_information),
             game_modes: SyncMutex::new(PlayerGameModeState::new(GameType::Survival)),
+            current_game_mode: AtomicI8::new(GameType::Survival as i8),
             inventory: Arc::clone(&inventory),
             inventory_sync: SyncMutex::new(PlayerInventorySyncState::new()),
             ender_chest_inventory,

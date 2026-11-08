@@ -30,7 +30,6 @@ use crate::inventory::{
     menu::{Menu, MenuBehavior, MenuBuilder, MenuKind, kinds::BasicKind},
 };
 use crate::permission::{PermissionEntry, PermissionKey, PermissionMetadataSet, PermissionSet};
-use crate::player::game_mode::PlayerGameModeState;
 use crate::test_support::{
     TestPlayerBuilder, fresh_test_world, fresh_test_world_in_domain, hard_damage_test_world,
     insert_ready_full_chunk, test_world,
@@ -1630,7 +1629,7 @@ fn creative_drop_throttle_survives_respawn_replacement() {
         let world = &world_fixture.world;
         insert_ready_full_chunk(world, ChunkPos::new(0, 0));
         let player = test_player(Arc::clone(world));
-        *player.game_modes.lock() = PlayerGameModeState::new(GameType::Creative);
+        player.restore_game_modes(GameType::Creative, None);
 
         let drop_packet = || SSetCreativeModeSlot {
             slot_num: -1,
@@ -1798,7 +1797,7 @@ fn throttle_player_dropping_items_from_creative_menu() {
         );
     };
 
-    *player.game_modes.lock() = PlayerGameModeState::new(GameType::Creative);
+    player.restore_game_modes(GameType::Creative, None);
 
     // Ensure no remainder for easier logic in the test
     assert_eq!(

@@ -55,26 +55,40 @@ impl World {
         close_enough
     }
 
-    /// Vanilla `ChunkMap.anyPlayerCloseEnoughForSpawning`: a non-spectator player is
-    /// within 128 blocks (horizontally) of the chunk center.
-    pub fn any_player_close_enough_for_spawning(&self, chunk_pos: ChunkPos) -> bool {
-        let center_x = f64::from(chunk_pos.0.x * 16 + 8);
-        let center_z = f64::from(chunk_pos.0.y * 16 + 8);
-        let mut close_enough = false;
+    /// Horizontal positions of the non-spectator players, read once for a pass of
+    /// [`Self::any_player_close_enough_for_spawning`] checks.
+    ///
+    /// Vanilla re-reads the player list for every chunk; positions cannot change
+    /// while the chunk loop runs, so one snapshot gives the same answers without
+    /// walking every player for every ticking chunk.
+    #[must_use]
+    pub fn spawning_player_positions(&self) -> Vec<(f64, f64)> {
+        let mut positions = Vec::new();
         self.players.iter_players(|_, player| {
-            if player.is_spectator() {
-                return true;
-            }
-            let position = player.position();
-            let dx = center_x - position.x;
-            let dz = center_z - position.z;
-            if dx * dx + dz * dz < SPAWN_DISTANCE_SQR {
-                close_enough = true;
-                return false;
+            if !player.is_spectator() {
+                let position = player.position();
+                positions.push((position.x, position.z));
             }
             true
         });
-        close_enough
+        positions
+    }
+
+    /// Vanilla `ChunkMap.anyPlayerCloseEnoughForSpawning`: a non-spectator player is
+    /// within 128 blocks (horizontally) of the chunk center. `players` comes from
+    /// [`Self::spawning_player_positions`].
+    #[must_use]
+    pub fn any_player_close_enough_for_spawning(
+        players: &[(f64, f64)],
+        chunk_pos: ChunkPos,
+    ) -> bool {
+        let center_x = f64::from(chunk_pos.0.x * 16 + 8);
+        let center_z = f64::from(chunk_pos.0.y * 16 + 8);
+        players.iter().any(|&(x, z)| {
+            let dx = center_x - x;
+            let dz = center_z - z;
+            dx * dx + dz * dz < SPAWN_DISTANCE_SQR
+        })
     }
 
     /// Sets the level difficulty and broadcasts the new value to its players.

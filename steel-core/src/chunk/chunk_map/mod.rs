@@ -989,9 +989,10 @@ impl ChunkMap {
         let _span = tracing::trace_span!("tick_spawning_chunks").entered();
         let mut spawning_chunks = Vec::new();
         let mut spawning_holders = FxHashMap::default();
+        let players = world.spawning_player_positions();
         for tickable_chunk in &tickable_chunks.block {
             if tickable_chunk.holder.try_full_chunk().is_some()
-                && world.any_player_close_enough_for_spawning(tickable_chunk.pos)
+                && World::any_player_close_enough_for_spawning(&players, tickable_chunk.pos)
             {
                 spawning_chunks.push(tickable_chunk.pos);
                 spawning_holders.insert(tickable_chunk.pos, &tickable_chunk.holder);
