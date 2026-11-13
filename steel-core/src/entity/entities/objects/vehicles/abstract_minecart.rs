@@ -249,14 +249,22 @@ pub trait AbstractMinecart: Entity {
         );
 
         let creative_player = source.is_creative_player();
-        if creative_player || self.vehicle_damage() > BREAK_DAMAGE {
+        if (creative_player || self.vehicle_damage() <= BREAK_DAMAGE)
+            && !self.should_source_destroy(source)
+        {
             if creative_player {
                 self.set_removed(RemovalReason::Discarded);
-            } else {
-                self.destroy(world, source);
             }
+        } else {
+            self.destroy(world, source);
         }
         true
+    }
+
+    /// Vanilla `VehicleEntity.shouldSourceDestroy`: whether this damage breaks
+    /// the vehicle at once, whatever its damage.
+    fn should_source_destroy(&self, _source: &DamageSource) -> bool {
+        false
     }
 
     /// Vanilla `VehicleEntity.destroy`: kills the cart and drops its item.

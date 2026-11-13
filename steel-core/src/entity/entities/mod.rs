@@ -37,4 +37,6 @@ pub use objects::projectiles::{
     ThrownEggEntity, ThrownTridentEntity,
 };
 pub use objects::technical::{InteractionEntity, MarkerEntity};
-pub use objects::vehicles::{ChestMinecartEntity, FurnaceMinecartEntity, MinecartEntity};
+pub use objects::vehicles::{
+    ChestMinecartEntity, FurnaceMinecartEntity, MinecartEntity, TntMinecartEntity,
+};
