@@ -63,7 +63,7 @@ pub(crate) fn can_passenger_dismount_to(
     ) && world.world_border_snapshot().is_within_bounds(*aabb)
 }
 
-/// The passenger's bounds for `pose`, centred on the origin with its feet at `y = 0`.
+/// The passenger's bounds for `pose`, centered on the origin with its feet at `y = 0`.
 #[must_use]
 pub(crate) fn local_bounds_for_pose(passenger: &dyn Entity, pose: EntityPose) -> WorldAabb {
     let dimensions = passenger.dimensions_for_pose(pose);
@@ -76,7 +76,7 @@ pub(crate) fn local_bounds_for_pose(passenger: &dyn Entity, pose: EntityPose) ->
     )
 }
 
-/// The centre of the top of `pos`'s block space, raised by `floor_height`.
+/// The center of the top of `pos`'s block space, raised by `floor_height`.
 #[must_use]
 pub(crate) fn up_from_bottom_center_of(pos: BlockPos, floor_height: f64) -> DVec3 {
     DVec3::new(
