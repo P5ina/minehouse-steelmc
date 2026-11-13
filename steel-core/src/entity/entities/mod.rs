@@ -38,5 +38,6 @@ pub use objects::projectiles::{
 };
 pub use objects::technical::{InteractionEntity, MarkerEntity};
 pub use objects::vehicles::{
-    ChestMinecartEntity, FurnaceMinecartEntity, MinecartEntity, TntMinecartEntity,
+    ChestMinecartEntity, FurnaceMinecartEntity, HopperMinecartEntity, MinecartEntity,
+    TntMinecartEntity, redstone_signal_from_container,
 };

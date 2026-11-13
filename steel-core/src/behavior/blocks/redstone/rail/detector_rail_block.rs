@@ -5,12 +5,13 @@ use steel_registry::blocks::BlockRef;
 use steel_registry::blocks::block_state_ext::BlockStateExt as _;
 use steel_registry::blocks::properties::{BlockStateProperties, BoolProperty};
 use steel_utils::types::UpdateFlags;
-use steel_utils::{BlockPos, BlockStateId, Direction, Downcast as _, WorldAabb};
+use steel_utils::{BlockPos, BlockStateId, Direction, WorldAabb};
 
 use crate::behavior::blocks::redstone::{MAX_REDSTONE_SIGNAL, MIN_REDSTONE_SIGNAL};
 use crate::behavior::{BlockBehavior, BlockPlaceContext, RailBehavior};
-use crate::entity::entities::ChestMinecartEntity;
+use crate::entity::entities::redstone_signal_from_container;
 use crate::entity::{Entity, InsideBlockEffectCollector};
+use crate::inventory::lock::ContainerLockGuard;
 use crate::world::{LevelReader, ScheduledTickAccess, SignalQueryContext, World};
 
 use super::base_rail_block::BaseRailBlock;
@@ -234,12 +235,19 @@ impl BlockBehavior for DetectorRailBlock {
         // TODO: Command block minecarts report their success count first,
         // once that minecart exists.
         let containers = world.get_entities_in_aabb_matching(&Self::search_bounds(pos), |entity| {
-            entity.is_alive() && entity.downcast_ref::<ChestMinecartEntity>().is_some()
+            entity.as_abstract_minecart().is_some() && entity.container_entity().is_some()
         });
         containers
             .first()
-            .and_then(|entity| entity.downcast_ref::<ChestMinecartEntity>())
-            .map_or(MIN_REDSTONE_SIGNAL, ChestMinecartEntity::redstone_signal)
+            .and_then(|entity| entity.container_entity())
+            .map_or(MIN_REDSTONE_SIGNAL, |container| {
+                let guard = ContainerLockGuard::lock_all(&[&container]);
+                guard
+                    .get(container.container_id())
+                    .map_or(MIN_REDSTONE_SIGNAL, |container| {
+                        redstone_signal_from_container(container)
+                    })
+            })
     }
 
     fn as_rail(&self) -> Option<&dyn RailBehavior> {

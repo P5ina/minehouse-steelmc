@@ -9,6 +9,7 @@ use crate::entity::entities::mobs::villagers::Merchant;
 use crate::entity::entities::objects::vehicles::AbstractMinecart;
 use crate::entity::entities::{Guardian, LightningBoltEntity, Squid};
 use crate::entity::{leash::Leashable, pushing::EntityPush};
+use crate::inventory::lock::ContainerRef;
 use crate::world::game_event::DynamicListenerAction;
 use crate::world::game_event::vibrations::VibrationSystem;
 use crate::world::ticking_world::LevelRef;
@@ -539,6 +540,13 @@ pub trait Entity: EntityEventSource + ErasedType + Send + Sync + 'static {
     fn explosion_damage_origin(&self) -> DVec3 {
         let position = self.position();
         DVec3::new(position.x, self.get_eye_y(), position.z)
+    }
+
+    /// The inventory of an entity that is a vanilla `Container` (chest and
+    /// hopper minecarts, chest boats), while it is alive; hoppers, droppers
+    /// and detector rails reach it through vanilla `CONTAINER_ENTITY_SELECTOR`.
+    fn container_entity(&self) -> Option<ContainerRef> {
+        None
     }
 
     /// Returns whether this entity is wholly ignored by an explosion.

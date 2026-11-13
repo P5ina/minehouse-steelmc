@@ -23,6 +23,26 @@ pub fn hopper(
     )
 }
 
+/// Builds a hopper menu over 5 slots with a custom menu kind, such as a
+/// hopper minecart's.
+#[must_use]
+pub(crate) fn hopper_with_kind(
+    inventory: Shared<PlayerInventory>,
+    container_id: u8,
+    container: impl Into<ContainerRef>,
+    kind: impl MenuKind + 'static,
+) -> Menu {
+    let container = container.into();
+    let mut builder = MenuBuilder::new(&vanilla_menu_types::HOPPER, container_id);
+    let section = builder.section(&container, 5);
+    let player = builder.player_inventory(&inventory);
+
+    builder.route(section, player.all(), FillDirection::Backward);
+    builder.route(player.all(), section, FillDirection::Forward);
+
+    builder.build(kind)
+}
+
 /// Builds a dispenser or dropper menu over its 9 slots.
 #[must_use]
 pub fn dispenser(

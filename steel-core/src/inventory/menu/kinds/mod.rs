@@ -27,4 +27,5 @@ pub use grindstone_menu::{GrindstoneKind, grindstone};
 pub use inventory_menu::{INVENTORY_MENU_CONTAINER_ID, InventoryKind, inventory_menu};
 pub use merchant_menu::{MerchantKind, merchant_menu};
 pub use shulker_box_menu::{ShulkerBoxKind, shulker_box};
+pub(crate) use simple_container_menu::hopper_with_kind;
 pub use simple_container_menu::{dispenser, hopper};

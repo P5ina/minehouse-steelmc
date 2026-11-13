@@ -1,16 +1,19 @@
 use super::*;
+use crate::block_entity::init_block_entities;
 use crate::entity::entities::{
-    ChestMinecartEntity, FurnaceMinecartEntity, ItemEntity, MinecartEntity, TntMinecartEntity,
+    ChestMinecartEntity, FurnaceMinecartEntity, HopperMinecartEntity, ItemEntity, MinecartEntity,
+    TntMinecartEntity,
 };
 use crate::entity::next_entity_id;
 use crate::entity::snapshot_old_pos_and_rot_for_tick;
-use crate::inventory::lock::ContainerLockGuard;
+use crate::inventory::lock::{ContainerLockGuard, ContainerRef};
 use crate::test_support::TestWorld;
 use crate::test_support::dropped_items;
 
 fn rail_world(name: &'static str) -> TestWorld {
     init_vanilla_registry();
     init_behaviors();
+    init_block_entities();
     let world_fixture = fresh_test_world(name);
     let world = &world_fixture.world;
     insert_ready_full_chunk(world, ChunkPos::new(0, 0));
@@ -372,4 +375,157 @@ fn fire_lights_a_tnt_minecart_instead_of_breaking_it() {
     assert!(!cart.is_removed());
     assert!(cart.is_primed());
     assert!(cart.fuse() < 40, "fire lights a short random fuse");
+}
+
+fn spawn_hopper_minecart(world: &Arc<World>, position: DVec3) -> Arc<HopperMinecartEntity> {
+    let cart = Arc::new(HopperMinecartEntity::new(
+        &vanilla_entities::HOPPER_MINECART,
+        next_entity_id(),
+        position,
+        Arc::downgrade(world),
+    ));
+    world
+        .try_add_entity(Arc::clone(&cart) as SharedEntity)
+        .expect("test hopper minecart should attach to the loaded chunk");
+    cart
+}
+
+fn drop_item_at(world: &Arc<World>, position: DVec3, item: ItemStack) -> Arc<ItemEntity> {
+    let entity = Arc::new(ItemEntity::with_item(
+        &vanilla_entities::ITEM,
+        next_entity_id(),
+        position,
+        item,
+        Arc::downgrade(world),
+    ));
+    world
+        .try_add_entity(Arc::clone(&entity) as SharedEntity)
+        .expect("test item should attach to the loaded chunk");
+    entity
+}
+
+fn container_items(container: &ContainerRef) -> Vec<ItemStack> {
+    let guard = ContainerLockGuard::lock_all(&[container]);
+    let container = guard
+        .get(container.container_id())
+        .expect("locked container");
+    (0..container.get_container_size())
+        .map(|slot| container.get_item(slot).clone())
+        .filter(|item| !item.is_empty())
+        .collect()
+}
+
+#[test]
+fn hopper_minecart_picks_up_items_it_rolls_over() {
+    let world_fixture = rail_world("hopper_minecart_picks_up");
+    let world = &world_fixture.world;
+    let cart = spawn_hopper_minecart(world, DVec3::new(8.5, 65.0, 4.5));
+    let item = drop_item_at(
+        world,
+        DVec3::new(8.5, 65.1, 4.5),
+        ItemStack::with_count(&vanilla_items::IRON_INGOT, 3),
+    );
+
+    snapshot_old_pos_and_rot_for_tick(cart.as_ref());
+    Arc::clone(&cart).tick();
+
+    assert!(item.is_removed(), "the hopper should take the whole stack");
+    let items = container_items(&cart.container_ref());
+    assert_eq!(items.len(), 1);
+    assert!(items[0].is(&vanilla_items::IRON_INGOT));
+    assert_eq!(items[0].count(), 3);
+}
+
+#[test]
+fn powered_activator_rail_switches_a_hopper_minecart_off() {
+    let world_fixture = rail_world("hopper_minecart_activator");
+    let world = &world_fixture.world;
+    assert!(world.set_block(
+        BlockPos::new(7, 65, 4),
+        vanilla_blocks::REDSTONE_BLOCK.default_state(),
+        UpdateFlags::UPDATE_ALL,
+    ));
+    assert!(world.set_block(
+        BlockPos::new(8, 65, 4),
+        vanilla_blocks::ACTIVATOR_RAIL.default_state(),
+        UpdateFlags::UPDATE_ALL,
+    ));
+    assert!(
+        world
+            .get_block_state(BlockPos::new(8, 65, 4))
+            .get_value(&BlockStateProperties::POWERED),
+        "the redstone block should power the activator rail"
+    );
+    let cart = spawn_hopper_minecart(world, DVec3::new(8.5, 65.0, 4.5));
+    let item = drop_item_at(
+        world,
+        DVec3::new(8.5, 65.1, 4.5),
+        ItemStack::new(&vanilla_items::IRON_INGOT),
+    );
+
+    snapshot_old_pos_and_rot_for_tick(cart.as_ref());
+    Arc::clone(&cart).tick();
+
+    assert!(!cart.is_enabled());
+    assert!(!item.is_removed(), "a disabled hopper leaves items alone");
+    assert_eq!(container_items(&cart.container_ref()), Vec::new());
+}
+
+#[test]
+fn hopper_block_under_the_track_empties_a_chest_minecart() {
+    let world_fixture = rail_world("hopper_drains_chest_minecart");
+    let world = &world_fixture.world;
+    let hopper_pos = BlockPos::new(8, 64, 8);
+    assert!(world.set_block(
+        hopper_pos,
+        vanilla_blocks::HOPPER.default_state(),
+        UpdateFlags::UPDATE_ALL,
+    ));
+    let cart = spawn_chest_minecart(world, DVec3::new(8.5, 65.0625, 8.5));
+    {
+        let chest = cart.container_ref();
+        let mut guard = ContainerLockGuard::lock_all(&[&chest]);
+        guard
+            .get_mut(chest.container_id())
+            .expect("locked chest")
+            .set_item(0, ItemStack::with_count(&vanilla_items::DIAMOND, 2));
+    }
+
+    let hopper = world
+        .get_block_entity(hopper_pos)
+        .expect("the hopper block entity");
+    hopper.tick(world);
+
+    let hopper_items = container_items(&hopper.container_ref().expect("hopper slots"));
+    assert_eq!(hopper_items.len(), 1);
+    assert!(hopper_items[0].is(&vanilla_items::DIAMOND));
+    assert_eq!(hopper_items[0].count(), 1, "a hopper moves one item a tick");
+    assert_eq!(container_items(&cart.container_ref())[0].count(), 1);
+}
+
+#[test]
+fn detector_rail_reads_a_hopper_minecart_like_a_chest_minecart() {
+    let world_fixture = rail_world("detector_reads_hopper_minecart");
+    let world = &world_fixture.world;
+    let cart = spawn_hopper_minecart(world, DVec3::new(8.5, 65.0625, 8.5));
+    {
+        let hopper = cart.container_ref();
+        let mut guard = ContainerLockGuard::lock_all(&[&hopper]);
+        guard
+            .get_mut(hopper.container_id())
+            .expect("locked hopper")
+            .set_item(0, ItemStack::with_count(&vanilla_items::DIAMOND, 64));
+    }
+    let detector_pos = BlockPos::new(8, 65, 8);
+    let detector = vanilla_blocks::DETECTOR_RAIL
+        .default_state()
+        .set_value(&BlockStateProperties::POWERED, true);
+    assert!(world.set_block(detector_pos, detector, UpdateFlags::UPDATE_NONE));
+
+    let signal = BLOCK_BEHAVIORS
+        .get_behavior(detector.get_block())
+        .get_analog_output_signal(detector, world, detector_pos, Direction::North);
+
+    // One full slot of five: floor(0.2 * 14) + 1.
+    assert_eq!(signal, 3);
 }
