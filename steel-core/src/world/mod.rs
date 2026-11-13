@@ -158,7 +158,7 @@ pub(crate) use block_region::{BlockRegionBounds, BlockRegionRead, MAX_BLOCK_REGI
 use block_updates::CollectingNeighborUpdater;
 pub use border::WorldBorderError;
 pub(crate) use border::{MAX_CENTER_COORDINATE, MAX_SIZE};
-use border::{WorldBorder, WorldBorderSnapshot};
+use border::{SharedWorldBorder, WorldBorder, WorldBorderSnapshot};
 pub use difficulty::DifficultyInstance;
 pub(crate) use domain_entity_directory::DomainEntityDirectory;
 use entity_management::NavigatingMobTracker;
@@ -280,8 +280,12 @@ pub struct World {
     pub(crate) game_time: Arc<GameTime>,
     /// Per-world saved data storage.
     pub(crate) saved_data: SavedDataManager,
+    /// The world seed, fixed for the world's lifetime.
+    seed: i64,
+    /// Vanilla `BiomeManager.obfuscateSeed` of `seed`, used for biome zoom lookups.
+    biome_zoom_seed: i64,
     /// Runtime world border state.
-    world_border: SyncMutex<WorldBorder>,
+    world_border: SharedWorldBorder,
     /// Vanilla sleeping player counts for night-skip checks.
     sleep_status: SyncMutex<sleep_status::SleepStatus>,
     /// Server view distance (maximum chunk radius).
@@ -426,6 +430,7 @@ impl World {
         let raids = raid::Raids::load(&saved_data, &key).await;
         let wandering_trader_data =
             custom_spawner::WanderingTraderData::load(&saved_data, &key).await;
+        let seed = level_data.data().seed;
         let world_border = WorldBorder::new(level_data.data().world_border)
             .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
         // let generator = Arc::new(ChunkGeneratorType::Flat(FlatChunkGenerator::new(
@@ -472,7 +477,9 @@ impl World {
                 game_time: level_data.game_time_handle(),
                 level_data: SyncRwLock::new(level_data),
                 saved_data,
-                world_border: SyncMutex::new(world_border),
+                seed,
+                biome_zoom_seed: obfuscate_biome_seed(seed),
+                world_border: SharedWorldBorder::new(world_border),
                 sleep_status: SyncMutex::new(sleep_status::SleepStatus::default()),
                 view_distance,
                 simulation_distance,

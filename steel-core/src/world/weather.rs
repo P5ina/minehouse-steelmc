@@ -14,7 +14,7 @@ use super::{
     ADVANCE_WEATHER, BiomeRef, BlockPos, CGameEvent, ChunkGenerator, ChunkPos, GameEventType,
     HeightmapType, LazyLock, LegacyRandom, LightLayer, PerlinSimplexNoise, REGISTRY, RandomSource,
     RegistryEntry, RegistryExt, TemperatureModifier, World, environment, fuzzed_biome_at_block,
-    obfuscate_biome_seed, vanilla_dimension_types,
+    vanilla_dimension_types,
 };
 
 use glam::DVec3;
@@ -363,7 +363,7 @@ impl World {
     }
 
     pub(crate) fn biome_at(&self, pos: BlockPos) -> Option<BiomeRef> {
-        let biome_zoom_seed = obfuscate_biome_seed(self.seed());
+        let biome_zoom_seed = self.biome_zoom_seed;
         let mut missing_chunk = false;
         let biome_id = fuzzed_biome_at_block(biome_zoom_seed, pos, |quart| {
             self.noise_biome_id(quart.x, quart.y, quart.z)

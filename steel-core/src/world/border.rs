@@ -1,6 +1,12 @@
 //! World border state and collision helpers.
 
+use std::ops::{Deref, DerefMut};
+use std::sync::Arc;
 use std::{error::Error, fmt};
+
+use arc_swap::ArcSwap;
+use parking_lot::MutexGuard;
+use steel_utils::locks::SyncMutex;
 
 use glam::DVec3;
 use steel_utils::{BlockPos, WorldAabb};
@@ -297,6 +303,66 @@ impl BorderExtent {
     }
 }
 
+/// A world's border with a published snapshot for readers.
+///
+/// Collision, spawning and movement read the border many times per tick from every
+/// ticking island. Taking the mutex for each read made the islands queue on it, so
+/// reads go through an `ArcSwap` snapshot that each write republishes.
+pub(crate) struct SharedWorldBorder {
+    border: SyncMutex<WorldBorder>,
+    snapshot: ArcSwap<WorldBorderSnapshot>,
+}
+
+impl SharedWorldBorder {
+    pub(crate) fn new(border: WorldBorder) -> Self {
+        let snapshot = ArcSwap::from_pointee(border.snapshot());
+        Self {
+            border: SyncMutex::new(border),
+            snapshot,
+        }
+    }
+
+    /// The border as of the last write.
+    pub(crate) fn snapshot(&self) -> WorldBorderSnapshot {
+        **self.snapshot.load()
+    }
+
+    /// Locks the border; dropping the guard publishes its snapshot.
+    pub(crate) fn lock(&self) -> WorldBorderWriteGuard<'_> {
+        WorldBorderWriteGuard {
+            border: self.border.lock(),
+            snapshot: &self.snapshot,
+        }
+    }
+}
+
+/// Write access to a [`SharedWorldBorder`] that republishes its snapshot when dropped.
+pub(crate) struct WorldBorderWriteGuard<'a> {
+    border: MutexGuard<'a, WorldBorder>,
+    snapshot: &'a ArcSwap<WorldBorderSnapshot>,
+}
+
+impl Deref for WorldBorderWriteGuard<'_> {
+    type Target = WorldBorder;
+
+    fn deref(&self) -> &WorldBorder {
+        &self.border
+    }
+}
+
+impl DerefMut for WorldBorderWriteGuard<'_> {
+    fn deref_mut(&mut self) -> &mut WorldBorder {
+        &mut self.border
+    }
+}
+
+impl Drop for WorldBorderWriteGuard<'_> {
+    fn drop(&mut self) {
+        // Published while the lock is still held, so snapshots appear in write order.
+        self.snapshot.store(Arc::new(self.border.snapshot()));
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct WorldBorder {
     center_x: f64,
@@ -465,7 +531,7 @@ use super::{
 impl World {
     #[must_use]
     pub(crate) fn world_border_snapshot(&self) -> WorldBorderSnapshot {
-        self.world_border.lock().snapshot()
+        self.world_border.snapshot()
     }
 
     /// Returns whether a block position is inside this world's vanilla world border.

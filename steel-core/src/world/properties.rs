@@ -315,8 +315,8 @@ impl World {
 
     /// Gets the world seed.
     #[must_use]
-    pub fn seed(&self) -> i64 {
-        self.level_data.read().data().seed
+    pub const fn seed(&self) -> i64 {
+        self.seed
     }
 
     /// Gets the obfuscated seed for sending to clients.
