@@ -1447,7 +1447,7 @@ impl WorldEntityManager {
     /// Commits a move that keeps the entity's section and spatial cells under the read lock.
     ///
     /// Most steps a mob takes stay in both, and then only the indexed box and the overhang
-    /// change, which have their own synchronisation. Returns `None` when the indexes have
+    /// change, which have their own synchronization. Returns `None` when the indexes have
     /// to change, and the caller then takes the write lock.
     fn try_commit_move_in_place(
         &self,
