@@ -22,7 +22,7 @@ impl ChunkMap {
         task
     }
 
-    /// Builds a generation task without queueing it.
+    /// Builds a generation task without adding it to the queue.
     ///
     /// Building pins every holder in the task's dependency square, so it is the
     /// expensive part of scheduling and may run on tick-pool workers.
