@@ -19,6 +19,7 @@ use super::{
     Arc, BlockRandomPositionGenerator, ChunkMap, ChunkPos, GameplayChunkLookupCacheScope,
     TickingChunkSnapshot,
 };
+use crate::entity::Entity as _;
 use crate::world::World;
 use crate::world::region::{Islands, RegionScope};
 use crate::world::tick_pool::install_on_tick_pool;
@@ -32,6 +33,25 @@ struct IslandWork {
     random_chunks: Vec<usize>,
     /// Chunks a player is close enough to spawn mobs in.
     spawning_chunks: Vec<ChunkPos>,
+}
+
+/// `(entity id, position)` of every player, before any island moves them.
+fn player_snapshot(world: &World) -> Vec<(i32, glam::DVec3)> {
+    let mut players = Vec::new();
+    world.players.iter_players(|_, player| {
+        players.push((player.id(), player.position()));
+        true
+    });
+    players
+}
+
+/// Chunks whose entities tick: the random-tick set of the snapshot.
+fn entity_ticking_chunks(tickable_chunks: &TickingChunkSnapshot) -> FxHashSet<ChunkPos> {
+    tickable_chunks
+        .random_chunk_indices
+        .iter()
+        .map(|&index| tickable_chunks.block[index].pos)
+        .collect()
 }
 
 impl ChunkMap {
@@ -75,11 +95,7 @@ impl ChunkMap {
                 }
             }
         }
-        let entity_ticking: FxHashSet<ChunkPos> = tickable_chunks
-            .random_chunk_indices
-            .iter()
-            .map(|&index| tickable_chunks.block[index].pos)
-            .collect();
+        let entity_ticking = entity_ticking_chunks(tickable_chunks);
         let spawning = runs_normally
             .then(|| world.prepare_spawning(self.scheduling.natural_spawn_chunk_count()))
             .flatten();
@@ -88,6 +104,8 @@ impl ChunkMap {
         let (island_entities, remainder) = entity_manager
             .partition_ticking_entities(islands.len(), |chunk| islands.island_of(chunk));
 
+        let players = player_snapshot(world);
+
         let island_count = islands.len();
         let results: Vec<FxHashSet<ChunkPos>> = install_on_tick_pool(|| {
             work.into_par_iter()
@@ -95,7 +113,7 @@ impl ChunkMap {
                 .enumerate()
                 .with_max_len(1)
                 .map(|(island, (work, entities))| {
-                    let queues = islands.queues(island);
+                    let queues = islands.queues(island, &players);
                     let _region = RegionScope::enter(world, Arc::clone(&queues));
                     let lookup_cache = GameplayChunkLookupCacheScope::enter(self);
 
