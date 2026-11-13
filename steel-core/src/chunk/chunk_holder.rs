@@ -557,11 +557,21 @@ impl ChunkHolder {
     /// Returns `true` if a new task was actually scheduled, `false` if the chunk
     /// already has a suitable task or is already at the target status.
     #[inline]
+    #[cfg(test)]
     pub(crate) fn schedule_chunk_generation_task_b(
         &self,
         status: ChunkStatus,
         chunk_map: &Arc<ChunkMap>,
     ) -> bool {
+        if !self.needs_generation_task(status) {
+            return false;
+        }
+        self.reschedule_chunk_task_b(status, chunk_map);
+        true
+    }
+
+    /// Returns whether a generation task towards `status` must replace this holder's task.
+    pub(crate) fn needs_generation_task(&self, status: ChunkStatus) -> bool {
         if self.is_status_disallowed(status) {
             return false;
         }
@@ -576,24 +586,28 @@ impl ChunkHolder {
             return false;
         }
 
-        let task = self.generation_task.lock();
-
-        if task
+        self.generation_task
+            .lock()
             .as_ref()
-            .is_some_and(|task| status <= task.target_status)
-        {
-            return false;
-        }
-
-        drop(task);
-        self.reschedule_chunk_task_b(status, chunk_map);
-        true
+            .is_none_or(|task| status > task.target_status)
     }
 
     /// Reschedules the chunk task to the given status.
-    #[inline]
+    #[cfg(test)]
     pub(crate) fn reschedule_chunk_task_b(&self, status: ChunkStatus, chunk_map: &Arc<ChunkMap>) {
         let new_task = chunk_map.schedule_generation_task_b(status, self.pos);
+        self.install_generation_task(status, new_task);
+        chunk_map.notify_generation_refill();
+    }
+
+    /// Replaces this holder's generation task with `new_task`, cancelling the old one.
+    ///
+    /// The caller has already queued `new_task` and notifies the generation refill.
+    pub(crate) fn install_generation_task(
+        &self,
+        status: ChunkStatus,
+        new_task: Arc<ChunkGenerationTask>,
+    ) {
         let mut old_task_guard = self.generation_task.lock();
 
         let old_task = old_task_guard.replace(new_task);
@@ -604,8 +618,6 @@ impl ChunkHolder {
         if let Some(old_task) = old_task {
             old_task.cancel();
         }
-
-        chunk_map.notify_generation_refill();
     }
 
     /// Gets access to the chunk if it has reached the given status.

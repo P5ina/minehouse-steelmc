@@ -11,20 +11,33 @@ impl ChunkMap {
     /// Schedules a new generation task.
     #[inline]
     #[instrument(level = "trace", skip(self), fields(chunk = ?pos, target = ?target_status))]
+    #[cfg(test)]
     pub(crate) fn schedule_generation_task_b(
         self: &Arc<Self>,
         target_status: ChunkStatus,
         pos: ChunkPos,
     ) -> Arc<ChunkGenerationTask> {
-        let task = Arc::new(ChunkGenerationTask::new(
+        let task = self.new_generation_task(target_status, pos);
+        self.pending_generation_tasks.lock().push(Arc::clone(&task));
+        task
+    }
+
+    /// Builds a generation task without queueing it.
+    ///
+    /// Building pins every holder in the task's dependency square, so it is the
+    /// expensive part of scheduling and may run on tick-pool workers.
+    pub(super) fn new_generation_task(
+        self: &Arc<Self>,
+        target_status: ChunkStatus,
+        pos: ChunkPos,
+    ) -> Arc<ChunkGenerationTask> {
+        Arc::new(ChunkGenerationTask::new(
             pos,
             target_status,
             Arc::clone(self),
             Arc::clone(&self.generation_pool),
             self.cancel_token.child_token(),
-        ));
-        self.pending_generation_tasks.lock().push(Arc::clone(&task));
-        task
+        ))
     }
 
     /// Runs queued generation tasks.
