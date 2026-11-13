@@ -1266,6 +1266,7 @@ mod death_loot;
 mod equipment_and_freezing;
 mod fall_and_fluids;
 mod living_state;
+mod minecart;
 mod movement;
 mod portals;
 mod riding_and_leashes;

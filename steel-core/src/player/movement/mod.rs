@@ -11,6 +11,7 @@ pub use input::PlayerInput;
 pub(super) use state::MovementState;
 pub(super) use teleport::TeleportState;
 
+use crate::entity::get_input_vector;
 use glam::{DVec3, Vec3Swizzles};
 use std::sync::Arc;
 use steel_math::wrap_degrees;
@@ -935,6 +936,17 @@ impl Player {
     #[must_use]
     pub fn last_client_input(&self) -> PlayerInput {
         self.movement.lock().last_client_input()
+    }
+
+    /// Vanilla `ServerPlayer.getLastClientMoveIntent`: the held movement keys as a
+    /// world-space unit direction.
+    #[must_use]
+    pub fn last_client_move_intent(&self) -> DVec3 {
+        get_input_vector(
+            self.last_client_input().movement_input(),
+            1.0,
+            self.rotation().0,
+        )
     }
 
     /// Handles a player input packet (movement keys, sneaking, sprinting).
