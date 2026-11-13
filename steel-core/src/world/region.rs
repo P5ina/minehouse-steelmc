@@ -20,6 +20,7 @@
 use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::env;
+use std::mem;
 use std::ptr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
@@ -53,7 +54,12 @@ pub(crate) struct RegionQueues {
     /// snapshot keeps far-player checks (despawn distance, nearest-player
     /// targeting) deterministic and keeps islands off each other's entity locks.
     foreign_players: FxHashMap<i32, DVec3>,
+    /// Work that reaches outside this island, run after the island phase.
+    deferred: SyncMutex<Vec<DeferredWork>>,
 }
+
+/// Work an island hands to the sequential phase after the islands.
+pub(crate) type DeferredWork = Box<dyn FnOnce() + Send>;
 
 impl RegionQueues {
     /// Queues for an island that may write only inside `owned_cells`.
@@ -75,6 +81,11 @@ impl RegionQueues {
         self.owned_cells
             .as_ref()
             .is_none_or(|owned| owned.contains(&IslandCell::of(chunk)))
+    }
+
+    /// Takes the work this island deferred, in the order it was queued.
+    pub(crate) fn take_deferred(&self) -> Vec<DeferredWork> {
+        mem::take(&mut *self.deferred.lock())
     }
 
     pub(super) fn is_handling_tick(&self) -> bool {
@@ -159,6 +170,28 @@ impl World {
             return *position;
         }
         player.position()
+    }
+
+    /// Runs `work` now, or after the island phase when any of `chunks` lies outside the
+    /// current island.
+    ///
+    /// Islands tick in parallel, so work that reaches another island (a pearl teleporting
+    /// an owner who is ticking elsewhere) would race with that island's tick. Deferred
+    /// work runs on the world tick thread once every island is done, island by island in
+    /// queue order, so the result does not depend on thread timing. Outside an island
+    /// (sequential ticking, packets, commands) `work` always runs now.
+    pub(crate) fn run_in_owning_region(
+        &self,
+        chunks: &[ChunkPos],
+        work: impl FnOnce() + Send + 'static,
+    ) {
+        if let Some(region) = self.active_region()
+            && chunks.iter().any(|&chunk| !region.owns(chunk))
+        {
+            region.deferred.lock().push(Box::new(work));
+            return;
+        }
+        work();
     }
 
     /// Panics in debug builds when the current island writes outside its chunks.
@@ -345,6 +378,61 @@ mod tests {
             }
         }
         chunks
+    }
+
+    #[test]
+    fn work_outside_the_island_waits_for_the_island_phase() {
+        use std::sync::atomic::AtomicUsize;
+
+        use crate::test_support::fresh_test_world;
+
+        steel_registry::init_vanilla_registry();
+        let fixture = fresh_test_world("region_deferral");
+        let world = &fixture.world;
+        let islands = Islands::build(square(0, 0, 2).into_iter().chain(square(40, 0, 2)));
+        let island = islands
+            .island_of(ChunkPos::new(0, 0))
+            .unwrap_or_else(|| panic!("chunk 0,0 should be on an island"));
+        let queues = islands.queues(island, &[]);
+        let ran = Arc::new(AtomicUsize::new(0));
+
+        {
+            let _region = RegionScope::enter(world, Arc::clone(&queues));
+            let inside = Arc::clone(&ran);
+            world.run_in_owning_region(&[ChunkPos::new(1, 1)], move || {
+                inside.fetch_add(1, Ordering::Relaxed);
+            });
+            assert_eq!(
+                ran.load(Ordering::Relaxed),
+                1,
+                "work inside the island runs now"
+            );
+
+            let outside = Arc::clone(&ran);
+            world.run_in_owning_region(&[ChunkPos::new(1, 1), ChunkPos::new(40, 0)], move || {
+                outside.fetch_add(10, Ordering::Relaxed);
+            });
+            assert_eq!(
+                ran.load(Ordering::Relaxed),
+                1,
+                "work reaching another island waits"
+            );
+        }
+
+        for work in queues.take_deferred() {
+            work();
+        }
+        assert_eq!(ran.load(Ordering::Relaxed), 11);
+
+        let later = Arc::clone(&ran);
+        world.run_in_owning_region(&[ChunkPos::new(40, 0)], move || {
+            later.fetch_add(100, Ordering::Relaxed);
+        });
+        assert_eq!(
+            ran.load(Ordering::Relaxed),
+            111,
+            "outside islands work always runs now"
+        );
     }
 
     #[test]
