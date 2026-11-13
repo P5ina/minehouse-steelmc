@@ -191,8 +191,13 @@ pub trait AbstractMinecart: Entity {
         pos
     }
 
-    /// Top speed per tick (vanilla `OldMinecartBehavior.getMaxSpeed`).
+    /// Top speed per tick (vanilla `AbstractMinecart.getMaxSpeed`).
     fn max_speed(&self) -> f64 {
+        self.default_max_speed()
+    }
+
+    /// Vanilla `OldMinecartBehavior.getMaxSpeed`, for overrides that call `super`.
+    fn default_max_speed(&self) -> f64 {
         if self.is_in_water() { 0.2 } else { 0.4 }
     }
 
@@ -203,6 +208,11 @@ pub trait AbstractMinecart: Entity {
 
     /// Vanilla `applyNaturalSlowdown`.
     fn apply_natural_slowdown(&self, movement: DVec3) -> DVec3 {
+        self.default_apply_natural_slowdown(movement)
+    }
+
+    /// The base `applyNaturalSlowdown` body, for overrides that call `super`.
+    fn default_apply_natural_slowdown(&self, movement: DVec3) -> DVec3 {
         let factor = self.slowdown_factor();
         let slowed = DVec3::new(movement.x * factor, 0.0, movement.z * factor);
         if self.is_in_water() {

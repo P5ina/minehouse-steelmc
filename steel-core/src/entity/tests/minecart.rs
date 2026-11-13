@@ -1,5 +1,7 @@
 use super::*;
-use crate::entity::entities::{ChestMinecartEntity, ItemEntity, MinecartEntity};
+use crate::entity::entities::{
+    ChestMinecartEntity, FurnaceMinecartEntity, ItemEntity, MinecartEntity,
+};
 use crate::entity::next_entity_id;
 use crate::entity::snapshot_old_pos_and_rot_for_tick;
 use crate::inventory::lock::ContainerLockGuard;
@@ -221,4 +223,69 @@ fn chest_minecart_rolls_along_a_rail_like_a_minecart() {
         position.z > 5.5,
         "cart should have rolled south: {position}"
     );
+}
+
+fn spawn_furnace_minecart(world: &Arc<World>, position: DVec3) -> Arc<FurnaceMinecartEntity> {
+    let cart = Arc::new(FurnaceMinecartEntity::new(
+        &vanilla_entities::FURNACE_MINECART,
+        next_entity_id(),
+        position,
+        Arc::downgrade(world),
+    ));
+    world
+        .try_add_entity(Arc::clone(&cart) as SharedEntity)
+        .expect("test furnace minecart should attach to the loaded chunk");
+    cart
+}
+
+#[test]
+fn fuelled_furnace_minecart_pushes_itself_along_the_rail() {
+    let world_fixture = rail_world("furnace_minecart_pushes");
+    let world = &world_fixture.world;
+    let cart = spawn_furnace_minecart(world, DVec3::new(8.5, 65.0, 4.5));
+    // A player standing north of the cart pushes it south.
+    assert!(cart.add_fuel(
+        DVec3::new(8.5, 65.0, 2.5),
+        &ItemStack::new(&vanilla_items::COAL)
+    ));
+    assert_eq!(cart.fuel(), 3600);
+    assert!(cart.push().z > 0.0);
+
+    for _ in 0..20 {
+        snapshot_old_pos_and_rot_for_tick(cart.as_ref());
+        Arc::clone(&cart).tick();
+    }
+
+    let position = cart.position();
+    assert!(cart.is_on_rails());
+    assert!(
+        (position.x - 8.5).abs() < 1.0e-6,
+        "cart left the rail axis: {position}"
+    );
+    assert!(
+        position.z > 5.5,
+        "cart should have driven south: {position}"
+    );
+    assert_eq!(cart.fuel(), 3580, "one fuel burns per tick");
+    assert!(cart.has_fuel());
+}
+
+#[test]
+fn furnace_minecart_only_burns_furnace_fuel() {
+    let world_fixture = rail_world("furnace_minecart_fuel");
+    let world = &world_fixture.world;
+    let cart = spawn_furnace_minecart(world, DVec3::new(8.5, 65.0, 4.5));
+    let player_pos = DVec3::new(8.5, 65.0, 2.5);
+
+    assert!(!cart.add_fuel(player_pos, &ItemStack::new(&vanilla_items::STICK)));
+    assert_eq!(cart.fuel(), 0);
+    assert!(!cart.has_fuel());
+
+    for _ in 0..8 {
+        assert!(cart.add_fuel(player_pos, &ItemStack::new(&vanilla_items::CHARCOAL)));
+    }
+    assert_eq!(cart.fuel(), 28_800);
+    // Vanilla refuses fuel once another 3600 would pass the 32000 cap.
+    assert!(!cart.add_fuel(player_pos, &ItemStack::new(&vanilla_items::COAL)));
+    assert_eq!(cart.fuel(), 28_800);
 }
