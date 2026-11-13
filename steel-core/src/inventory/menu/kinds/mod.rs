@@ -17,6 +17,7 @@ mod simple_container_menu;
 pub use anvil_menu::{AnvilKind, anvil};
 pub use basic_menu::BasicKind;
 pub use beacon_menu::{BeaconKind, beacon};
+pub(crate) use chest_menu::chest_with_kind;
 pub use chest_menu::{ChestKind, chest, chest_halves};
 pub use crafting_menu::{CraftingKind, crafting};
 pub use enchantment_menu::{EnchantmentKind, enchantment};
