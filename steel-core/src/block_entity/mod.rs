@@ -25,6 +25,7 @@
 
 pub(crate) mod block_state_nbt;
 mod components;
+pub mod container_loot;
 pub mod container_openers;
 pub mod entities;
 mod registry;
@@ -217,7 +218,7 @@ impl BlockEntityBase {
     }
 
     #[must_use]
-    const fn pos(&self) -> BlockPos {
+    pub(crate) const fn pos(&self) -> BlockPos {
         self.pos
     }
 

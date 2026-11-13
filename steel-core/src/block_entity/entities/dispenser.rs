@@ -14,6 +14,7 @@ use steel_registry::vanilla_block_entity_types;
 use steel_utils::{BlockPos, BlockStateId, DowncastType, DowncastTypeKey, locks::SyncMutex};
 use text_components::TextComponent;
 
+use crate::block_entity::container_loot::{ContainerLoot, LOOT_TABLE_SEED_TAG, LOOT_TABLE_TAG};
 use crate::block_entity::{BlockEntity, BlockEntityBase};
 use crate::inventory::container::Container;
 use crate::inventory::lock::{ContainerRef, SharedContainer};
@@ -24,13 +25,14 @@ pub const DISPENSER_SLOTS: usize = 9;
 
 /// Dispenser or dropper block entity.
 ///
-/// Steel does not yet unpack loot tables or apply container locks. `LootTable`,
-/// `LootTableSeed`, `lock` and `CustomName` are kept as loaded so generated
-/// dispensers (jungle temples) survive a save until those systems exist.
+/// Steel does not yet apply container locks: `lock` and `CustomName` are kept
+/// as loaded.
 pub struct DispenserBlockEntity {
     base: Arc<BlockEntityBase>,
     container: Arc<SyncMutex<DispenserContainer>>,
     container_ref: ContainerRef,
+    /// Vanilla `RandomizableContainerBlockEntity` loot table.
+    loot: Arc<ContainerLoot>,
     /// Saved fields other than `Items`, written back unchanged.
     preserved: SyncMutex<NbtCompound>,
 }
@@ -75,10 +77,16 @@ impl DispenserBlockEntity {
         }));
         let shared_container: SharedContainer =
             Arc::<SyncMutex<DispenserContainer>>::clone(&container);
+        let loot = Arc::new(ContainerLoot::new());
         Self {
-            container_ref: ContainerRef::owned_by_block_entity(shared_container, Arc::clone(&base)),
+            container_ref: ContainerRef::owned_by_randomizable_block_entity(
+                shared_container,
+                Arc::clone(&base),
+                Arc::clone(&loot),
+            ),
             base,
             container,
+            loot,
             preserved: SyncMutex::new(NbtCompound::new()),
         }
     }
@@ -88,6 +96,7 @@ impl DispenserBlockEntity {
     /// Vanilla `DispenserBlockEntity.getRandomSlot`: reservoir sampling with one
     /// `nextInt` call per non-empty slot.
     pub fn get_random_slot(&self, mut next_int: impl FnMut(i32) -> i32) -> Option<usize> {
+        self.container_ref.unpack_loot_table(None);
         let container = self.container.lock();
         let mut chosen = None;
         let mut seen = 1;
@@ -168,6 +177,8 @@ impl BlockEntity for DispenserBlockEntity {
     }
 
     fn pre_remove_side_effects(&self, pos: BlockPos, _state: BlockStateId) {
+        // Vanilla `Containers.dropContents` reads every slot, rolling the loot.
+        self.container_ref.unpack_loot_table(None);
         let items = {
             let mut container = self.container.lock();
             mem::replace(
@@ -188,7 +199,8 @@ impl BlockEntity for DispenserBlockEntity {
         let mut container = self.container.lock();
         container.items.fill(ItemStack::empty());
 
-        if let Some(items_list) = nbt_view.list("Items")
+        if !self.loot.load(nbt_view)
+            && let Some(items_list) = nbt_view.list("Items")
             && let Some(compounds) = items_list.compounds()
         {
             for compound in compounds {
@@ -207,12 +219,17 @@ impl BlockEntity for DispenserBlockEntity {
         let mut preserved = nbt_view.to_owned();
         while preserved.remove("Items").is_some() {}
         while preserved.remove("components").is_some() {}
+        while preserved.remove(LOOT_TABLE_TAG).is_some() {}
+        while preserved.remove(LOOT_TABLE_SEED_TAG).is_some() {}
         *self.preserved.lock() = preserved;
     }
 
     fn save_additional(&self, nbt: &mut NbtCompound) {
         for (key, value) in self.preserved.lock().iter() {
             nbt.insert(key.to_string(), value.clone());
+        }
+        if self.loot.save(nbt) {
+            return;
         }
         let container = self.container.lock();
         let mut items: Vec<NbtCompound> = Vec::new();
@@ -274,7 +291,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn save_keeps_loot_table_fields_it_does_not_handle() {
+    fn save_keeps_an_unrolled_loot_table() {
         init_vanilla_registry();
         let dispenser = DispenserBlockEntity::new(
             Weak::new(),

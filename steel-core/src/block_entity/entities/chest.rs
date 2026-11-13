@@ -24,6 +24,7 @@ use steel_utils::{BlockPos, BlockStateId, DowncastType, DowncastTypeKey, locks::
 use text_components::TextComponent;
 
 use crate::behavior::blocks::{chest_lid_sounds, connected_direction};
+use crate::block_entity::container_loot::{ContainerLoot, LOOT_TABLE_SEED_TAG, LOOT_TABLE_TAG};
 use crate::block_entity::container_openers::{
     ContainerOpenersCounter, ContainerOpenersHooks, container_sound_pitch,
 };
@@ -39,13 +40,14 @@ pub const CHEST_SLOTS: usize = 27;
 
 /// Chest block entity.
 ///
-/// Steel does not yet unpack loot tables or apply container locks.
-/// `LootTable`, `LootTableSeed`, `lock` and `CustomName` are kept as loaded so
-/// generated loot chests survive a save until those systems exist.
+/// Steel does not yet apply container locks: `lock` and `CustomName` are kept
+/// as loaded.
 pub struct ChestBlockEntity {
     base: Arc<BlockEntityBase>,
     container: Arc<SyncMutex<ChestContainer>>,
     container_ref: ContainerRef,
+    /// Vanilla `RandomizableContainerBlockEntity` loot table.
+    loot: Arc<ContainerLoot>,
     /// Saved fields other than `Items`, written back unchanged.
     preserved: SyncMutex<NbtCompound>,
     /// Viewers, for the lid, the sounds and a trapped chest's power.
@@ -96,10 +98,16 @@ impl ChestBlockEntity {
             items: vec![ItemStack::empty(); CHEST_SLOTS],
         }));
         let shared_container: SharedContainer = Arc::<SyncMutex<ChestContainer>>::clone(&container);
+        let loot = Arc::new(ContainerLoot::new());
         Self {
-            container_ref: ContainerRef::owned_by_block_entity(shared_container, Arc::clone(&base)),
+            container_ref: ContainerRef::owned_by_randomizable_block_entity(
+                shared_container,
+                Arc::clone(&base),
+                Arc::clone(&loot),
+            ),
             base,
             container,
+            loot,
             preserved: SyncMutex::new(NbtCompound::new()),
             openers: ContainerOpenersCounter::new(),
         }
@@ -209,6 +217,8 @@ impl BlockEntity for ChestBlockEntity {
     }
 
     fn pre_remove_side_effects(&self, pos: BlockPos, _state: BlockStateId) {
+        // Vanilla `Containers.dropContents` reads every slot, rolling the loot.
+        self.container_ref.unpack_loot_table(None);
         let items = {
             let mut container = self.container.lock();
             mem::replace(&mut container.items, vec![ItemStack::empty(); CHEST_SLOTS])
@@ -226,7 +236,8 @@ impl BlockEntity for ChestBlockEntity {
         let mut container = self.container.lock();
         container.items.fill(ItemStack::empty());
 
-        if let Some(items_list) = nbt_view.list("Items")
+        if !self.loot.load(nbt_view)
+            && let Some(items_list) = nbt_view.list("Items")
             && let Some(compounds) = items_list.compounds()
         {
             for compound in compounds {
@@ -245,12 +256,17 @@ impl BlockEntity for ChestBlockEntity {
         let mut preserved = nbt_view.to_owned();
         while preserved.remove("Items").is_some() {}
         while preserved.remove("components").is_some() {}
+        while preserved.remove(LOOT_TABLE_TAG).is_some() {}
+        while preserved.remove(LOOT_TABLE_SEED_TAG).is_some() {}
         *self.preserved.lock() = preserved;
     }
 
     fn save_additional(&self, nbt: &mut NbtCompound) {
         for (key, value) in self.preserved.lock().iter() {
             nbt.insert(key.to_string(), value.clone());
+        }
+        if self.loot.save(nbt) {
+            return;
         }
         let container = self.container.lock();
         let mut items: Vec<NbtCompound> = Vec::new();
@@ -361,7 +377,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn save_keeps_loot_table_fields_it_does_not_handle() {
+    fn save_keeps_an_unrolled_loot_table() {
         init_vanilla_registry();
         let chest = ChestBlockEntity::new(
             Weak::new(),

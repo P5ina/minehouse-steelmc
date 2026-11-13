@@ -1,5 +1,6 @@
 //! Hopper block behavior.
 
+use std::slice;
 use std::sync::{Arc, Weak};
 
 use steel_macros::block_behavior;
@@ -107,6 +108,9 @@ impl BlockBehavior for HopperBlock {
         let Some(container) = block_entity.container_ref() else {
             return false;
         };
+        if !ContainerRef::prepare_open(slice::from_ref(&container), player) {
+            return false;
+        }
         let title = hopper_entity
             .custom_name()
             .unwrap_or_else(|| TextComponent::translated(translations::CONTAINER_HOPPER.msg()));

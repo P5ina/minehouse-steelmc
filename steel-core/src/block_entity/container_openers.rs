@@ -221,7 +221,7 @@ mod tests {
     use steel_registry::blocks::block_state_ext::BlockStateExt as _;
     use steel_registry::blocks::properties::{BlockStateProperties, ChestType, Direction};
     use steel_registry::{init_vanilla_registry, vanilla_blocks};
-    use steel_utils::types::UpdateFlags;
+    use steel_utils::types::{GameType, UpdateFlags};
     use steel_utils::{BlockPos, BlockStateId, ChunkPos, Downcast as _, translations};
     use text_components::TextComponent;
 
@@ -230,14 +230,16 @@ mod tests {
     use crate::block_entity::entities::{
         BarrelBlockEntity, ChestBlockEntity, EnderChestBlockEntity, ShulkerBoxBlockEntity,
     };
-    use crate::block_entity::init_block_entities;
+    use crate::block_entity::{BlockEntity, init_block_entities};
     use crate::entity::{Entity as _, init_entities};
+    use crate::inventory::lock::ContainerLockGuard;
     use crate::inventory::menu::kinds::{chest, chest_halves, ender_chest, shulker_box};
     use crate::player::{Player, ResetReason};
     use crate::test_support::{
-        TestPlayerBuilder, TestWorld, fresh_test_world, insert_ready_full_chunk,
+        TestPlayerBuilder, TestWorld, dropped_items, fresh_test_world, insert_ready_full_chunk,
     };
     use crate::world::{SignalQueryContext, World};
+    use simdnbt::owned::NbtCompound;
 
     const POS: BlockPos = BlockPos::new(8, 64, 8);
 
@@ -612,5 +614,106 @@ mod tests {
         open_chest(world, &player, POS);
         assert_eq!(chest_viewers(world, POS), 1);
         assert_eq!(chest_viewers(world, POS.west()), 1);
+    }
+
+    fn place_loot_chest(world: &Arc<World>) -> Arc<dyn BlockEntity> {
+        place(
+            world,
+            POS,
+            chest_state(&vanilla_blocks::CHEST, ChestType::Single),
+        );
+        let chest = world.get_block_entity(POS).expect("a chest block entity");
+        let mut nbt = NbtCompound::new();
+        nbt.insert("LootTable", "minecraft:chests/simple_dungeon");
+        nbt.insert("LootTableSeed", 77_i64);
+        chest
+            .load_with_owned_components(&nbt)
+            .expect("loot NBT loads");
+        chest
+    }
+
+    fn chest_is_empty(chest: &Arc<dyn BlockEntity>) -> bool {
+        let container = chest.container_ref().expect("a chest container");
+        let guard = ContainerLockGuard::lock_all(&[&container]);
+        guard
+            .get(container.container_id())
+            .expect("locked chest")
+            .is_empty()
+    }
+
+    #[test]
+    fn opening_a_loot_chest_rolls_its_loot() {
+        let fixture = arena("loot_chest_opens");
+        let world = &fixture.world;
+        let chest = place_loot_chest(world);
+        let container = chest.container_ref().expect("a chest container");
+        assert!(container.has_pending_loot());
+        let player = viewer(world, "Looter", 51);
+
+        let state = world.get_block_state(POS);
+        assert!(
+            BLOCK_BEHAVIORS
+                .get_behavior(state.get_block())
+                .open_menu_provider(state, world, POS, &player)
+        );
+
+        assert!(!container.has_pending_loot());
+        assert!(
+            !chest_is_empty(&chest),
+            "the dungeon table always rolls items"
+        );
+        let mut saved = NbtCompound::new();
+        chest.save_additional(&mut saved);
+        assert!(saved.get("LootTable").is_none());
+        assert!(saved.get("Items").is_some());
+    }
+
+    #[test]
+    fn spectators_cannot_open_an_unrolled_loot_chest() {
+        let fixture = arena("loot_chest_spectator");
+        let world = &fixture.world;
+        let chest = place_loot_chest(world);
+        let player = viewer(world, "Ghost", 52);
+        player.restore_game_modes(GameType::Spectator, None);
+
+        let state = world.get_block_state(POS);
+        assert!(
+            !BLOCK_BEHAVIORS
+                .get_behavior(state.get_block())
+                .open_menu_provider(state, world, POS, &player)
+        );
+        assert!(chest.container_ref().expect("a chest").has_pending_loot());
+    }
+
+    #[test]
+    fn breaking_a_loot_chest_drops_its_loot() {
+        let fixture = arena("loot_chest_breaks");
+        let world = &fixture.world;
+        let chest = place_loot_chest(world);
+        let mut saved = NbtCompound::new();
+        chest.save_additional(&mut saved);
+        assert!(
+            saved.get("LootTable").is_some(),
+            "unrolled loot saves as its table"
+        );
+        assert!(saved.get("Items").is_none());
+
+        assert!(world.set_block(
+            POS,
+            vanilla_blocks::AIR.default_state(),
+            UpdateFlags::UPDATE_ALL
+        ));
+
+        let drops = dropped_items(world, DVec3::new(8.5, 64.5, 8.5));
+        assert!(!drops.is_empty(), "the rolled loot drops with the chest");
+    }
+
+    #[test]
+    fn any_item_access_rolls_a_loot_chest() {
+        let fixture = arena("loot_chest_reached");
+        let world = &fixture.world;
+        let chest = place_loot_chest(world);
+        assert!(!chest_is_empty(&chest), "any item access rolls the loot");
+        assert!(!chest.container_ref().expect("a chest").has_pending_loot());
     }
 }

@@ -14,8 +14,9 @@ use std::sync::Arc;
 use steel_utils::locks::Shared;
 use steel_utils::{Downcast as _, DowncastType, locks::SyncMutex};
 
+use crate::entity::Entity as _;
 use crate::{
-    block_entity::{BlockEntityBase, SharedBlockEntity},
+    block_entity::{BlockEntityBase, SharedBlockEntity, container_loot::ContainerLoot},
     inventory::container::Container,
     player::{Player, player_inventory::PlayerInventory},
 };
@@ -27,6 +28,8 @@ type ContainerChangedCallback = Arc<dyn Fn() + Send + Sync>;
 struct ContainerOwner {
     block_entity: Arc<BlockEntityBase>,
     after_changed: Option<ContainerChangedCallback>,
+    /// Vanilla `RandomizableContainer`: loot rolled on first access.
+    loot: Option<Arc<ContainerLoot>>,
 }
 
 /// Thread-safe reference to an erased container.
@@ -128,6 +131,7 @@ impl ContainerRef {
             owner: Some(ContainerOwner {
                 block_entity: owner,
                 after_changed: None,
+                loot: None,
             }),
         }
     }
@@ -150,8 +154,75 @@ impl ContainerRef {
             owner: Some(ContainerOwner {
                 block_entity: owner,
                 after_changed: Some(after_changed),
+                loot: None,
             }),
         }
+    }
+
+    /// Creates a block-entity container that rolls `loot` into itself the
+    /// first time it is reached, vanilla `RandomizableContainerBlockEntity`.
+    #[must_use]
+    pub(crate) fn owned_by_randomizable_block_entity(
+        container: SharedContainer,
+        owner: Arc<BlockEntityBase>,
+        loot: Arc<ContainerLoot>,
+    ) -> Self {
+        Self {
+            id: ContainerId::from_arc(&container),
+            source: container,
+            owner: Some(ContainerOwner {
+                block_entity: owner,
+                after_changed: None,
+                loot: Some(loot),
+            }),
+        }
+    }
+
+    /// Vanilla `RandomizableContainer.unpackLootTable`: rolls a pending loot
+    /// table into this container, with `player`'s luck when one opened it.
+    ///
+    /// Must not be called while this container is locked.
+    pub fn unpack_loot_table(&self, player: Option<&Player>) {
+        let Some(owner) = &self.owner else {
+            return;
+        };
+        let Some(loot) = &owner.loot else {
+            return;
+        };
+        if !loot.is_pending() {
+            return;
+        }
+        let unpacked = {
+            let mut container = self.source.lock();
+            loot.unpack(&mut *container, owner.block_entity.pos(), player)
+        };
+        if unpacked {
+            owner.block_entity.set_changed();
+        }
+    }
+
+    /// Whether this container still has a loot table to roll.
+    #[must_use]
+    pub fn has_pending_loot(&self) -> bool {
+        self.owner
+            .as_ref()
+            .and_then(|owner| owner.loot.as_ref())
+            .is_some_and(|loot| loot.is_pending())
+    }
+
+    /// Vanilla `RandomizableContainerBlockEntity.canOpen`/`createMenu`:
+    /// spectators cannot open a container whose loot is still unrolled, anyone
+    /// else rolls it with their luck before the menu opens.
+    ///
+    /// Returns whether the menu may open.
+    pub fn prepare_open(containers: &[Self], player: &Player) -> bool {
+        if player.is_spectator() && containers.iter().any(Self::has_pending_loot) {
+            return false;
+        }
+        for container in containers {
+            container.unpack_loot_table(Some(player));
+        }
+        true
     }
 
     /// Returns a unique identifier for this container based on its Arc pointer address.
@@ -191,6 +262,9 @@ impl ContainerRef {
 
     /// Locks this container and returns a guard.
     fn lock(&self) -> LockedContainer {
+        // Vanilla `RandomizableContainerBlockEntity` rolls its loot on every
+        // item access (`getItem`, `setItem`, `removeItem`, `isEmpty`).
+        self.unpack_loot_table(None);
         LockedContainer(SyncMutex::lock_arc(&self.source))
     }
 }

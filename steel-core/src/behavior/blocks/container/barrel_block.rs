@@ -2,6 +2,7 @@
 //!
 //! Opens a 27-slot container menu when right-clicked.
 
+use std::slice;
 use std::sync::{Arc, Weak};
 
 use steel_macros::block_behavior;
@@ -64,6 +65,9 @@ impl BlockBehavior for BarrelBlock {
         let Some(container_ref) = ContainerRef::from_block_entity(block_entity) else {
             return false;
         };
+        if !ContainerRef::prepare_open(slice::from_ref(&container_ref), player) {
+            return false;
+        }
 
         // Barrels open a 3-row chest menu.
         let inventory = Arc::clone(&player.inventory);
