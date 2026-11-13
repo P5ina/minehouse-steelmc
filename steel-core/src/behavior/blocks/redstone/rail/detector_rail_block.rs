@@ -5,10 +5,11 @@ use steel_registry::blocks::BlockRef;
 use steel_registry::blocks::block_state_ext::BlockStateExt as _;
 use steel_registry::blocks::properties::{BlockStateProperties, BoolProperty};
 use steel_utils::types::UpdateFlags;
-use steel_utils::{BlockPos, BlockStateId, Direction, WorldAabb};
+use steel_utils::{BlockPos, BlockStateId, Direction, Downcast as _, WorldAabb};
 
 use crate::behavior::blocks::redstone::{MAX_REDSTONE_SIGNAL, MIN_REDSTONE_SIGNAL};
 use crate::behavior::{BlockBehavior, BlockPlaceContext, RailBehavior};
+use crate::entity::entities::ChestMinecartEntity;
 use crate::entity::{Entity, InsideBlockEffectCollector};
 use crate::world::{LevelReader, ScheduledTickAccess, SignalQueryContext, World};
 
@@ -219,17 +220,26 @@ impl BlockBehavior for DetectorRailBlock {
         true
     }
 
+    /// Vanilla `DetectorRailBlock.getAnalogOutputSignal`.
     fn get_analog_output_signal(
         &self,
-        _state: BlockStateId,
-        _world: &World,
-        _pos: BlockPos,
+        state: BlockStateId,
+        world: &World,
+        pos: BlockPos,
         _direction: Direction,
     ) -> i32 {
-        // Command success counts and container fullness require concrete
-        // minecart capabilities. No currently implemented Steel minecart
-        // exposes either, for which vanilla's observable result is zero.
-        MIN_REDSTONE_SIGNAL
+        if !state.get_value(&BlockStateProperties::POWERED) {
+            return MIN_REDSTONE_SIGNAL;
+        }
+        // TODO: Command block minecarts report their success count first,
+        // once that minecart exists.
+        let containers = world.get_entities_in_aabb_matching(&Self::search_bounds(pos), |entity| {
+            entity.is_alive() && entity.downcast_ref::<ChestMinecartEntity>().is_some()
+        });
+        containers
+            .first()
+            .and_then(|entity| entity.downcast_ref::<ChestMinecartEntity>())
+            .map_or(MIN_REDSTONE_SIGNAL, ChestMinecartEntity::redstone_signal)
     }
 
     fn as_rail(&self) -> Option<&dyn RailBehavior> {

@@ -243,14 +243,19 @@ pub trait AbstractMinecart: Entity {
             if creative_player {
                 self.set_removed(RemovalReason::Discarded);
             } else {
-                self.destroy(world);
+                self.destroy(world, source);
             }
         }
         true
     }
 
     /// Vanilla `VehicleEntity.destroy`: kills the cart and drops its item.
-    fn destroy(&self, world: &World) {
+    fn destroy(&self, world: &World, _source: &DamageSource) {
+        self.default_destroy(world);
+    }
+
+    /// The base `destroy` body, for overrides that call `super.destroy`.
+    fn default_destroy(&self, world: &World) {
         self.kill(world);
         if !world.get_game_rule(&ENTITY_DROPS) {
             return;

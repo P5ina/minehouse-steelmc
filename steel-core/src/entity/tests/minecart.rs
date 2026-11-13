@@ -1,7 +1,8 @@
 use super::*;
-use crate::entity::entities::{ItemEntity, MinecartEntity};
+use crate::entity::entities::{ChestMinecartEntity, ItemEntity, MinecartEntity};
 use crate::entity::next_entity_id;
 use crate::entity::snapshot_old_pos_and_rot_for_tick;
+use crate::inventory::lock::ContainerLockGuard;
 use crate::test_support::TestWorld;
 use crate::test_support::dropped_items;
 
@@ -120,4 +121,104 @@ fn passenger_getting_off_a_minecart_lands_on_the_first_free_offset() {
     // A cart facing south moves "west" (clockwise), so vanilla tries the block to its left,
     // the north one, first; rails have no collision, so the pig can stand on the track.
     assert_eq!(pig.position(), DVec3::new(8.5, 65.0, 7.5));
+}
+
+fn spawn_chest_minecart(world: &Arc<World>, position: DVec3) -> Arc<ChestMinecartEntity> {
+    let cart = Arc::new(ChestMinecartEntity::new(
+        &vanilla_entities::CHEST_MINECART,
+        next_entity_id(),
+        position,
+        Arc::downgrade(world),
+    ));
+    world
+        .try_add_entity(Arc::clone(&cart) as SharedEntity)
+        .expect("test chest minecart should attach to the loaded chunk");
+    cart
+}
+
+#[test]
+fn breaking_a_chest_minecart_spills_the_chest() {
+    let world_fixture = rail_world("chest_minecart_breaks");
+    let world = &world_fixture.world;
+    let position = DVec3::new(8.5, 65.0, 4.5);
+    let cart = spawn_chest_minecart(world, position);
+    let container = cart.container_ref();
+    {
+        let mut guard = ContainerLockGuard::lock_all(&[&container]);
+        guard.set_item(
+            container.container_id(),
+            0,
+            ItemStack::with_count(&vanilla_items::DIAMOND, 3),
+        );
+    }
+
+    let source = DamageSource::environment(&vanilla_damage_types::GENERIC);
+    assert!(cart.hurt(world, &source, 5.0));
+
+    assert!(cart.is_removed());
+    let drops: Vec<ItemStack> = dropped_items(world, position)
+        .iter()
+        .filter_map(|entity| {
+            entity
+                .downcast_ref::<ItemEntity>()
+                .map(ItemEntity::get_item)
+        })
+        .collect();
+    assert!(
+        drops
+            .iter()
+            .any(|item| item.is(&vanilla_items::CHEST_MINECART))
+    );
+    let diamonds: i32 = drops
+        .iter()
+        .filter(|item| item.is(&vanilla_items::DIAMOND))
+        .map(ItemStack::count)
+        .sum();
+    assert_eq!(diamonds, 3);
+}
+
+#[test]
+fn mineshaft_chest_minecart_rolls_its_loot_for_a_detector_rail() {
+    let world_fixture = rail_world("chest_minecart_loot");
+    let world = &world_fixture.world;
+    let cart = spawn_chest_minecart(world, DVec3::new(8.5, 65.0, 4.5));
+    cart.set_loot_table(Identifier::vanilla_static("chests/abandoned_mineshaft"), 99);
+    let mut saved = NbtCompound::new();
+    cart.save_additional(&mut saved);
+    assert!(saved.string("LootTable").is_some());
+    assert!(saved.get("Items").is_none());
+
+    assert!(
+        cart.redstone_signal() > 0,
+        "the mineshaft table always rolls items"
+    );
+
+    let mut saved = NbtCompound::new();
+    cart.save_additional(&mut saved);
+    assert!(saved.string("LootTable").is_none());
+    assert!(saved.get("Items").is_some());
+}
+
+#[test]
+fn chest_minecart_rolls_along_a_rail_like_a_minecart() {
+    let world_fixture = rail_world("chest_minecart_rolls");
+    let world = &world_fixture.world;
+    let cart = spawn_chest_minecart(world, DVec3::new(8.5, 65.0, 4.5));
+    cart.set_velocity(DVec3::new(0.0, 0.0, 0.3));
+
+    for _ in 0..5 {
+        snapshot_old_pos_and_rot_for_tick(cart.as_ref());
+        Arc::clone(&cart).tick();
+    }
+
+    let position = cart.position();
+    assert!(cart.is_on_rails());
+    assert!(
+        (position.x - 8.5).abs() < 1.0e-6,
+        "cart left the rail axis: {position}"
+    );
+    assert!(
+        position.z > 5.5,
+        "cart should have rolled south: {position}"
+    );
 }
