@@ -1,3 +1,4 @@
+use std::slice;
 use std::sync::{Arc, Weak};
 
 use steel_macros::block_behavior;
@@ -110,6 +111,9 @@ impl BlockBehavior for ShulkerBoxBlock {
         let Some(container_ref) = block_entity.container_ref() else {
             return false;
         };
+        if !ContainerRef::prepare_open(slice::from_ref(&container_ref), player) {
+            return false;
+        }
         let inventory = Arc::clone(&player.inventory);
         player.open_menu(
             TextComponent::translated(translations::CONTAINER_SHULKER_BOX.msg()),

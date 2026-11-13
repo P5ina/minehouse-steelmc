@@ -287,7 +287,7 @@ impl ChestBehavior {
             ),
         };
         let containers = combined.containers();
-        if containers.is_empty() {
+        if containers.is_empty() || !ContainerRef::prepare_open(&containers, player) {
             return false;
         }
 

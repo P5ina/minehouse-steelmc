@@ -21,6 +21,7 @@ use steel_registry::{sound_events, vanilla_block_entity_types};
 use steel_utils::types::UpdateFlags;
 use steel_utils::{BlockPos, BlockStateId, DowncastType, DowncastTypeKey, locks::SyncMutex};
 
+use crate::block_entity::container_loot::ContainerLoot;
 use crate::block_entity::container_openers::{
     ContainerOpenersCounter, ContainerOpenersHooks, container_sound_pitch,
 };
@@ -41,6 +42,8 @@ pub struct BarrelBlockEntity {
     base: Arc<BlockEntityBase>,
     container: Arc<SyncMutex<BarrelContainer>>,
     container_ref: ContainerRef,
+    /// Vanilla `RandomizableContainerBlockEntity` loot table.
+    loot: Arc<ContainerLoot>,
     /// Viewers, for the `open` state and the sounds.
     openers: ContainerOpenersCounter,
 }
@@ -75,8 +78,14 @@ impl BarrelBlockEntity {
         }));
         let shared_container: SharedContainer =
             Arc::<SyncMutex<BarrelContainer>>::clone(&container);
+        let loot = Arc::new(ContainerLoot::new());
         Self {
-            container_ref: ContainerRef::owned_by_block_entity(shared_container, Arc::clone(&base)),
+            container_ref: ContainerRef::owned_by_randomizable_block_entity(
+                shared_container,
+                Arc::clone(&base),
+                Arc::clone(&loot),
+            ),
+            loot,
             base,
             container,
             openers: ContainerOpenersCounter::new(),
@@ -150,6 +159,8 @@ impl BlockEntity for BarrelBlockEntity {
     }
 
     fn pre_remove_side_effects(&self, pos: BlockPos, _state: BlockStateId) {
+        // Vanilla `Containers.dropContents` reads every slot, rolling the loot.
+        self.container_ref.unpack_loot_table(None);
         let items = {
             let mut container = self.container.lock();
             mem::replace(&mut container.items, vec![ItemStack::empty(); BARREL_SLOTS])
@@ -169,7 +180,8 @@ impl BlockEntity for BarrelBlockEntity {
         container.items.fill(ItemStack::empty());
 
         // Load items from NBT using borrowed NBT for proper ItemStack parsing
-        if let Some(items_list) = nbt_view.list("Items")
+        if !self.loot.load(nbt_view)
+            && let Some(items_list) = nbt_view.list("Items")
             && let Some(compounds) = items_list.compounds()
         {
             for compound in compounds {
@@ -188,6 +200,9 @@ impl BlockEntity for BarrelBlockEntity {
     }
 
     fn save_additional(&self, nbt: &mut NbtCompound) {
+        if self.loot.save(nbt) {
+            return;
+        }
         // Save items to NBT (only non-empty slots)
         let container = self.container.lock();
         let mut items: Vec<NbtCompound> = Vec::new();

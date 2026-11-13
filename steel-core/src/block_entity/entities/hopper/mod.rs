@@ -22,6 +22,7 @@ use steel_utils::{
 use text_components::TextComponent;
 
 use crate::behavior::blocks::chest_container;
+use crate::block_entity::container_loot::{ContainerLoot, LOOT_TABLE_SEED_TAG, LOOT_TABLE_TAG};
 use crate::block_entity::{BlockEntity, BlockEntityBase};
 use crate::entity::entities::ItemEntity;
 use crate::entity::{Entity as _, RemovalReason};
@@ -42,12 +43,13 @@ const SUCK_AABB: WorldAabb = WorldAabb::new(0.0, 11.0 / 16.0, 0.0, 1.0, 2.0, 1.0
 
 /// Hopper block entity.
 ///
-/// `CustomName`, `lock` and loot-table fields are kept as loaded; Steel does not
-/// apply them yet.
+/// `CustomName` and `lock` are kept as loaded; Steel does not apply them yet.
 pub struct HopperBlockEntity {
     base: Arc<BlockEntityBase>,
     container: Arc<SyncMutex<HopperContainer>>,
     container_ref: ContainerRef,
+    /// Vanilla `RandomizableContainerBlockEntity` loot table.
+    loot: Arc<ContainerLoot>,
     preserved: SyncMutex<NbtCompound>,
 }
 
@@ -110,10 +112,16 @@ impl HopperBlockEntity {
         }));
         let shared_container: SharedContainer =
             Arc::<SyncMutex<HopperContainer>>::clone(&container);
+        let loot = Arc::new(ContainerLoot::new());
         Self {
-            container_ref: ContainerRef::owned_by_block_entity(shared_container, Arc::clone(&base)),
+            container_ref: ContainerRef::owned_by_randomizable_block_entity(
+                shared_container,
+                Arc::clone(&base),
+                Arc::clone(&loot),
+            ),
             base,
             container,
+            loot,
             preserved: SyncMutex::new(NbtCompound::new()),
         }
     }
@@ -158,13 +166,13 @@ impl HopperBlockEntity {
 
     fn try_move_items(&self, world: &Arc<World>, intake: &Intake<'_>) -> bool {
         let state = self.base.block_state();
-        let (on_cooldown, is_empty) = {
-            let container = self.container.lock();
-            (container.is_on_cooldown(), container.is_empty())
-        };
+        let on_cooldown = self.container.lock().is_on_cooldown();
         if on_cooldown || !state.get_value(&BlockStateProperties::ENABLED) {
             return false;
         }
+        // Vanilla `isEmpty` rolls a pending loot table first.
+        self.container_ref.unpack_loot_table(None);
+        let is_empty = self.container.lock().is_empty();
 
         let mut moved = false;
         if !is_empty {
@@ -312,6 +320,8 @@ impl BlockEntity for HopperBlockEntity {
     }
 
     fn pre_remove_side_effects(&self, pos: BlockPos, _state: BlockStateId) {
+        // Vanilla `Containers.dropContents` reads every slot, rolling the loot.
+        self.container_ref.unpack_loot_table(None);
         let items = {
             let mut container = self.container.lock();
             mem::replace(&mut container.items, vec![ItemStack::empty(); HOPPER_SLOTS])
@@ -328,7 +338,9 @@ impl BlockEntity for HopperBlockEntity {
         let nbt_view: NbtCompoundView<'_, '_> = nbt.into();
         let mut container = self.container.lock();
         container.items.fill(ItemStack::empty());
-        if let Some(compounds) = nbt_view.list("Items").and_then(|list| list.compounds()) {
+        if !self.loot.load(nbt_view)
+            && let Some(compounds) = nbt_view.list("Items").and_then(|list| list.compounds())
+        {
             for compound in compounds {
                 let Some(slot) = compound.byte("Slot") else {
                     continue;
@@ -344,7 +356,13 @@ impl BlockEntity for HopperBlockEntity {
         container.cooldown_time = nbt_view.int("TransferCooldown").unwrap_or(-1);
 
         let mut preserved = nbt_view.to_owned();
-        for key in ["Items", "TransferCooldown", "components"] {
+        for key in [
+            "Items",
+            "TransferCooldown",
+            "components",
+            LOOT_TABLE_TAG,
+            LOOT_TABLE_SEED_TAG,
+        ] {
             while preserved.remove(key).is_some() {}
         }
         *self.preserved.lock() = preserved;
@@ -355,20 +373,22 @@ impl BlockEntity for HopperBlockEntity {
             nbt.insert(key.to_string(), value.clone());
         }
         let container = self.container.lock();
-        let items: Vec<NbtCompound> = container
-            .items
-            .iter()
-            .enumerate()
-            .filter(|(_, item)| !item.is_empty())
-            .filter_map(|(slot, item)| match item.clone().to_nbt_tag() {
-                NbtTag::Compound(mut item_nbt) => {
-                    item_nbt.insert("Slot", slot as i8);
-                    Some(item_nbt)
-                }
-                _ => None,
-            })
-            .collect();
-        nbt.insert("Items", NbtList::Compound(items));
+        if !self.loot.save(nbt) {
+            let items: Vec<NbtCompound> = container
+                .items
+                .iter()
+                .enumerate()
+                .filter(|(_, item)| !item.is_empty())
+                .filter_map(|(slot, item)| match item.clone().to_nbt_tag() {
+                    NbtTag::Compound(mut item_nbt) => {
+                        item_nbt.insert("Slot", slot as i8);
+                        Some(item_nbt)
+                    }
+                    _ => None,
+                })
+                .collect();
+            nbt.insert("Items", NbtList::Compound(items));
+        }
         nbt.insert("TransferCooldown", container.cooldown_time);
     }
 
