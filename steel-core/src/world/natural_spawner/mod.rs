@@ -100,25 +100,48 @@ impl World {
         self: &Arc<Self>,
         spawning_chunks: &mut [ChunkPos],
         spawn_chunk_count: usize,
+        on_chunk: impl FnMut(ChunkPos),
+    ) {
+        let mut spawning = self.prepare_spawning(spawn_chunk_count);
+        self.run_spawning_chunks(spawning_chunks, spawning.as_mut(), on_chunk);
+    }
+
+    /// Builds this tick's spawn state and the categories allowed to spawn, or
+    /// `None` when the `doMobSpawning` rule is off.
+    pub(crate) fn prepare_spawning(
+        &self,
+        spawn_chunk_count: usize,
+    ) -> Option<(SpawnState, Vec<MobCategory>)> {
+        let state = self
+            .get_game_rule(&SPAWN_MOBS)
+            .then(|| SpawnState::create(self, spawn_chunk_count))?;
+        let spawn_persistent = self.game_time() % 400 == 0;
+        let categories =
+            filtered_spawning_categories(&state, self.is_spawning_monsters(), spawn_persistent);
+        Some((state, categories))
+    }
+
+    /// Ticks spawning chunks in shuffled order with a prepared spawn state.
+    ///
+    /// The global caps are decided once in [`Self::prepare_spawning`]; during the
+    /// pass the state only feeds per-player local caps and spawn charges, which
+    /// are local to the chunks around those players. A ticking island can
+    /// therefore run its own chunks with its own copy of the state.
+    pub(crate) fn run_spawning_chunks(
+        self: &Arc<Self>,
+        spawning_chunks: &mut [ChunkPos],
+        mut spawning: Option<&mut (SpawnState, Vec<MobCategory>)>,
         mut on_chunk: impl FnMut(ChunkPos),
     ) {
         let mut random = rand::rng();
-        let mut state = self
-            .get_game_rule(&SPAWN_MOBS)
-            .then(|| SpawnState::create(self, spawn_chunk_count));
-        let spawning_categories = state.as_ref().map_or_else(Vec::new, |state| {
-            let spawn_persistent = self.game_time() % 400 == 0;
-            filtered_spawning_categories(state, self.is_spawning_monsters(), spawn_persistent)
-        });
-
         spawning_chunks.shuffle(&mut random);
         for &chunk_pos in spawning_chunks.iter() {
             on_chunk(chunk_pos);
-            if let Some(state) = state.as_mut()
-                && !spawning_categories.is_empty()
+            if let Some((state, categories)) = spawning.as_deref_mut()
+                && !categories.is_empty()
                 && self.can_spawn_entities_in_chunk(chunk_pos)
             {
-                self.spawn_for_chunk(chunk_pos, state, &spawning_categories, &mut random);
+                self.spawn_for_chunk(chunk_pos, state, categories, &mut random);
             }
         }
     }

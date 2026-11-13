@@ -1925,8 +1925,39 @@ impl WorldEntityManager {
 
     /// Ticks live entities currently in the ticking visibility set.
     pub fn tick_entities(&self, _tick_count: i32, runs_normally: bool) -> FxHashSet<ChunkPos> {
+        self.tick_entity_list(self.ticking_entities_snapshot(), runs_normally)
+    }
+
+    /// Splits this tick's entity list by ticking island, keeping list order in each part.
+    ///
+    /// `island_of` maps an entity's current chunk to its island. Entities without a
+    /// chunk or outside every island are returned last, for the sequential remainder.
+    pub(crate) fn partition_ticking_entities(
+        &self,
+        island_count: usize,
+        island_of: impl Fn(ChunkPos) -> Option<usize>,
+    ) -> (Vec<Vec<SharedEntity>>, Vec<SharedEntity>) {
+        let mut islands = vec![Vec::new(); island_count];
+        let mut remainder = Vec::new();
+        for entity in self.ticking_entities_snapshot() {
+            let position = entity.position();
+            let chunk =
+                ChunkPos::from_block_pos(BlockPos::containing(position.x, position.y, position.z));
+            match island_of(chunk) {
+                Some(island) => islands[island].push(entity),
+                None => remainder.push(entity),
+            }
+        }
+        (islands, remainder)
+    }
+
+    /// Ticks `tick_candidates` in order with Vanilla's per-entity checks.
+    pub(crate) fn tick_entity_list(
+        &self,
+        tick_candidates: Vec<SharedEntity>,
+        runs_normally: bool,
+    ) -> FxHashSet<ChunkPos> {
         let mut dirty_chunks = FxHashSet::default();
-        let tick_candidates = self.ticking_entities_snapshot();
         for entity in tick_candidates {
             let Some(tick_context) = self.tick_context(entity.id()) else {
                 continue;

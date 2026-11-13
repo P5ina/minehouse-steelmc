@@ -23,7 +23,7 @@ const MAGIC_NUMBER: i32 = 17 * 17;
 const SPAWN_DISTANCE_SQR: f64 = 128.0 * 128.0;
 
 /// Vanilla `PotentialCalculator`: point charges of already spawned mobs.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub(crate) struct PotentialCalculator {
     charges: Vec<(BlockPos, f64)>,
 }
@@ -67,7 +67,7 @@ fn dist_sqr(a: BlockPos, b: BlockPos) -> f64 {
 
 /// Vanilla `LocalMobCapCalculator`: per-player mob counts for the chunks each
 /// player is close enough to spawn in.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub(crate) struct LocalMobCapCalculator {
     players_near_chunk: FxHashMap<ChunkPos, Vec<Uuid>>,
     player_mob_counts: FxHashMap<Uuid, FxHashMap<MobCategory, i32>>,
@@ -168,7 +168,7 @@ impl MobContribution {
 }
 
 /// Vanilla `NaturalSpawner.SpawnState`.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct SpawnState {
     spawnable_chunk_count: i32,
     pub(super) mob_category_counts: FxHashMap<MobCategory, i32>,

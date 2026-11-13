@@ -3,7 +3,9 @@ use crate::chunk::{Chunk, gameplay_chunk_lookup_cache::LocalFullChunkHolderCache
 
 mod neighbor_updater;
 
-pub(in crate::world) use neighbor_updater::{CollectingNeighborUpdater, ShapeUpdate};
+pub(in crate::world) use neighbor_updater::{
+    CollectingNeighborUpdater, NeighborUpdateState, ShapeUpdate,
+};
 
 static LARGE_BLOCK_REGION_WARNING_EMITTED: AtomicBool = AtomicBool::new(false);
 
@@ -201,6 +203,7 @@ impl World {
         }
 
         let chunk_pos = Self::chunk_pos_for_block(pos);
+        self.debug_assert_region_owns(chunk_pos);
         let Some(old_state) = self
             .chunk_map
             .with_full_chunk(chunk_pos, |chunk| {
@@ -251,6 +254,7 @@ impl World {
         }
 
         let chunk_pos = Self::chunk_pos_for_block(pos);
+        self.debug_assert_region_owns(chunk_pos);
         let Some(result) = self
             .chunk_map
             .with_full_chunk(chunk_pos, |chunk| {
