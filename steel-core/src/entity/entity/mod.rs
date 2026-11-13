@@ -6,6 +6,7 @@ use crate::entity::entities::mobs::hostile::cube_mob::AbstractCubeMob;
 use crate::entity::entities::mobs::passive::AbstractNautilus;
 use crate::entity::entities::mobs::passive::equine::{AbstractHorse, Llama, PlayerRideableJumping};
 use crate::entity::entities::mobs::villagers::Merchant;
+use crate::entity::entities::objects::vehicles::AbstractMinecart;
 use crate::entity::entities::{Guardian, LightningBoltEntity, Squid};
 use crate::entity::{leash::Leashable, pushing::EntityPush};
 use crate::world::game_event::DynamicListenerAction;
@@ -854,6 +855,11 @@ pub trait Entity: EntityEventSource + ErasedType + Send + Sync + 'static {
     ///
     /// Mirrors vanilla `Entity.getPassengerAttachmentPoint` for the base entity class.
     fn passenger_attachment_point(&self, passenger: &dyn Entity) -> DVec3 {
+        self.default_passenger_attachment_point(passenger)
+    }
+
+    /// The base entity's passenger attachment point, callable from overrides.
+    fn default_passenger_attachment_point(&self, passenger: &dyn Entity) -> DVec3 {
         let dimensions = self.base().dimensions();
         let passenger_index = self.passenger_index(passenger).unwrap_or_default();
         dimensions.attachments.get_clamped(
@@ -1733,6 +1739,11 @@ pub trait Entity: EntityEventSource + ErasedType + Send + Sync + 'static {
         try_as_dyn::<Self, dyn Animal>(self)
     }
 
+    /// Returns this entity as a minecart.
+    fn as_abstract_minecart(&self) -> Option<&dyn AbstractMinecart> {
+        try_as_dyn::<Self, dyn AbstractMinecart>(self)
+    }
+
     /// Returns this entity as a fish when it has vanilla `AbstractFish` behavior.
     fn as_abstract_fish(&self) -> Option<&dyn AbstractFish> {
         try_as_dyn::<Self, dyn AbstractFish>(self)
@@ -2327,6 +2338,11 @@ pub trait Entity: EntityEventSource + ErasedType + Send + Sync + 'static {
     /// Returns whether vanilla should play this entity's lava hurt sound.
     fn should_play_lava_hurt_sound(&self) -> bool {
         true
+    }
+
+    /// Vanilla `Entity.lavaIgnite`, for entities that check lava themselves.
+    fn lava_ignite(&self) {
+        self.apply_inside_block_effect(InsideBlockEffectType::LavaIgnite);
     }
 
     /// Applies vanilla lava-contact damage after lava ignition effects.

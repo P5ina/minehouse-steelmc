@@ -109,10 +109,6 @@ pub(crate) fn can_dismount_to_pose(
 }
 
 #[must_use]
-#[expect(
-    dead_code,
-    reason = "vanilla DismountHelper foundation; minecart dismounts use this next"
-)]
 pub(crate) fn find_ceiling_from(
     pos: BlockPos,
     blocks: i32,

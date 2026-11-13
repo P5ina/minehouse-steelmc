@@ -36,7 +36,7 @@ impl BaseRailBlock {
     }
 
     #[must_use]
-    pub(super) fn is_rail_state(state: BlockStateId) -> bool {
+    pub(crate) fn is_rail_state(state: BlockStateId) -> bool {
         let block = state.get_block();
         block.has_tag(&BlockTag::RAILS) && BLOCK_BEHAVIORS.get_behavior(block).as_rail().is_some()
     }
