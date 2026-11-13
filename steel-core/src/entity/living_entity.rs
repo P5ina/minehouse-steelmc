@@ -61,6 +61,64 @@ pub trait LivingEntity: Entity {
         self.living_base().set_y_body_rot(y_body_rot);
     }
 
+    /// Poses tried, in order, when this entity gets off a vehicle.
+    fn dismount_poses(&self) -> &'static [EntityPose] {
+        &[EntityPose::Standing]
+    }
+
+    /// The arm this entity holds its main-hand item in.
+    fn main_arm(&self) -> HumanoidArm {
+        if self.as_mob().is_some_and(Mob::is_left_handed) {
+            HumanoidArm::Left
+        } else {
+            HumanoidArm::Right
+        }
+    }
+
+    /// Moves this entity off `vehicle` after it stopped riding it.
+    fn dismount_vehicle(&self, vehicle: &dyn Entity) {
+        let Some(world) = self.level() else {
+            return;
+        };
+        let target = if self.is_removed() {
+            self.position()
+        } else if !vehicle.is_removed()
+            && !world
+                .get_block_state(vehicle.block_position())
+                .get_block()
+                .has_tag(&BlockTag::PORTALS)
+        {
+            vehicle.dismount_location_for_passenger(self.as_entity_event_source())
+        } else {
+            self.dismount_beside_removed_vehicle(&world, vehicle)
+        };
+
+        if let Err(error) = self.teleport_to(target) {
+            log::warn!(
+                "failed to dismount entity {} to {target:?}: {error}",
+                self.id()
+            );
+        }
+    }
+
+    /// Where vanilla puts a passenger whose vehicle was removed or sits in a portal.
+    fn dismount_beside_removed_vehicle(&self, world: &Arc<World>, vehicle: &dyn Entity) -> DVec3 {
+        let position = self.position();
+        let target = DVec3::new(position.x, position.y.max(vehicle.position().y), position.z);
+        let dimensions = self.base().dimensions();
+        let (width, height) = (f64::from(dimensions.width), f64::from(dimensions.height));
+        if width > 4.0 || height > 4.0 {
+            return target;
+        }
+
+        let half_height = height / 2.0;
+        let center = target + DVec3::new(0.0, half_height, 0.0);
+        let allowed_centers = [WorldAabb::of_size(center, width, height, width)];
+        WorldCollisionProvider::for_entity(world, self.as_entity_event_source())
+            .find_free_position(&allowed_centers, center, width, height, width)
+            .map_or(target, |free| free - DVec3::new(0.0, half_height, 0.0))
+    }
+
     /// Returns the entity's head yaw.
     fn y_head_rot(&self) -> f32 {
         self.living_base().y_head_rot()

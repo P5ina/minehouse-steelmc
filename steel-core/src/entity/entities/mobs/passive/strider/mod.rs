@@ -45,7 +45,8 @@ use crate::entity::{
     AgeableMob, AgeableMobBase, Animal, AnimalBase, DefaultEntityPush, Entity, EntityBase,
     EntityBaseLoad, EntityPose, EntitySpawnReason, EntitySyncedData, ItemBasedSteering,
     ItemSteerable, LivingEntity, LivingEntityBase, LivingEntitySyncedData, Mob, MobBase,
-    MoveResult, PathfinderMob, SharedEntity, SpawnGroupData, SpawnRule, sync_dirty_mob_effects,
+    MoveResult, PathfinderMob, SharedEntity, SpawnGroupData, SpawnRule, dismount_helper,
+    sync_dirty_mob_effects,
 };
 use crate::inventory::equipment::EquipmentSlot;
 use crate::player::Player;
@@ -107,6 +108,68 @@ unsafe impl DowncastType for StriderEntity {
 }
 
 impl StriderEntity {
+    /// Vanilla `Strider.getDismountLocationForPassenger` without the base-entity fallback:
+    /// the first floor that is not lava, ahead of the passenger and up to 45° to either side.
+    fn strider_dismount_location(&self, passenger: &dyn Entity) -> Option<DVec3> {
+        let world = self.level()?;
+        let width = f64::from(self.base().dimensions().width);
+        let passenger_width = f64::from(passenger.base().dimensions().width);
+        let passenger_yaw = passenger.rotation().0;
+        let position = self.position();
+        let bounds = self.bounding_box();
+        let (collider_top, collider_bottom) = (bounds.max_y(), bounds.min_y() - 0.5);
+
+        let mut targets: Vec<BlockPos> = Vec::new();
+        for yaw_offset in [0.0, -22.5, 22.5, -45.0, 45.0] {
+            let direction = dismount_helper::collision_horizontal_escape_vector(
+                width,
+                passenger_width,
+                passenger_yaw + yaw_offset,
+            );
+            let mut target = BlockPos::containing(
+                position.x + direction.x,
+                collider_top,
+                position.z + direction.z,
+            );
+            let mut y = collider_top;
+            while y > collider_bottom {
+                if !targets.contains(&target) {
+                    targets.push(target);
+                }
+                target = target.below();
+                y -= 1.0;
+            }
+        }
+
+        for target in targets {
+            if world
+                .get_block_state(target)
+                .get_fluid_state()
+                .fluid_id
+                .has_tag(&FluidTag::LAVA)
+            {
+                continue;
+            }
+            let floor_height = dismount_helper::block_floor_height_at(&world, target);
+            if !dismount_helper::is_block_floor_valid(floor_height) {
+                continue;
+            }
+            let location = dismount_helper::up_from_bottom_center_of(target, floor_height);
+            for &pose in dismount_helper::dismount_poses(passenger) {
+                let pose_box = dismount_helper::local_bounds_for_pose(passenger, pose);
+                if dismount_helper::can_passenger_dismount_to(
+                    &world,
+                    passenger,
+                    &pose_box.translate(location),
+                ) {
+                    passenger.set_pose(pose);
+                    return Some(location);
+                }
+            }
+        }
+        None
+    }
+
     /// Vanilla `checkStriderSpawnRules`: the first block above the lava is air.
     pub(crate) const SPAWN_RULE: SpawnRule = |_entity_type, level, _spawn_reason, pos, _random| {
         let mut check_pos = pos.above();
@@ -364,6 +427,11 @@ impl Entity for StriderEntity {
 
     fn base_tick(&self) {
         Mob::base_tick_mob(self);
+    }
+
+    fn dismount_location_for_passenger(&self, passenger: &dyn Entity) -> DVec3 {
+        self.strider_dismount_location(passenger)
+            .unwrap_or_else(|| self.default_dismount_location_for_passenger(passenger))
     }
 
     fn dimensions_for_pose(&self, _pose: EntityPose) -> EntityDimensions {

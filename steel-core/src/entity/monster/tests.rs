@@ -726,6 +726,9 @@ fn monster_spawn_obstruction_checks_entities_and_excludes_spectators_and_shared_
     EntityBase::restore_passenger_relationship(&player_entity, &mob_entity);
     assert!(mob.check_spawn_obstruction(world));
     mob.stop_riding();
+    // Getting off puts the mob on top of the player; bring it back inside.
+    mob.try_set_position(position)
+        .expect("mob should move back inside the player");
     assert!(!mob.check_spawn_obstruction(world));
 
     player.set_removed(RemovalReason::Discarded);
