@@ -21,7 +21,7 @@ use super::{
 };
 use crate::entity::Entity as _;
 use crate::world::World;
-use crate::world::region::{Islands, RegionScope};
+use crate::world::region::{DeferredWork, Islands, RegionScope};
 use crate::world::tick_pool::install_on_tick_pool;
 use crate::world::ticking_world::TickingWorldScope;
 
@@ -37,6 +37,19 @@ struct IslandWork {
 }
 
 /// `(entity id, position)` of every player, before any island moves them.
+/// Merges each island's dirty chunks and runs the work it deferred, island by island.
+fn finish_islands(
+    dirty_chunks: &mut FxHashSet<ChunkPos>,
+    results: Vec<(FxHashSet<ChunkPos>, Vec<DeferredWork>)>,
+) {
+    for (island_dirty, deferred) in results {
+        dirty_chunks.extend(island_dirty);
+        for work in deferred {
+            work();
+        }
+    }
+}
+
 fn player_snapshot(world: &World) -> Vec<(i32, glam::DVec3)> {
     let mut players = Vec::new();
     world.players.iter_players(|_, player| {
@@ -108,7 +121,7 @@ impl ChunkMap {
         let players = player_snapshot(world);
 
         let island_count = islands.len();
-        let results: Vec<FxHashSet<ChunkPos>> = install_on_tick_pool(|| {
+        let results: Vec<(FxHashSet<ChunkPos>, Vec<DeferredWork>)> = install_on_tick_pool(|| {
             work.into_par_iter()
                 .zip(island_entities)
                 .enumerate()
@@ -166,15 +179,13 @@ impl ChunkMap {
                     let dirty = entity_manager.tick_entity_list(entities, runs_normally);
                     let _ = lookup_cache.finish();
                     world.requeue_island_block_events(&queues);
-                    dirty
+                    (dirty, queues.take_deferred())
                 })
                 .collect()
         });
 
         let mut dirty_chunks = entity_manager.tick_entity_list(remainder, runs_normally);
-        for island_dirty in results {
-            dirty_chunks.extend(island_dirty);
-        }
+        finish_islands(&mut dirty_chunks, results);
         tracing::trace!(island_count, "Ticked islands");
         for chunk in dirty_chunks {
             world.mark_chunk_dirty(chunk);

@@ -39,6 +39,10 @@ use crate::player::Player;
 use crate::portal::{TeleportPostTransition, TeleportTransition};
 use crate::world::World;
 
+const fn chunk_containing(position: DVec3) -> ChunkPos {
+    ChunkPos::from_block_pos(BlockPos::containing(position.x, position.y, position.z))
+}
+
 /// Fall-style damage dealt to the teleporting owner (vanilla `enderPearl()`, 5.0).
 const TELEPORT_DAMAGE: f32 = 5.0;
 
@@ -353,9 +357,19 @@ impl Projectile for EnderPearlEntity {
         let teleport_pos = self.old_position();
         if let Some(owner) = self.owner_player()
             && let Some(player) = owner.as_player()
-            && Self::is_allowed_to_teleport_owner(&world, player)
         {
-            self.teleport_owner(&world, &owner, player, teleport_pos);
+            // The owner may be ticking on another island (a pearl stasis far from its
+            // thrower); then the teleport waits for the islands to finish.
+            let owner_chunk = chunk_containing(player.position());
+            let pearl = Arc::clone(&self);
+            let pearl_world = Arc::clone(&world);
+            world.run_in_owning_region(&[owner_chunk, chunk_containing(teleport_pos)], move || {
+                if let Some(player) = owner.as_player()
+                    && Self::is_allowed_to_teleport_owner(&pearl_world, player)
+                {
+                    pearl.teleport_owner(&pearl_world, &owner, player, teleport_pos);
+                }
+            });
         }
         self.deregister_from_owner();
         self.set_removed(RemovalReason::Discarded);
