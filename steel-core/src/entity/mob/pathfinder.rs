@@ -695,6 +695,7 @@ fn create_path_with_evaluator<M: PathfinderMob + ?Sized>(
         return mob.mob_base().navigation().lock().create_path(
             &mut evaluator,
             world.as_ref(),
+            world.path_type_cache.try_lock().as_deref_mut(),
             &mut no_collision,
             request,
         );
@@ -705,6 +706,7 @@ fn create_path_with_evaluator<M: PathfinderMob + ?Sized>(
         return mob.mob_base().navigation().lock().create_path(
             &mut evaluator,
             world.as_ref(),
+            world.path_type_cache.try_lock().as_deref_mut(),
             &mut no_collision,
             request,
         );
@@ -727,6 +729,7 @@ fn create_path_with_evaluator<M: PathfinderMob + ?Sized>(
     mob.mob_base().navigation().lock().create_path(
         &mut evaluator,
         world.as_ref(),
+        world.path_type_cache.try_lock().as_deref_mut(),
         &mut collision,
         request,
     )

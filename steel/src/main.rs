@@ -12,6 +12,9 @@ use crossterm::style::{Color, ResetColor, SetForegroundColor};
 use futures::FutureExt;
 use steel::config::{self, LogConfig};
 use steel::logger::CommandLogger;
+
+#[cfg(feature = "pprof")]
+mod pprof_sampler;
 use steel::{SERVER, SteelServer, logger::LoggerLayer};
 use steel_core::GIT_HASH_SHORT;
 use steel_utils::text::DisplayResolutor;
@@ -211,6 +214,8 @@ async fn main_async(chunk_runtime: Arc<Runtime>, steel_config: config::SteelConf
         }
     };
     shutdown::install(cancel_token.clone());
+    #[cfg(feature = "pprof")]
+    pprof_sampler::start_from_env();
     let panic_token = cancel_token.clone();
     panic::set_hook(Box::new(move |panic_info| {
         let message = panic_info.payload_as_str().unwrap_or("Unknown");

@@ -32,6 +32,8 @@ const ENTITY_SPATIAL_CELL_OFFSET: f64 = ENTITY_SPATIAL_CELL_SIZE / 2.0;
 // Large queries scan occupied cells instead of materializing an enormous cell range.
 const MAX_DIRECT_SPATIAL_CELL_PROBES: i128 = 4_096;
 const INLINE_QUERY_CAPACITY: usize = 32;
+/// Above this many spatial cells a query walks the per-chunk index instead of probing cells.
+const MAX_CELL_QUERY_PROBES: i128 = 512;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct EntitySpatialCell {
@@ -524,6 +526,20 @@ struct ManagerState {
     save_pending_by_chunk: FxHashMap<ChunkPos, Vec<EntityEntry>>,
     tick_list: EntityTickList,
     next_section_order: u64,
+    /// Largest distance any indexed bounding box has reached outside its entity's chunk.
+    /// Never shrinks, so chunk-range queries widened by it see every intersecting entity.
+    max_chunk_overhang: f64,
+}
+
+/// How far `bounding_box` reaches outside the horizontal bounds of `chunk`.
+fn chunk_overhang(chunk: ChunkPos, bounding_box: &WorldAabb) -> f64 {
+    let min_x = f64::from(chunk.0.x << 4);
+    let min_z = f64::from(chunk.0.y << 4);
+    (min_x - bounding_box.min_x())
+        .max(bounding_box.max_x() - (min_x + 16.0))
+        .max(min_z - bounding_box.min_z())
+        .max(bounding_box.max_z() - (min_z + 16.0))
+        .max(0.0)
 }
 
 #[derive(Default)]
@@ -1230,12 +1246,14 @@ impl WorldEntityManager {
         let spatial_index_changed = spatial_cells_changed || section_changed;
         let current_section_order = current.query_order.insertion;
         let hard_collision_relevant = current.hard_collision_relevant;
+        let overhang = chunk_overhang(new_chunk, &new_bounding_box);
 
         let Some(entity_slot) = state.live_by_id.slot(entity_id) else {
             return Err(EntityMoveError::NotLive { entity_id });
         };
 
         if !section_changed && !spatial_cells_changed {
+            state.max_chunk_overhang = state.max_chunk_overhang.max(overhang);
             if let Some(entry) = state.live_by_id.get_mut(entity_id) {
                 entry.bounding_box = new_bounding_box;
             }
@@ -1259,6 +1277,7 @@ impl WorldEntityManager {
         } else {
             RetainedSpatialCells::between(&current.spatial_cells, &new_spatial_cells)
         };
+        state.max_chunk_overhang = state.max_chunk_overhang.max(overhang);
 
         if section_changed {
             Self::remove_from_section(&mut state, old_section, entity_id);
@@ -1373,16 +1392,18 @@ impl WorldEntityManager {
         let bounding_box = current.entity.bounding_box();
         let new_spatial_cells = EntitySpatialCellBounds::from_aabb(&bounding_box).cells();
         let hard_collision_relevant = current.hard_collision_relevant;
+        let overhang = chunk_overhang(current.chunk, &bounding_box);
+        let cells_unchanged = current.spatial_cells == new_spatial_cells;
+        let retained = RetainedSpatialCells::between(&current.spatial_cells, &new_spatial_cells);
+        state.max_chunk_overhang = state.max_chunk_overhang.max(overhang);
 
-        if current.spatial_cells == new_spatial_cells {
+        if cells_unchanged {
             if let Some(entry) = state.live_by_id.get_mut(entity_id) {
                 entry.bounding_box = bounding_box;
             }
 
             return;
         }
-
-        let retained = RetainedSpatialCells::between(&current.spatial_cells, &new_spatial_cells);
 
         let Some(entry) = state.live_by_id.get_mut(entity_id) else {
             return;
@@ -1716,6 +1737,9 @@ impl WorldEntityManager {
         };
 
         let bounds = EntitySpatialCellBounds::from_aabb(aabb);
+        if bounds.direct_probe_count() > MAX_CELL_QUERY_PROBES {
+            return Self::query_entries_by_chunk(state, aabb, bounds, candidates, entry_bounds);
+        }
         let mut populated_cells = SmallVec::new();
         let direct_probe_limit =
             MAX_DIRECT_SPATIAL_CELL_PROBES.min(spatial_index.capacity() as i128);
@@ -1739,6 +1763,76 @@ impl WorldEntityManager {
         }
 
         EntityQueryEntries::new(state, entry_bounds, populated_cells)
+    }
+
+    /// Large-box path of [`Self::query_entries`]: walks the chunks the box can reach instead
+    /// of thousands of small spatial cells, and keeps exactly the entries the cell path keeps,
+    /// in the same query order.
+    fn query_entries_by_chunk<'a>(
+        state: &'a ManagerState,
+        aabb: &WorldAabb,
+        bounds: EntitySpatialCellBounds,
+        candidates: EntityCollisionCandidates,
+        entry_bounds: Option<&WorldAabb>,
+    ) -> EntityQueryEntries<'a> {
+        // An entry sits in a cell overlapping `bounds` only if its box comes within one cell
+        // of `aabb`, and its box reaches at most `max_chunk_overhang` outside its chunk.
+        let margin = state.max_chunk_overhang + ENTITY_SPATIAL_CELL_SIZE;
+        let min_chunk_x = ((aabb.min_x() - margin).floor() as i32) >> 4;
+        let max_chunk_x = ((aabb.max_x() + margin).floor() as i32) >> 4;
+        let min_chunk_z = ((aabb.min_z() - margin).floor() as i32) >> 4;
+        let max_chunk_z = ((aabb.max_z() + margin).floor() as i32) >> 4;
+        let chunk_count = (i64::from(max_chunk_x) - i64::from(min_chunk_x) + 1)
+            * (i64::from(max_chunk_z) - i64::from(min_chunk_z) + 1);
+
+        let mut entries = Vec::new();
+        let mut visit = |entity_ids: &FxHashSet<i32>| {
+            for &entity_id in entity_ids {
+                let Some(entry) = state.live_by_id.get(entity_id) else {
+                    continue;
+                };
+                if candidates == EntityCollisionCandidates::HardCollisionRelevant
+                    && !entry.hard_collision_relevant
+                {
+                    continue;
+                }
+                let in_cells = EntitySpatialCellBounds::from_cells(&entry.spatial_cells)
+                    .is_some_and(|cells| {
+                        cells.minimum.x <= bounds.maximum.x
+                            && cells.maximum.x >= bounds.minimum.x
+                            && cells.minimum.y <= bounds.maximum.y
+                            && cells.maximum.y >= bounds.minimum.y
+                            && cells.minimum.z <= bounds.maximum.z
+                            && cells.maximum.z >= bounds.minimum.z
+                    });
+                if in_cells
+                    && entry_bounds.is_none_or(|bounds| entry.bounding_box.intersects(*bounds))
+                {
+                    entries.push(entry);
+                }
+            }
+        };
+
+        if chunk_count <= state.by_chunk.len() as i64 {
+            for chunk_x in min_chunk_x..=max_chunk_x {
+                for chunk_z in min_chunk_z..=max_chunk_z {
+                    if let Some(entity_ids) = state.by_chunk.get(&ChunkPos::new(chunk_x, chunk_z)) {
+                        visit(entity_ids);
+                    }
+                }
+            }
+        } else {
+            for (chunk, entity_ids) in &state.by_chunk {
+                if (min_chunk_x..=max_chunk_x).contains(&chunk.0.x)
+                    && (min_chunk_z..=max_chunk_z).contains(&chunk.0.y)
+                {
+                    visit(entity_ids);
+                }
+            }
+        }
+
+        entries.sort_unstable_by_key(|entry| entry.query_order);
+        EntityQueryEntries::Sorted(entries.into_iter())
     }
 
     fn entity_ids_in_chunk_order(state: &ManagerState, chunk: ChunkPos) -> Vec<i32> {
@@ -2111,6 +2205,9 @@ impl WorldEntityManager {
         let entity_id = entry.entity.id();
         entry.bounding_box = entry.entity.bounding_box();
         entry.spatial_cells = EntitySpatialCellBounds::from_aabb(&entry.bounding_box).cells();
+        state.max_chunk_overhang = state
+            .max_chunk_overhang
+            .max(chunk_overhang(entry.chunk, &entry.bounding_box));
         let is_accessible = Self::is_accessible_at(state, entry.ownership, entry.chunk);
         entry.accessible = is_accessible;
         assert!(

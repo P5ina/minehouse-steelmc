@@ -49,6 +49,8 @@ mimalloc = { version = "0.1.52", optional = true }
 
 # Profiling
 dhat = { version = "0.3.3", optional = true }
+rustc-hash.workspace = true
+pprof = { version = "0.15", optional = true, default-features = false, features = ["cpp"] }
 strip-ansi-escapes = "0.2.1"
 
 [lints]
@@ -62,6 +64,8 @@ default = ["mimalloc"]
 stand-alone = []
 deadlock_detection = ["dep:parking_lot"]
 dhat-heap = ["dhat"]
+# Sampling CPU profiler: STEEL_PPROF="<delay_s>:<duration_s>" writes steel-pprof.txt.
+pprof = ["dep:pprof"]
 mimalloc = ["dep:mimalloc"]
 slow_chunk_gen = ["steel-core/slow_chunk_gen"]
 jaeger = [
