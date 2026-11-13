@@ -46,7 +46,9 @@ impl World {
         let target = DVec3::new(f64::from(pos.x()), f64::from(pos.y()), f64::from(pos.z()));
         let mut close_enough = false;
         self.players.iter_players(|_, player| {
-            if !player.is_spectator() && player.position().distance(target) < f64::from(radius) {
+            if !player.is_spectator()
+                && self.player_position_in_tick(player).distance(target) < f64::from(radius)
+            {
                 close_enough = true;
                 return false;
             }

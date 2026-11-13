@@ -24,6 +24,7 @@ use std::ptr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
 
+use glam::DVec3;
 use rustc_hash::{FxHashMap, FxHashSet};
 use steel_utils::ChunkPos;
 use steel_utils::locks::SyncMutex;
@@ -31,6 +32,8 @@ use steel_utils::locks::SyncMutex;
 use super::World;
 use super::block_event::BlockEventQueue;
 use super::block_updates::NeighborUpdateState;
+use crate::entity::Entity as _;
+use crate::player::Player;
 
 /// The tick-ordering queues owned by one island (or by the world itself).
 #[derive(Default)]
@@ -43,14 +46,25 @@ pub(crate) struct RegionQueues {
     pub(super) handling_tick: AtomicBool,
     /// Island cells this island may write to. `None` allows every chunk.
     owned_cells: Option<Arc<FxHashSet<IslandCell>>>,
+    /// Positions of players outside this island, taken before the island phase.
+    ///
+    /// Islands never read another island's live players: those players tick in
+    /// parallel, and their positions would depend on thread timing. Reading the
+    /// snapshot keeps far-player checks (despawn distance, nearest-player
+    /// targeting) deterministic and keeps islands off each other's entity locks.
+    foreign_players: FxHashMap<i32, DVec3>,
 }
 
 impl RegionQueues {
     /// Queues for an island that may write only inside `owned_cells`.
     #[must_use]
-    pub(crate) fn for_island(owned_cells: Arc<FxHashSet<IslandCell>>) -> Self {
+    pub(crate) fn for_island(
+        owned_cells: Arc<FxHashSet<IslandCell>>,
+        foreign_players: FxHashMap<i32, DVec3>,
+    ) -> Self {
         Self {
             owned_cells: Some(owned_cells),
+            foreign_players,
             ..Self::default()
         }
     }
@@ -133,6 +147,18 @@ impl World {
             Some(region) => f(&region),
             None => f(&self.region_queues),
         }
+    }
+
+    /// A player's position as this thread's island sees it: the pre-phase
+    /// snapshot for players of other islands, the live position otherwise.
+    #[must_use]
+    pub(crate) fn player_position_in_tick(&self, player: &Player) -> DVec3 {
+        if let Some(region) = self.active_region()
+            && let Some(position) = region.foreign_players.get(&player.id())
+        {
+            return *position;
+        }
+        player.position()
     }
 
     /// Panics in debug builds when the current island writes outside its chunks.
@@ -285,9 +311,25 @@ impl Islands {
     }
 
     /// Fresh queues for `island`, limited to its owned cells.
+    ///
+    /// `players` is the pre-phase snapshot of `(entity id, position)` for every
+    /// player; those outside `island` become its foreign-player view.
     #[must_use]
-    pub(crate) fn queues(&self, island: usize) -> Arc<RegionQueues> {
-        Arc::new(RegionQueues::for_island(Arc::clone(&self.owned[island])))
+    pub(crate) fn queues(&self, island: usize, players: &[(i32, DVec3)]) -> Arc<RegionQueues> {
+        let foreign_players = players
+            .iter()
+            .filter(|(_, position)| {
+                let chunk = ChunkPos::from_block_pos(steel_utils::BlockPos::containing(
+                    position.x, position.y, position.z,
+                ));
+                self.island_of(chunk) != Some(island)
+            })
+            .copied()
+            .collect();
+        Arc::new(RegionQueues::for_island(
+            Arc::clone(&self.owned[island]),
+            foreign_players,
+        ))
     }
 }
 
@@ -328,7 +370,7 @@ mod tests {
     #[test]
     fn island_owns_a_ring_around_its_chunks() {
         let islands = Islands::build(square(0, 0, 2));
-        let queues = islands.queues(0);
+        let queues = islands.queues(0, &[]);
         assert!(queues.owns(ChunkPos::new(5, 5)));
         assert!(!queues.owns(ChunkPos::new(20, 0)));
         assert_eq!(islands.island_of(ChunkPos::new(-6, 0)), Some(0));
