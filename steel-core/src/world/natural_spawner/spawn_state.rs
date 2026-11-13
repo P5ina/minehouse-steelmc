@@ -87,7 +87,9 @@ impl LocalMobCapCalculator {
             let mut players = Vec::new();
             world.players.iter_players(|uuid, player| {
                 if !player.is_spectator() {
-                    let position = player.position();
+                    // Other islands' players come from the pre-phase snapshot: their live
+                    // positions change under their own island's tick.
+                    let position = world.player_position_in_tick(player);
                     let dx = center_x - position.x;
                     let dz = center_z - position.z;
                     if dx * dx + dz * dz < SPAWN_DISTANCE_SQR {
