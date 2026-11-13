@@ -26,6 +26,7 @@ use simdnbt::owned::NbtCompound;
 use steel_registry::attribute::AttributeRef;
 use steel_registry::blocks::block_state_ext::BlockStateExt as _;
 use steel_registry::enchantment_effect::EnchantmentEffectComponent;
+use steel_registry::entity_data::HumanoidArm;
 use steel_registry::entity_type::{EntityDimensions, EntityTypeRef};
 use steel_registry::equipment::EquipmentSlot;
 use steel_registry::item_stack::ItemStack;
@@ -52,7 +53,8 @@ use crate::entity::ai::targeting::TargetingConditions;
 use crate::entity::damage::DamageSource;
 use crate::entity::{
     AgeableMob, AgeableMobGroupData, Animal, ENTITIES, Entity, EntityReference, EntitySpawnReason,
-    LivingEntityBase, Mob, MobBase, PathfinderMob, SharedEntity, SpawnGroupData, next_entity_id,
+    LivingEntity, LivingEntityBase, Mob, MobBase, PathfinderMob, SharedEntity, SpawnGroupData,
+    dismount_helper, next_entity_id,
 };
 use crate::inventory::container::Container as _;
 use crate::inventory::container::SimpleContainer;
@@ -238,6 +240,38 @@ fn is_wood_sound_type(sound_type: &SoundType) -> bool {
 pub trait AbstractHorse: Animal + PathfinderMob {
     /// Shared horse state.
     fn horse_base(&self) -> &AbstractHorseBase;
+
+    /// Vanilla `AbstractHorse.getDismountLocationForPassenger`: beside the passenger's
+    /// main arm, then its off arm, then the horse's own position.
+    fn horse_dismount_location(&self, passenger: &dyn Entity) -> DVec3 {
+        let main_arm = passenger
+            .as_living_entity()
+            .map_or(HumanoidArm::Right, LivingEntity::main_arm);
+        let width = f64::from(self.base().dimensions().width);
+        let passenger_width = f64::from(passenger.base().dimensions().width);
+        let yaw = self.rotation().0;
+        let off_arm = match main_arm {
+            HumanoidArm::Left => HumanoidArm::Right,
+            HumanoidArm::Right => HumanoidArm::Left,
+        };
+        for arm in [main_arm, off_arm] {
+            let side = if arm == HumanoidArm::Right {
+                90.0
+            } else {
+                -90.0
+            };
+            let direction = dismount_helper::collision_horizontal_escape_vector(
+                width,
+                passenger_width,
+                yaw + side,
+            );
+            if let Some(location) = horse_dismount_location_in_direction(self, direction, passenger)
+            {
+                return location;
+            }
+        }
+        self.position()
+    }
 
     /// Vanilla `DATA_ID_FLAGS`.
     fn horse_flags(&self) -> i8;
@@ -1425,6 +1459,15 @@ macro_rules! impl_equine_entity {
                 $crate::entity::Mob::base_tick_mob(self);
             }
 
+            fn dismount_location_for_passenger(
+                &self,
+                passenger: &dyn $crate::entity::Entity,
+            ) -> glam::DVec3 {
+                $crate::entity::entities::mobs::passive::equine::AbstractHorse::horse_dismount_location(
+                    self, passenger,
+                )
+            }
+
             fn dimensions_for_pose(
                 &self,
                 _pose: $crate::entity::EntityPose,
@@ -1750,3 +1793,48 @@ macro_rules! impl_equine_entity {
 }
 
 pub(super) use impl_equine_entity;
+
+/// Vanilla `AbstractHorse.getDismountLocationInDirection`.
+fn horse_dismount_location_in_direction<H: AbstractHorse + ?Sized>(
+    horse: &H,
+    direction: DVec3,
+    passenger: &dyn Entity,
+) -> Option<DVec3> {
+    let world = horse.level()?;
+    let position = horse.position();
+    let bounds = horse.bounding_box();
+    let (target_x, target_y, target_z) = (
+        position.x + direction.x,
+        bounds.min_y(),
+        position.z + direction.z,
+    );
+    let jump_limit = bounds.max_y() + 0.75;
+    for &pose in dismount_helper::dismount_poses(passenger) {
+        let mut target = BlockPos::containing(target_x, target_y, target_z);
+        loop {
+            let floor_height = dismount_helper::block_floor_height_at(&world, target);
+            if f64::from(target.y()) + floor_height > jump_limit {
+                break;
+            }
+            if dismount_helper::is_block_floor_valid(floor_height) {
+                let location = DVec3::new(target_x, f64::from(target.y()) + floor_height, target_z);
+                let pose_box = dismount_helper::local_bounds_for_pose(passenger, pose);
+                if dismount_helper::can_passenger_dismount_to(
+                    &world,
+                    passenger,
+                    &pose_box.translate(location),
+                ) {
+                    passenger.set_pose(pose);
+                    return Some(location);
+                }
+            }
+            target = target.above();
+            // Vanilla's `do { } while (!(y < limit))` stops after the first step that is
+            // still below the jump limit.
+            if f64::from(target.y()) < jump_limit {
+                break;
+            }
+        }
+    }
+    None
+}

@@ -724,7 +724,9 @@ pub trait Entity: EntityEventSource + ErasedType + Send + Sync + 'static {
 
     /// Stops riding the current vehicle, if any.
     fn stop_riding(&self) {
+        let old_vehicle = self.vehicle();
         self.base().stop_riding();
+        dismount_after_stop_riding(self.as_entity_event_source(), old_vehicle.as_deref());
     }
 
     /// Starts riding `entity_to_ride` if vanilla boarding rules allow it.
@@ -860,6 +862,31 @@ pub trait Entity: EntityEventSource + ErasedType + Send + Sync + 'static {
             self.rotation().0,
             dimensions,
         )
+    }
+
+    /// Where `passenger` stands after getting off this vehicle.
+    ///
+    /// Animals look for a free floor beside them; other entities drop the passenger on
+    /// top of their bounding box.
+    fn dismount_location_for_passenger(&self, passenger: &dyn Entity) -> DVec3 {
+        if self.as_animal().is_some()
+            && let Some(location) =
+                dismount_helper::animal_dismount_location(self.as_entity_event_source(), passenger)
+        {
+            return location;
+        }
+        self.default_dismount_location_for_passenger(passenger)
+    }
+
+    /// The base entity's dismount location: on top of this entity's bounding box.
+    fn default_dismount_location_for_passenger(&self, _passenger: &dyn Entity) -> DVec3 {
+        let position = self.position();
+        DVec3::new(position.x, self.bounding_box().max_y(), position.z)
+    }
+
+    /// The horizontal direction this entity is moving in, for dismount placement.
+    fn motion_direction(&self) -> Direction {
+        self.direction_yaw()
     }
 
     /// Returns the world position where `passenger` should ride this vehicle.
@@ -4366,6 +4393,15 @@ pub trait Entity: EntityEventSource + ErasedType + Send + Sync + 'static {
 
 fn compute_modified_friction(friction: f64, modifier: f64) -> f64 {
     (1.0 - (1.0 - friction) * modifier).clamp(0.0, 1.0)
+}
+
+/// Vanilla `LivingEntity.stopRiding`: a living passenger that just got off `old_vehicle`
+/// is moved to the vehicle's dismount location. Other entities stay where they are.
+pub(crate) fn dismount_after_stop_riding(entity: &dyn Entity, old_vehicle: Option<&dyn Entity>) {
+    let (Some(living), Some(old_vehicle)) = (entity.as_living_entity(), old_vehicle) else {
+        return;
+    };
+    living.dismount_vehicle(old_vehicle);
 }
 
 /// Repositions a direct passenger from the vehicle's attachment point.

@@ -34,7 +34,7 @@ use crate::entity::{
     Enemy, Entity, EntityBase, EntityBaseLoad, EntityEventSource as _, EntityMoveError,
     EntityMovementEmission, EntityPose, EntitySpawnReason, EntitySyncedData, LivingEntity,
     LivingEntityBase, Mob, MobBase, PathfinderMob, SharedEntity, SpawnGroupData, SpawnRule,
-    start_riding_entities, sync_dirty_mob_effects,
+    dismount_after_stop_riding, start_riding_entities, sync_dirty_mob_effects,
 };
 use crate::physics::{MoveResult, MoverType, WorldCollisionProvider};
 use crate::world::game_event::GameEventContext;
@@ -689,7 +689,9 @@ impl Entity for ShulkerEntity {
     }
 
     fn stop_riding(&self) {
+        let old_vehicle = self.vehicle();
         self.base().stop_riding();
+        dismount_after_stop_riding(self, old_vehicle.as_deref());
         self.set_y_body_rot(0.0);
     }
 

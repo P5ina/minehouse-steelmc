@@ -1519,6 +1519,7 @@ impl Entity for Player {
             old_vehicle.id(),
             Self::passenger_ids_for_packet(old_vehicle.as_ref()),
         ));
+        self.dismount_vehicle(old_vehicle.as_ref());
     }
 
     fn teleport_to(&self, pos: DVec3) -> Result<(), EntityMoveError> {
@@ -1843,6 +1844,18 @@ const fn protocol_look_at_anchor(anchor: EntityAnchor) -> LookAtAnchor {
 }
 
 impl LivingEntity for Player {
+    fn dismount_poses(&self) -> &'static [EntityPose] {
+        &[
+            EntityPose::Standing,
+            EntityPose::Sneaking,
+            EntityPose::Swimming,
+        ]
+    }
+
+    fn main_arm(&self) -> HumanoidArm {
+        Self::main_arm(self)
+    }
+
     fn living_synced_data(&self) -> Option<&dyn LivingEntitySyncedData> {
         Some(&self.entity_data)
     }

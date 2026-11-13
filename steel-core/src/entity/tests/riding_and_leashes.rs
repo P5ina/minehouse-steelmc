@@ -401,3 +401,44 @@ fn push_entity_separates_pushable_entities_like_vanilla() {
     assert!(left.needs_velocity_sync());
     assert!(right.needs_velocity_sync());
 }
+
+#[test]
+fn passenger_dismounting_an_animal_lands_on_free_floor_beside_it() {
+    init_vanilla_registry();
+    init_behaviors();
+    let world_fixture = fresh_test_world("animal_dismount_location");
+    let world = &world_fixture.world;
+    insert_ready_full_chunk(world, ChunkPos::new(0, 0));
+    for x in 6..=10 {
+        for z in 6..=10 {
+            assert!(world.set_block(
+                BlockPos::new(x, 64, z),
+                vanilla_blocks::STONE.default_state(),
+                UpdateFlags::UPDATE_NONE,
+            ));
+        }
+    }
+    let spawn_pig = |position| {
+        let pig = Arc::new(PigEntity::new(
+            &vanilla_entities::PIG,
+            next_entity_id(),
+            position,
+            Arc::downgrade(world),
+        ));
+        let shared: SharedEntity = Arc::clone(&pig) as SharedEntity;
+        world
+            .try_add_entity(Arc::clone(&shared))
+            .expect("test pig should attach to the loaded chunk");
+        shared
+    };
+    // Facing south (yaw 0), so the first offset vanilla tries is to the west.
+    let vehicle = spawn_pig(DVec3::new(8.5, 65.0, 8.5));
+    vehicle.set_rotation((0.0, 0.0));
+    let passenger = spawn_pig(DVec3::new(8.5, 65.0, 8.5));
+    assert!(start_riding_entities(&passenger, &vehicle));
+
+    passenger.stop_riding();
+
+    assert!(!passenger.is_passenger());
+    assert_eq!(passenger.position(), DVec3::new(7.5, 65.0, 8.5));
+}

@@ -1120,6 +1120,10 @@ macro_rules! camel_entity {
                 Mob::base_tick_mob(self);
             }
 
+            fn dismount_location_for_passenger(&self, passenger: &dyn Entity) -> DVec3 {
+                AbstractHorse::horse_dismount_location(self, passenger)
+            }
+
             /// Vanilla `Camel.getDefaultDimensions`, scaled by `getScale`.
             fn dimensions_for_pose(&self, pose: EntityPose) -> EntityDimensions {
                 let baby = AgeableMob::is_baby(self);
