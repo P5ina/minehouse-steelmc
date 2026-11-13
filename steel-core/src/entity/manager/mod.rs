@@ -1959,7 +1959,8 @@ impl WorldEntityManager {
                             && cells.maximum.z >= bounds.minimum.z
                     });
                 if in_cells
-                    && entry_bounds.is_none_or(|bounds| entry.bounding_box.get().intersects(*bounds))
+                    && entry_bounds
+                        .is_none_or(|bounds| entry.bounding_box.get().intersects(*bounds))
                 {
                     entries.push(entry);
                 }
