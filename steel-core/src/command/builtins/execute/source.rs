@@ -43,7 +43,7 @@ pub(super) fn at_operation() -> Builder {
                     })?;
                     Ok(context
                         .source()
-                        .with_world(world)?
+                        .with_world(world.into_arc())?
                         .with_position(entity.position())
                         .with_rotation(entity.rotation()))
                 })

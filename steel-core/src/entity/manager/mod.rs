@@ -5,13 +5,15 @@
 //! of chunk load state; chunks are still the persistence boundary, and only
 //! full simulated chunks tick entities.
 
-use std::{collections::BTreeMap, error::Error, fmt, iter::FusedIterator, mem, slice, sync::Arc};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::{collections::BTreeMap, error::Error, fmt, iter::FusedIterator, mem, slice};
 
 use glam::DVec3;
 use rustc_hash::{FxHashMap, FxHashSet};
 use smallvec::SmallVec;
 use steel_registry::vanilla_entities;
-use steel_utils::locks::SyncRwLock;
+use steel_utils::locks::{SyncMutex, SyncRwLock};
 use steel_utils::{BlockPos, ChunkPos, PackedSectionPos, SectionPos, WorldAabb};
 use uuid::Uuid;
 
@@ -461,7 +463,7 @@ struct EntityEntry {
     uuid: Uuid,
     section: SectionPos,
     chunk: ChunkPos,
-    bounding_box: WorldAabb,
+    bounding_box: IndexedBounds,
     spatial_cells: SmallVec<[EntitySpatialCell; 8]>,
     hard_collision_relevant: bool,
     query_order: EntityQueryOrder,
@@ -486,7 +488,7 @@ impl EntityEntry {
             entity,
             section,
             chunk,
-            bounding_box,
+            bounding_box: IndexedBounds::new(bounding_box),
             spatial_cells: EntitySpatialCellBounds::from_aabb(&bounding_box).cells(),
             hard_collision_relevant,
             query_order: EntityQueryOrder {
@@ -528,7 +530,67 @@ struct ManagerState {
     next_section_order: u64,
     /// Largest distance any indexed bounding box has reached outside its entity's chunk.
     /// Never shrinks, so chunk-range queries widened by it see every intersecting entity.
-    max_chunk_overhang: f64,
+    max_chunk_overhang: ChunkOverhang,
+}
+
+/// An entry's indexed bounding box.
+///
+/// Its own lock lets a move that stays in the same section and spatial cells update the
+/// box under the manager's read lock, so ticking islands do not queue on the write lock
+/// for every step a mob takes.
+struct IndexedBounds(SyncMutex<WorldAabb>);
+
+impl IndexedBounds {
+    const fn new(bounding_box: WorldAabb) -> Self {
+        Self(SyncMutex::new(bounding_box))
+    }
+
+    fn get(&self) -> WorldAabb {
+        *self.0.lock()
+    }
+
+    fn set(&self, bounding_box: WorldAabb) {
+        *self.0.lock() = bounding_box;
+    }
+
+    /// Stores `read()` if `keep` accepts it, reading it under this box's lock so two
+    /// concurrent refreshes cannot leave the older box behind. Returns what was stored.
+    fn refresh_if(
+        &self,
+        read: impl FnOnce() -> WorldAabb,
+        keep: impl FnOnce(&WorldAabb) -> bool,
+    ) -> Option<WorldAabb> {
+        let mut stored = self.0.lock();
+        let bounding_box = read();
+        keep(&bounding_box).then(|| {
+            *stored = bounding_box;
+            bounding_box
+        })
+    }
+}
+
+impl Clone for IndexedBounds {
+    fn clone(&self) -> Self {
+        Self::new(self.get())
+    }
+}
+
+/// `ManagerState::max_chunk_overhang`, raised without the manager's write lock.
+///
+/// Overhangs are never negative, and the bit patterns of non-negative `f64`s order like
+/// the values, so `fetch_max` on the bits keeps the largest value.
+#[derive(Default)]
+struct ChunkOverhang(AtomicU64);
+
+impl ChunkOverhang {
+    fn get(&self) -> f64 {
+        f64::from_bits(self.0.load(Ordering::Acquire))
+    }
+
+    fn raise(&self, overhang: f64) {
+        debug_assert!(overhang >= 0.0, "chunk overhangs are never negative");
+        self.0.fetch_max(overhang.to_bits(), Ordering::AcqRel);
+    }
 }
 
 /// How far `bounding_box` reaches outside the horizontal bounds of `chunk`.
@@ -1210,6 +1272,10 @@ impl WorldEntityManager {
         entity_id: i32,
         new_pos: DVec3,
     ) -> Result<EntityMoveUpdate, EntityMoveError> {
+        if let Some(update) = self.try_commit_move_in_place(entity_id, new_pos)? {
+            return Ok(update);
+        }
+
         let mut state = self.state.write();
 
         let Some(current) = state.live_by_id.get(entity_id) else {
@@ -1253,9 +1319,9 @@ impl WorldEntityManager {
         };
 
         if !section_changed && !spatial_cells_changed {
-            state.max_chunk_overhang = state.max_chunk_overhang.max(overhang);
-            if let Some(entry) = state.live_by_id.get_mut(entity_id) {
-                entry.bounding_box = new_bounding_box;
+            state.max_chunk_overhang.raise(overhang);
+            if let Some(entry) = state.live_by_id.get(entity_id) {
+                entry.bounding_box.set(new_bounding_box);
             }
 
             return Ok(EntityMoveUpdate {
@@ -1277,7 +1343,7 @@ impl WorldEntityManager {
         } else {
             RetainedSpatialCells::between(&current.spatial_cells, &new_spatial_cells)
         };
-        state.max_chunk_overhang = state.max_chunk_overhang.max(overhang);
+        state.max_chunk_overhang.raise(overhang);
 
         if section_changed {
             Self::remove_from_section(&mut state, old_section, entity_id);
@@ -1308,7 +1374,7 @@ impl WorldEntityManager {
         if let Some(entry) = state.live_by_id.get_mut(entity_id) {
             entry.section = new_section;
             entry.chunk = new_chunk;
-            entry.bounding_box = new_bounding_box;
+            entry.bounding_box.set(new_bounding_box);
             entry.accessible = new_accessible;
 
             if spatial_index_changed {
@@ -1378,11 +1444,72 @@ impl WorldEntityManager {
         })
     }
 
+    /// Commits a move that keeps the entity's section and spatial cells under the read lock.
+    ///
+    /// Most steps a mob takes stay in both, and then only the indexed box and the overhang
+    /// change, which have their own synchronisation. Returns `None` when the indexes have
+    /// to change, and the caller then takes the write lock.
+    fn try_commit_move_in_place(
+        &self,
+        entity_id: i32,
+        new_pos: DVec3,
+    ) -> Result<Option<EntityMoveUpdate>, EntityMoveError> {
+        let state = self.state.read();
+
+        let Some(current) = state.live_by_id.get(entity_id) else {
+            return Err(EntityMoveError::NotLive { entity_id });
+        };
+
+        let new_section = SectionPos::from_entity_pos(new_pos);
+        if current.section != new_section {
+            return Ok(None);
+        }
+        let chunk = current.chunk;
+        if current.ownership == EntityOwnership::ManagerOwned
+            && !Self::can_move_manager_owned_to_chunk(&state, current, chunk)
+        {
+            return Err(EntityMoveError::UnloadedDestination { entity_id, chunk });
+        }
+
+        let Some(new_bounding_box) = current.bounding_box.refresh_if(
+            || current.entity.bounding_box(),
+            |bounding_box| {
+                current.spatial_cells == EntitySpatialCellBounds::from_aabb(bounding_box).cells()
+            },
+        ) else {
+            return Ok(None);
+        };
+
+        let accessible = Self::is_accessible(&state, current);
+        let ticking =
+            Self::lifecycle_visibility_for(current, Self::chunk_visibility(&state, chunk))
+                .is_ticking();
+        state
+            .max_chunk_overhang
+            .raise(chunk_overhang(chunk, &new_bounding_box));
+
+        Ok(Some(EntityMoveUpdate {
+            entity_id,
+            old_section: new_section,
+            new_section,
+            old_chunk: chunk,
+            new_chunk: chunk,
+            old_accessible: accessible,
+            new_accessible: accessible,
+            old_ticking: ticking,
+            new_ticking: ticking,
+        }))
+    }
+
     /// Commits a live entity bounding-box change to the spatial query index.
     ///
     /// Reads the current bounds after acquiring the manager lock so concurrent
     /// callbacks may complete in either order without restoring stale bounds.
     pub fn commit_bounding_box_change(&self, entity_id: i32) {
+        if self.try_commit_bounding_box_in_place(entity_id) {
+            return;
+        }
+
         let mut state = self.state.write();
 
         let Some(current) = state.live_by_id.get(entity_id) else {
@@ -1395,11 +1522,11 @@ impl WorldEntityManager {
         let overhang = chunk_overhang(current.chunk, &bounding_box);
         let cells_unchanged = current.spatial_cells == new_spatial_cells;
         let retained = RetainedSpatialCells::between(&current.spatial_cells, &new_spatial_cells);
-        state.max_chunk_overhang = state.max_chunk_overhang.max(overhang);
+        state.max_chunk_overhang.raise(overhang);
 
         if cells_unchanged {
-            if let Some(entry) = state.live_by_id.get_mut(entity_id) {
-                entry.bounding_box = bounding_box;
+            if let Some(entry) = state.live_by_id.get(entity_id) {
+                entry.bounding_box.set(bounding_box);
             }
 
             return;
@@ -1424,7 +1551,7 @@ impl WorldEntityManager {
         );
 
         if let Some(entry) = state.live_by_id.get_mut(entity_id) {
-            entry.bounding_box = bounding_box;
+            entry.bounding_box.set(bounding_box);
             entry.spatial_cells = new_spatial_cells;
         }
 
@@ -1434,6 +1561,32 @@ impl WorldEntityManager {
             hard_collision_relevant,
             retained.previous,
         );
+    }
+
+    /// Commits a bounding-box change that keeps the spatial cells under the read lock.
+    ///
+    /// Returns `false` when the cells change (or the entity is gone, which the write path
+    /// handles), so the caller takes the write lock.
+    fn try_commit_bounding_box_in_place(&self, entity_id: i32) -> bool {
+        let state = self.state.read();
+
+        let Some(current) = state.live_by_id.get(entity_id) else {
+            return false;
+        };
+
+        let Some(bounding_box) = current.bounding_box.refresh_if(
+            || current.entity.bounding_box(),
+            |bounding_box| {
+                current.spatial_cells == EntitySpatialCellBounds::from_aabb(bounding_box).cells()
+            },
+        ) else {
+            return false;
+        };
+
+        state
+            .max_chunk_overhang
+            .raise(chunk_overhang(current.chunk, &bounding_box));
+        true
     }
 
     fn can_move_manager_owned_to_chunk(
@@ -1569,7 +1722,7 @@ impl WorldEntityManager {
 
         for entry in Self::entity_query_entries(&state, aabb) {
             if entry.accessible && predicate(entry.entity.as_ref()) {
-                result.push(entry.bounding_box);
+                result.push(entry.bounding_box.get());
             }
         }
 
@@ -1777,7 +1930,7 @@ impl WorldEntityManager {
     ) -> EntityQueryEntries<'a> {
         // An entry sits in a cell overlapping `bounds` only if its box comes within one cell
         // of `aabb`, and its box reaches at most `max_chunk_overhang` outside its chunk.
-        let margin = state.max_chunk_overhang + ENTITY_SPATIAL_CELL_SIZE;
+        let margin = state.max_chunk_overhang.get() + ENTITY_SPATIAL_CELL_SIZE;
         let min_chunk_x = ((aabb.min_x() - margin).floor() as i32) >> 4;
         let max_chunk_x = ((aabb.max_x() + margin).floor() as i32) >> 4;
         let min_chunk_z = ((aabb.min_z() - margin).floor() as i32) >> 4;
@@ -1806,7 +1959,7 @@ impl WorldEntityManager {
                             && cells.maximum.z >= bounds.minimum.z
                     });
                 if in_cells
-                    && entry_bounds.is_none_or(|bounds| entry.bounding_box.intersects(*bounds))
+                    && entry_bounds.is_none_or(|bounds| entry.bounding_box.get().intersects(*bounds))
                 {
                     entries.push(entry);
                 }
@@ -2234,11 +2387,12 @@ impl WorldEntityManager {
 
     fn insert_live_entry(state: &mut ManagerState, mut entry: EntityEntry) {
         let entity_id = entry.entity.id();
-        entry.bounding_box = entry.entity.bounding_box();
-        entry.spatial_cells = EntitySpatialCellBounds::from_aabb(&entry.bounding_box).cells();
-        state.max_chunk_overhang = state
+        let bounding_box = entry.entity.bounding_box();
+        entry.bounding_box.set(bounding_box);
+        entry.spatial_cells = EntitySpatialCellBounds::from_aabb(&bounding_box).cells();
+        state
             .max_chunk_overhang
-            .max(chunk_overhang(entry.chunk, &entry.bounding_box));
+            .raise(chunk_overhang(entry.chunk, &bounding_box));
         let is_accessible = Self::is_accessible_at(state, entry.ownership, entry.chunk);
         entry.accessible = is_accessible;
         assert!(
