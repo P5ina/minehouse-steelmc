@@ -1,5 +1,8 @@
 use arc_swap::ArcSwap;
 use rayon::ThreadPool;
+use rayon::iter::{
+    IndexedParallelIterator as _, IntoParallelRefIterator as _, ParallelIterator as _,
+};
 use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
 use std::{
     io, mem,
@@ -72,6 +75,7 @@ use crate::chunk::{
 use crate::chunk_saver::ChunkStorage;
 use crate::player::connection::NetworkConnection;
 use crate::world::World;
+use crate::world::tick_pool::{TICK_POOL_MIN_SPLIT, install_on_tick_pool};
 use crate::world::tick_scheduler::{BlockTick, FluidTick, ScheduledTickRunBatch};
 use crate::worldgen::{ChunkGeneratorType, WorldGenContext};
 use crate::{entity::Entity, player::Player};
@@ -1194,15 +1198,7 @@ impl ChunkMap {
         {
             let _span = tracing::trace_span!("schedule_generation").entered();
             let start = Instant::now();
-            timings.scheduled_count = holders_to_schedule
-                .iter()
-                .filter(|(holder, level)| {
-                    let Some(status) = generation_status(Some(*level)) else {
-                        return false;
-                    };
-                    holder.schedule_chunk_generation_task_b(status, self)
-                })
-                .count();
+            timings.scheduled_count = self.schedule_generation_tasks(&holders_to_schedule);
             timings.schedule_generation = start.elapsed();
         }
 
@@ -1216,6 +1212,56 @@ impl ChunkMap {
         self.scheduling.publish_committed(batch.through_receipt);
         self.scheduling.recycle_update_batch(batch);
         timings
+    }
+
+    /// Schedules generation for holders whose load level rose, in commit order.
+    ///
+    /// Building a task pins its whole dependency square (hundreds of holders for a
+    /// Full target), which made scheduling a player's new view take hundreds of
+    /// milliseconds on the tick thread. Tasks are built on the tick pool, then
+    /// queued and installed here in the same order as the sequential path, so
+    /// generation priority and task replacement are unchanged.
+    fn schedule_generation_tasks(
+        self: &Arc<Self>,
+        holders: &[(Arc<ChunkHolder>, ChunkTicketLevel)],
+    ) -> usize {
+        let wanted: Vec<(&Arc<ChunkHolder>, ChunkStatus)> = holders
+            .iter()
+            .filter_map(|(holder, level)| {
+                let status = generation_status(Some(*level))?;
+                holder
+                    .needs_generation_task(status)
+                    .then_some((holder, status))
+            })
+            .collect();
+        if wanted.is_empty() {
+            return 0;
+        }
+
+        let tasks: Vec<Arc<ChunkGenerationTask>> = if wanted.len() < TICK_POOL_MIN_SPLIT {
+            wanted
+                .iter()
+                .map(|(holder, status)| self.new_generation_task(*status, holder.get_pos()))
+                .collect()
+        } else {
+            install_on_tick_pool(|| {
+                wanted
+                    .par_iter()
+                    .with_min_len(TICK_POOL_MIN_SPLIT / 4)
+                    .map(|(holder, status)| self.new_generation_task(*status, holder.get_pos()))
+                    .collect()
+            })
+        };
+
+        let count = tasks.len();
+        self.pending_generation_tasks
+            .lock()
+            .extend(tasks.iter().map(Arc::clone));
+        for ((holder, status), task) in wanted.into_iter().zip(tasks) {
+            holder.install_generation_task(status, task);
+        }
+        self.notify_generation_refill();
+        count
     }
 
     /// Returns full chunks whose simulation level currently allows entity ticks.
