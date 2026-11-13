@@ -134,6 +134,7 @@ mod properties;
 pub mod raid;
 mod raycast;
 mod redstone;
+pub(crate) mod region;
 mod signal_getter;
 mod sleep;
 mod sleep_status;
@@ -152,7 +153,6 @@ mod tests;
 pub use crate::config::WorldStorageConfig;
 use crate::worldgen::generators::vanilla::fuzzed_biome_at_block;
 use crate::worldgen::{ChunkGenerator, ChunkGeneratorType};
-use block_event::BlockEventQueue;
 pub(crate) use block_region::{BlockRegionBounds, BlockRegionRead, MAX_BLOCK_REGION_WORKSET_SLOTS};
 use block_updates::CollectingNeighborUpdater;
 pub use border::WorldBorderError;
@@ -298,10 +298,10 @@ pub struct World {
     /// Whether the tick rate is running normally (not frozen/paused).
     /// When false, movement validation checks are skipped.
     tick_runs_normally: AtomicBool,
-    /// Whether vanilla's scheduled/chunk/block-event tick phase is active.
-    handling_tick: AtomicBool,
-    /// Ordered, duplicate-suppressing server block events awaiting execution.
-    block_events: SyncMutex<BlockEventQueue>,
+    /// The world's own tick-ordering queues: Vanilla's `handlingTick` flag, ordered
+    /// server block events and the collecting neighbor updater's stack. A ticking
+    /// island binds its own queues instead (see [`region`]).
+    region_queues: region::RegionQueues,
     /// Vanilla collecting neighbor updater shared by all live block mutations.
     neighbor_updater: CollectingNeighborUpdater,
     /// Central runtime entity ownership and lookup.
@@ -480,8 +480,7 @@ impl World {
                 sea_level,
                 default_gamemode: AtomicI8::new(default_gamemode.into()),
                 tick_runs_normally: AtomicBool::new(true),
-                handling_tick: AtomicBool::new(false),
-                block_events: SyncMutex::new(BlockEventQueue::default()),
+                region_queues: region::RegionQueues::default(),
                 neighbor_updater: CollectingNeighborUpdater::new(max_chained_neighbor_updates),
                 entity_manager: WorldEntityManager::new(),
                 domain_entity_directory: SyncRwLock::new(None),
@@ -593,7 +592,7 @@ impl World {
     ) -> WorldGameTickTimings {
         let world_start = Instant::now();
         let lookup_cache_scope = GameplayChunkLookupCacheScope::enter(&self.chunk_map);
-        self.handling_tick.store(true, Ordering::Relaxed);
+        self.with_region_queues(|queues| queues.set_handling_tick(true));
         self.set_tick_runs_normally(runs_normally);
         if runs_normally {
             self.tick_world_border();
@@ -618,22 +617,26 @@ impl World {
         chunk_map_timings.lookup_cache.merge(early_lookup_stats);
         let lookup_cache_scope = GameplayChunkLookupCacheScope::enter(&self.chunk_map);
 
-        if runs_normally {
+        // With regionized ticking, block events and entities already ran per island.
+        let regionized = region::regionized_ticking_enabled();
+        if runs_normally && !regionized {
             let _span = tracing::trace_span!("block_events").entered();
             self.run_block_events();
         }
 
         // Vanilla clears this before ticking entities and block entities.
-        self.handling_tick.store(false, Ordering::Relaxed);
+        self.with_region_queues(|queues| queues.set_handling_tick(false));
 
         let entity_tick = {
             let _span = tracing::trace_span!("entity_tick").entered();
             let start = Instant::now();
-            let dirty_chunks = self
-                .entity_manager
-                .tick_entities(tick_count as i32, runs_normally);
-            for chunk in dirty_chunks {
-                self.mark_chunk_dirty(chunk);
+            if !regionized {
+                let dirty_chunks = self
+                    .entity_manager
+                    .tick_entities(tick_count as i32, runs_normally);
+                for chunk in dirty_chunks {
+                    self.mark_chunk_dirty(chunk);
+                }
             }
             start.elapsed()
         };

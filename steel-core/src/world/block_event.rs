@@ -80,23 +80,28 @@ impl World {
     /// for Vanilla behavior parity and are truncated to bytes only for the
     /// client packet.
     pub fn block_event(&self, pos: BlockPos, block: BlockRef, param_a: i32, param_b: i32) {
-        self.block_events.lock().push(BlockEventData {
-            pos,
-            block,
-            param_a,
-            param_b,
+        self.with_region_queues(|queues| {
+            queues.block_events.lock().push(BlockEventData {
+                pos,
+                block,
+                param_a,
+                param_b,
+            })
         });
     }
 
     /// The queued block events as `(pos, block, param_a, param_b)`, oldest first.
     #[cfg(test)]
     pub(crate) fn queued_block_events(&self) -> Vec<(BlockPos, BlockRef, i32, i32)> {
-        self.block_events
-            .lock()
-            .events
-            .iter()
-            .map(|event| (event.pos, event.block, event.param_a, event.param_b))
-            .collect()
+        self.with_region_queues(|queues| {
+            queues
+                .block_events
+                .lock()
+                .events
+                .iter()
+                .map(|event| (event.pos, event.block, event.param_a, event.param_b))
+                .collect()
+        })
     }
 
     /// Runs queued block events in Vanilla insertion order.
@@ -106,10 +111,16 @@ impl World {
     /// confirmed radius-1 Full neighborhood so the game tick never waits for
     /// chunk I/O. Deferred events retain their Vanilla retry behavior.
     pub(crate) fn run_block_events(self: &Arc<Self>) {
+        let region = self.active_region();
+        let block_events = region
+            .as_deref()
+            .map_or(&self.region_queues.block_events, |region| {
+                &region.block_events
+            });
         let mut deferred = Vec::new();
 
         loop {
-            let event = self.block_events.lock().pop_front();
+            let event = block_events.lock().pop_front();
             let Some(event) = event else {
                 break;
             };
@@ -131,8 +142,21 @@ impl World {
         if deferred.is_empty() {
             return;
         }
-        let mut queue = self.block_events.lock();
+        let mut queue = block_events.lock();
         for event in deferred {
+            queue.push(event);
+        }
+    }
+
+    /// Moves events an island deferred back to the world queue, in their order, so
+    /// they retry on a later tick like Vanilla's deferred events.
+    pub(crate) fn requeue_island_block_events(&self, island: &super::region::RegionQueues) {
+        let mut island_events = island.block_events.lock();
+        if island_events.events.is_empty() {
+            return;
+        }
+        let mut queue = self.region_queues.block_events.lock();
+        while let Some(event) = island_events.pop_front() {
             queue.push(event);
         }
     }
@@ -229,6 +253,29 @@ mod tests {
     }
 
     #[test]
+    fn island_block_events_stay_in_the_island_until_requeued() {
+        use crate::world::region::{RegionQueues, RegionScope};
+
+        init_vanilla_registry();
+        init_behaviors();
+        let world_fixture = fresh_test_world("island_block_event_queue");
+        let world = &world_fixture.world;
+        let pos = BlockPos::new(1, 64, 1);
+        let island = Arc::new(RegionQueues::default());
+        {
+            let _scope = RegionScope::enter(world, Arc::clone(&island));
+            world.block_event(pos, &vanilla_blocks::END_GATEWAY, 1, 0);
+            assert_eq!(world.queued_block_events().len(), 1);
+        }
+        assert_eq!(world.region_queues.block_events.lock().len(), 0);
+        assert_eq!(island.block_events.lock().len(), 1);
+
+        world.requeue_island_block_events(&island);
+        assert_eq!(island.block_events.lock().len(), 0);
+        assert_eq!(world.queued_block_events().len(), 1);
+    }
+
+    #[test]
     fn server_queue_defers_then_dispatches_the_current_block_event() {
         init_vanilla_registry();
         init_behaviors();
@@ -253,7 +300,7 @@ mod tests {
 
         world.block_event(pos, &vanilla_blocks::STONE, 1, 0);
         world.run_block_events();
-        assert_eq!(world.block_events.lock().len(), 0);
+        assert_eq!(world.region_queues.block_events.lock().len(), 0);
         assert!(
             !gateway
                 .downcast_ref::<EndGatewayBlockEntity>()
@@ -263,7 +310,7 @@ mod tests {
 
         world.block_event(pos, &vanilla_blocks::END_GATEWAY, 2, 0);
         world.run_block_events();
-        assert_eq!(world.block_events.lock().len(), 0);
+        assert_eq!(world.region_queues.block_events.lock().len(), 0);
         assert!(
             !gateway
                 .downcast_ref::<EndGatewayBlockEntity>()
@@ -274,9 +321,9 @@ mod tests {
         holder.set_simulation_level(None);
         world.block_event(pos, &vanilla_blocks::END_GATEWAY, 1, 0);
         world.block_event(pos, &vanilla_blocks::END_GATEWAY, 1, 0);
-        assert_eq!(world.block_events.lock().len(), 1);
+        assert_eq!(world.region_queues.block_events.lock().len(), 1);
         world.run_block_events();
-        assert_eq!(world.block_events.lock().len(), 1);
+        assert_eq!(world.region_queues.block_events.lock().len(), 1);
         assert!(
             !gateway
                 .downcast_ref::<EndGatewayBlockEntity>()
@@ -287,7 +334,7 @@ mod tests {
         holder.set_simulation_level(Some(ChunkTicketLevel::BLOCK_TICKING_CHUNK));
         world.run_block_events();
 
-        assert_eq!(world.block_events.lock().len(), 0);
+        assert_eq!(world.region_queues.block_events.lock().len(), 0);
         assert!(
             gateway
                 .downcast_ref::<EndGatewayBlockEntity>()

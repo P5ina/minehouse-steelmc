@@ -85,6 +85,7 @@ mod light_update_state;
 mod light_updates;
 mod persistence;
 mod player_tracking;
+mod regions;
 mod scheduled_ticks;
 
 #[cfg(test)]
@@ -929,13 +930,22 @@ impl ChunkMap {
             timings.total_chunks = self.chunks.len();
             timings.tickable_count = tickable_chunks.block.len();
 
-            if runs_normally {
+            if regions::regionized_ticking_enabled() {
+                // Spawning, random ticks, block events and entities run per island.
+                let start = Instant::now();
+                self.tick_islands(world, &tickable_chunks, random_tick_speed, runs_normally);
+                timings.tick_chunks += start.elapsed();
+            } else if runs_normally {
                 let start = Instant::now();
                 self.tick_spawning_chunks(world, &tickable_chunks);
                 timings.tick_chunks += start.elapsed();
             }
 
-            if runs_normally && random_tick_speed > 0 && !tickable_chunks.block.is_empty() {
+            if !regions::regionized_ticking_enabled()
+                && runs_normally
+                && random_tick_speed > 0
+                && !tickable_chunks.block.is_empty()
+            {
                 let _span = tracing::trace_span!(
                     "random_chunk_ticks",
                     block_ticking_count = tickable_chunks.block.len(),

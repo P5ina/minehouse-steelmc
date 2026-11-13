@@ -7,7 +7,7 @@ use crate::entity::Entity as _;
 use super::{
     ADVANCE_TIME, BlockPos, CChangeDifficulty, ChunkPos, Difficulty, Digest, ErasedGameRuleRef,
     GameRule, GameRuleValue, GameRuleValueType, LevelDataManager, OffsetVoxelShape, Ordering,
-    Player, REGISTRY, SectionPos, Sha256, World, vanilla_dimension_types,
+    Player, REGISTRY, SectionPos, Sha256, World, region, vanilla_dimension_types,
 };
 
 /// Vanilla `ChunkMap.playerIsCloseEnoughForSpawning`: 128 blocks, squared.
@@ -228,7 +228,7 @@ impl World {
     /// Mirrors `ServerLevel.isHandlingTick` for piston early-retraction rules.
     #[must_use]
     pub(crate) fn is_handling_tick(&self) -> bool {
-        self.handling_tick.load(Ordering::Relaxed)
+        self.with_region_queues(region::RegionQueues::is_handling_tick)
     }
 
     /// Gets the value of a game rule.

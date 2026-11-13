@@ -22,8 +22,10 @@ pub(in crate::world) const UPDATE_ORDER: [Direction; 6] = [
 
 pub(in crate::world) struct CollectingNeighborUpdater {
     max_chained_neighbor_updates: i32,
-    state: SyncMutex<CollectingState<NeighborUpdate>>,
 }
+
+/// The collecting updater's stack, owned by the world or by the ticking island.
+pub(in crate::world) type NeighborUpdateState = SyncMutex<CollectingState<NeighborUpdate>>;
 
 pub(in crate::world) struct ShapeUpdate {
     direction: Direction,
@@ -55,10 +57,9 @@ impl ShapeUpdate {
 }
 
 impl CollectingNeighborUpdater {
-    pub(in crate::world) fn new(max_chained_neighbor_updates: i32) -> Self {
+    pub(in crate::world) const fn new(max_chained_neighbor_updates: i32) -> Self {
         Self {
             max_chained_neighbor_updates,
-            state: SyncMutex::new(CollectingState::default()),
         }
     }
 
@@ -115,8 +116,13 @@ impl CollectingNeighborUpdater {
     }
 
     fn add_and_run(&self, world: &Arc<World>, pos: BlockPos, update: NeighborUpdate) {
-        let result = self
-            .state
+        let region = world.active_region();
+        let state = region
+            .as_deref()
+            .map_or(&world.region_queues.neighbor_updates, |region| {
+                &region.neighbor_updates
+            });
+        let result = state
             .lock()
             .enqueue(self.max_chained_neighbor_updates, update);
         if result.first_skipped {
@@ -128,18 +134,15 @@ impl CollectingNeighborUpdater {
             );
         }
         if result.should_run {
-            self.run_updates(world);
+            Self::run_updates(world, state);
         }
     }
 
-    fn run_updates(&self, world: &Arc<World>) {
-        let mut reset_guard = ResetGuard {
-            updater: self,
-            armed: true,
-        };
+    fn run_updates(world: &Arc<World>, state: &NeighborUpdateState) {
+        let mut reset_guard = ResetGuard { state, armed: true };
         loop {
             let next = {
-                let mut state = self.state.lock();
+                let mut state = state.lock();
                 let next = state.take_next();
                 if next.is_none() {
                     state.reset();
@@ -152,30 +155,26 @@ impl CollectingNeighborUpdater {
             };
 
             if update.run_next(world) {
-                self.state.lock().return_unfinished(update);
+                state.lock().return_unfinished(update);
             }
         }
-    }
-
-    fn reset(&self) {
-        self.state.lock().reset();
     }
 }
 
 struct ResetGuard<'a> {
-    updater: &'a CollectingNeighborUpdater,
+    state: &'a NeighborUpdateState,
     armed: bool,
 }
 
 impl Drop for ResetGuard<'_> {
     fn drop(&mut self) {
         if self.armed {
-            self.updater.reset();
+            self.state.lock().reset();
         }
     }
 }
 
-enum NeighborUpdate {
+pub(in crate::world) enum NeighborUpdate {
     Full {
         state: BlockStateId,
         pos: BlockPos,
@@ -248,7 +247,7 @@ struct AddResult {
     first_skipped: bool,
 }
 
-struct CollectingState<U> {
+pub(in crate::world) struct CollectingState<U> {
     stack: Vec<U>,
     added_this_layer: Vec<U>,
     count: i32,
