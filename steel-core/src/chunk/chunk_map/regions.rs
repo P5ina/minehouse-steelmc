@@ -23,6 +23,7 @@ use crate::entity::Entity as _;
 use crate::world::World;
 use crate::world::region::{Islands, RegionScope};
 use crate::world::tick_pool::install_on_tick_pool;
+use crate::world::ticking_world::TickingWorldScope;
 
 pub(crate) use crate::world::region::regionized_ticking_enabled;
 
@@ -115,6 +116,7 @@ impl ChunkMap {
                 .map(|(island, (work, entities))| {
                     let queues = islands.queues(island, &players);
                     let _region = RegionScope::enter(world, Arc::clone(&queues));
+                    let _ticking = TickingWorldScope::enter(world);
                     let lookup_cache = GameplayChunkLookupCacheScope::enter(self);
 
                     queues.set_handling_tick(true);

@@ -143,6 +143,7 @@ pub mod structure_search;
 mod thunder;
 pub(crate) mod tick_pool;
 pub mod tick_scheduler;
+pub(crate) mod ticking_world;
 mod village;
 mod weather;
 mod world_entities;

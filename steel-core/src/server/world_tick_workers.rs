@@ -4,6 +4,7 @@ use crossbeam::channel::{self, Sender};
 use thiserror::Error;
 use tokio::sync::oneshot;
 
+use crate::world::ticking_world::TickingWorldScope;
 use crate::world::{World, WorldGameTickTimings};
 
 struct WorldTickRequest {
@@ -25,6 +26,7 @@ impl WorldTickWorker {
         let thread = thread::Builder::new()
             .name(format!("world-tick-{index}"))
             .spawn(move || {
+                let _ticking = TickingWorldScope::enter(&world);
                 while let Ok(request) = request_receiver.recv() {
                     let timings = world.tick_game(request.tick_count, request.runs_normally);
                     let _ = request.response.send(timings);

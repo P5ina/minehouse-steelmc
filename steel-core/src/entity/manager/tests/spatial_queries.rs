@@ -232,7 +232,7 @@ fn large_queries_match_the_cell_path_in_query_order() {
             .live_by_id
             .values()
             .filter(|entry| {
-                entry.bounding_box.intersects(query)
+                entry.bounding_box.get().intersects(query)
                     && (candidates == EntityCollisionCandidates::All
                         || entry.hard_collision_relevant)
             })

@@ -10,6 +10,7 @@ use crate::entity::entities::{Guardian, LightningBoltEntity, Squid};
 use crate::entity::{leash::Leashable, pushing::EntityPush};
 use crate::world::game_event::DynamicListenerAction;
 use crate::world::game_event::vibrations::VibrationSystem;
+use crate::world::ticking_world::LevelRef;
 use rand::{RngExt, rng};
 use steel_math::DEGREE_90;
 use steel_utils::nbt::{NbtNumeric, nbt_collection_values};
@@ -1186,7 +1187,7 @@ pub trait Entity: EntityEventSource + ErasedType + Send + Sync + 'static {
     /// Gets the world this entity is in.
     ///
     /// Returns `None` if the entity is not in a world or the world was dropped.
-    fn level(&self) -> Option<Arc<World>> {
+    fn level(&self) -> Option<LevelRef<'_>> {
         self.base().level()
     }
 

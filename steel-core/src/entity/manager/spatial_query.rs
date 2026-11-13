@@ -70,7 +70,7 @@ fn next_candidate<'a>(
     remaining.find_map(|slot| {
         let entry = state.live_by_id.entry(*slot);
 
-        aabb.is_none_or(|aabb| entry.bounding_box.intersects(*aabb))
+        aabb.is_none_or(|aabb| entry.bounding_box.get().intersects(*aabb))
             .then_some(entry)
     })
 }
@@ -109,7 +109,7 @@ impl<'a> EntityQueryEntries<'a> {
         let mut entries = entity_ids
             .into_iter()
             .map(|slot| state.live_by_id.entry(slot))
-            .filter(|entry| aabb.is_none_or(|aabb| entry.bounding_box.intersects(*aabb)))
+            .filter(|entry| aabb.is_none_or(|aabb| entry.bounding_box.get().intersects(*aabb)))
             .collect::<Vec<_>>();
 
         entries.sort_unstable_by_key(|entry| entry.query_order);
@@ -131,7 +131,7 @@ impl<'a> Iterator for EntityQueryEntries<'a> {
                 remaining,
             } => remaining
                 .map(|slot| state.live_by_id.entry(*slot))
-                .filter(|entry| aabb.is_none_or(|aabb| entry.bounding_box.intersects(aabb)))
+                .filter(|entry| aabb.is_none_or(|aabb| entry.bounding_box.get().intersects(aabb)))
                 .fold(initial, visit),
             Self::Sorted(entries) => entries.fold(initial, visit),
             entries @ Self::Merged { .. } => {

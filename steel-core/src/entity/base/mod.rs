@@ -42,6 +42,7 @@ use crate::entity::{
 use crate::physics::EntityPhysicsState;
 use crate::portal::{PortalKind, PortalProcessResult, PortalProcessor};
 use crate::world::World;
+use crate::world::ticking_world::LevelRef;
 
 const BOARDING_COOLDOWN: i32 = 60;
 const PISTON_MOVEMENT_LIMIT: f64 = 0.51;
@@ -845,8 +846,8 @@ impl EntityBase {
     ///
     /// Returns `None` if the world has been dropped.
     #[inline]
-    pub fn level(&self) -> Option<Arc<World>> {
-        self.world.lock().upgrade()
+    pub fn level(&self) -> Option<LevelRef<'_>> {
+        LevelRef::resolve(&self.world.lock())
     }
 
     /// Gets the vehicle this entity is riding, if it is still loaded.

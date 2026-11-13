@@ -230,7 +230,7 @@ impl DolphinSwimToTreasureGoal {
             .map(|structure| structure.key.clone())
             .collect::<Vec<_>>();
         self.search = StructureSearch::new(
-            world,
+            world.into_arc(),
             &structures,
             dolphin.block_position(),
             TREASURE_SEARCH_RADIUS,
