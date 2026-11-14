@@ -1062,20 +1062,20 @@ fn villagers_gossip_at_most_once_a_minute_each() {
     speaker.on_reputation_event_from(ReputationEventType::VillagerHurt, player);
 
     // Like vanilla, a fresh villager first gossips a minute into the game.
-    listener.gossip(&speaker, 1_199);
+    listener.gossip(world, &speaker, 1_199);
     assert_eq!(listener.player_reputation(player), 0);
-    listener.gossip(&speaker, 2_000);
+    listener.gossip(world, &speaker, 2_000);
     let heard = listener.player_reputation(player);
     assert!(heard < 0, "the listener heard about the attack");
 
     speaker.on_reputation_event_from(ReputationEventType::VillagerKilled, player);
-    listener.gossip(&speaker, 2_000 + 1_199);
+    listener.gossip(world, &speaker, 2_000 + 1_199);
     assert_eq!(
         listener.player_reputation(player),
         heard,
         "too soon to talk"
     );
-    listener.gossip(&speaker, 2_000 + 1_200);
+    listener.gossip(world, &speaker, 2_000 + 1_200);
     assert!(listener.player_reputation(player) < heard);
 }
 
@@ -1432,4 +1432,135 @@ fn villagers_have_a_baby_that_takes_the_free_bed() {
         child.brain.memories().lock().get(&HOME),
         Some(global(world, bed))
     );
+}
+
+/// Five villagers in the middle of a stone floor, all having slept at
+/// `slept`.
+fn sleepy_villagers(world: &Arc<World>, slept: Option<i64>) -> Vec<Arc<VillagerEntity>> {
+    for x in 0..16 {
+        for z in 0..16 {
+            world.set_block(
+                BlockPos::new(x, 63, z),
+                vanilla_blocks::STONE.default_state(),
+                UpdateFlags::UPDATE_CLIENTS,
+            );
+        }
+    }
+    (0..5)
+        .map(|_| {
+            let villager = Arc::new(VillagerEntity::new(
+                &vanilla_entities::VILLAGER,
+                next_entity_id(),
+                DVec3::new(8.5, 64.0, 8.5),
+                Arc::downgrade(world),
+            ));
+            villager.brain.memories().lock().set(&LAST_SLEPT, slept);
+            world
+                .try_add_entity(Arc::clone(&villager) as SharedEntity)
+                .expect("the villager joins the world");
+            villager
+        })
+        .collect()
+}
+
+fn iron_golems(world: &Arc<World>) -> usize {
+    world
+        .get_entities_in_aabb(&WorldAabb::new(-64.0, -64.0, -64.0, 64.0, 320.0, 64.0))
+        .into_iter()
+        .filter(|entity| entity.entity_type() == &vanilla_entities::IRON_GOLEM)
+        .count()
+}
+
+#[test]
+fn villagers_that_slept_summon_a_golem_when_five_agree() {
+    init_vanilla_registry();
+    init_behaviors();
+    let fixture = fresh_test_world("villager_golem_summon");
+    let world = &fixture.world;
+    insert_ready_full_chunk(world, ChunkPos::new(0, 0));
+    let now = world.game_time();
+    let villagers = sleepy_villagers(world, Some(now - 24_000));
+    assert!(
+        !villagers[0].wants_to_spawn_golem(world),
+        "they slept more than a day ago"
+    );
+    villagers[0].spawn_golem_if_needed(world, 0, 5);
+    assert_eq!(iron_golems(world), 0);
+
+    for villager in &villagers {
+        villager
+            .brain
+            .memories()
+            .lock()
+            .set(&LAST_SLEPT, Some(20_000));
+    }
+    assert!(villagers[0].wants_to_spawn_golem(world));
+    villagers[0].spawn_golem_if_needed(world, 0, 5);
+    assert_eq!(iron_golems(world), 1);
+    for villager in &villagers {
+        assert!(
+            villager
+                .brain
+                .memories()
+                .lock()
+                .has_value(&GOLEM_DETECTED_RECENTLY)
+        );
+        assert!(!villager.wants_to_spawn_golem(world), "a golem is around");
+    }
+    villagers[0].spawn_golem_if_needed(world, 0, 5);
+    assert_eq!(iron_golems(world), 1);
+}
+
+#[test]
+fn villagers_summon_no_golem_until_enough_agree() {
+    init_vanilla_registry();
+    init_behaviors();
+    let fixture = fresh_test_world("villager_golem_summon_too_few");
+    let world = &fixture.world;
+    insert_ready_full_chunk(world, ChunkPos::new(0, 0));
+    let villagers = sleepy_villagers(world, Some(world.game_time() - 100));
+    villagers[3].brain.memories().lock().erase(&LAST_SLEPT);
+    villagers[4].brain.memories().lock().erase(&LAST_SLEPT);
+    villagers[0].spawn_golem_if_needed(world, 0, 5);
+    assert_eq!(iron_golems(world), 0, "only three of five want one");
+    // Panicking villagers need only three.
+    villagers[0].spawn_golem_if_needed(world, 0, 3);
+    assert_eq!(iron_golems(world), 1);
+}
+
+#[test]
+fn iron_golems_spawn_on_solid_blocks_but_not_glass_or_leaves() {
+    use steel_registry::blocks::BlockRef;
+
+    use crate::entity::spawn_util::legacy_iron_golem;
+    init_vanilla_registry();
+    let fixture = fresh_test_world("villager_golem_strategy");
+    let world = &fixture.world;
+    let pos = BlockPos::new(0, 63, 0);
+    let above = BlockPos::new(0, 64, 0);
+    let air = vanilla_blocks::AIR.default_state();
+    let spawns_on = |block: BlockRef, above_state| {
+        legacy_iron_golem(world, pos, block.default_state(), above, above_state)
+    };
+    assert!(spawns_on(&vanilla_blocks::STONE, air));
+    assert!(spawns_on(
+        &vanilla_blocks::STONE,
+        vanilla_blocks::WATER.default_state()
+    ));
+    assert!(!spawns_on(
+        &vanilla_blocks::STONE,
+        vanilla_blocks::STONE.default_state()
+    ));
+    assert!(spawns_on(&vanilla_blocks::POWDER_SNOW, air));
+    for refused in [
+        &vanilla_blocks::GLASS,
+        &vanilla_blocks::RED_STAINED_GLASS,
+        &vanilla_blocks::RED_STAINED_GLASS_PANE,
+        &vanilla_blocks::OAK_LEAVES,
+        &vanilla_blocks::ICE,
+        &vanilla_blocks::GLOWSTONE,
+        &vanilla_blocks::TNT,
+    ] {
+        assert!(!spawns_on(refused, air), "{}", refused.key);
+    }
 }

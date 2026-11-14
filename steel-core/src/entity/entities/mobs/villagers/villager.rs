@@ -32,7 +32,7 @@ use steel_utils::entity_events::EntityStatus;
 use steel_utils::locks::SyncMutex;
 use steel_utils::random::xoroshiro::Xoroshiro;
 use steel_utils::types::{Difficulty, InteractionHand};
-use steel_utils::{BlockPos, DowncastType, DowncastTypeKey, GlobalPos, Identifier};
+use steel_utils::{BlockPos, Downcast as _, DowncastType, DowncastTypeKey, GlobalPos, Identifier};
 use text_components::TextComponent;
 use text_components::translation::TranslatedMessage;
 use uuid::Uuid;
@@ -55,7 +55,8 @@ use super::{
 use crate::behavior::InteractionResult;
 use crate::entity::ai::brain::memory::MemoryModuleType;
 use crate::entity::ai::brain::memory_types::{
-    HOME, JOB_SITE, LAST_WOKEN, MEETING_POINT, POTENTIAL_JOB_SITE,
+    GOLEM_DETECTED_RECENTLY, HOME, JOB_SITE, LAST_SLEPT, LAST_WOKEN, MEETING_POINT,
+    POTENTIAL_JOB_SITE,
 };
 use crate::entity::ai::brain::{Brain, Memories};
 use crate::entity::ai::gossip::{GossipContainer, GossipType, ReputationEventType};
@@ -65,6 +66,7 @@ use crate::entity::damage::DamageSource;
 use crate::entity::entities::{ItemEntity, LightningBoltEntity};
 use crate::entity::living_base::MobEffectInstance;
 use crate::entity::remove_entity_name_actions;
+use crate::entity::spawn_util::{legacy_iron_golem, try_spawn_mob};
 use crate::entity::{
     AgeableMob, AgeableMobBase, AgeableMobGroupData, DefaultEntityPush, Entity, EntityBase,
     EntityBaseLoad, EntityEventSource as _, EntityPose, EntitySpawnReason, EntitySyncedData,
@@ -95,6 +97,11 @@ const GOSSIP_DECAY_INTERVAL: i64 = 24_000;
 const GOSSIP_COOLDOWN: i64 = 1_200;
 /// Vanilla `Villager.MAX_GOSSIP_TOPICS`.
 const MAX_GOSSIP_TOPICS: i32 = 10;
+/// Vanilla `gossip`: villagers that must agree to summon a golem.
+const GOSSIP_VILLAGERS_NEEDED_FOR_GOLEM: usize = 5;
+/// Vanilla `golemSpawnConditionsMet`: only villagers that slept within a
+/// day want a golem.
+const GOLEM_SLEEP_WINDOW: i64 = 24_000;
 /// Vanilla `allowedToRestock`: restocks a villager gets per day.
 const MAX_RESTOCKS_PER_DAY: i32 = 2;
 /// Vanilla `allowedToRestock`: ticks between the restocks of a day.
@@ -467,7 +474,7 @@ impl VillagerEntity {
 
     /// Vanilla `Villager.gossip`: hears up to ten pieces of the other
     /// villager's gossip, at most once a minute for each of them.
-    pub(super) fn gossip(&self, target: &Self, timestamp: i64) {
+    pub(super) fn gossip(&self, world: &Arc<World>, target: &Self, timestamp: i64) {
         let ready = |last: i64| timestamp < last || timestamp >= last + GOSSIP_COOLDOWN;
         let target_gossips = {
             let target_state = target.state.lock();
@@ -490,7 +497,7 @@ impl VillagerEntity {
             new_gossip
         };
         target.state.lock().last_gossip_time = timestamp;
-        // TODO(villager brain): vanilla `spawnGolemIfNeeded(level, timestamp, 5)`.
+        self.spawn_golem_if_needed(world, timestamp, GOSSIP_VILLAGERS_NEEDED_FOR_GOLEM);
         if new_gossip > 0
             && let Some(player) = trading_player_of(self)
         {
@@ -525,6 +532,65 @@ impl VillagerEntity {
     /// Vanilla `wantsMoreFood`.
     pub(super) fn wants_more_food(&self) -> bool {
         self.count_food_points_in_inventory() < 12
+    }
+
+    /// Vanilla `spawnGolemIfNeeded`: when this villager and enough of the
+    /// villagers within 10 blocks want a golem, summons an iron golem nearby
+    /// and tells them all one is around.
+    pub(super) fn spawn_golem_if_needed(
+        &self,
+        world: &Arc<World>,
+        _timestamp: i64,
+        villagers_needed_to_agree: usize,
+    ) {
+        if !self.wants_to_spawn_golem(world) {
+            return;
+        }
+        let search_box = self.bounding_box().inflate_xyz(10.0, 10.0, 10.0);
+        let nearby: Vec<SharedEntity> = world
+            .get_entities_in_aabb(&search_box)
+            .into_iter()
+            .filter(|entity| entity.downcast_ref::<Self>().is_some())
+            .collect();
+        let wanting = nearby
+            .iter()
+            .filter_map(|entity| entity.downcast_ref::<Self>())
+            .filter(|villager| villager.wants_to_spawn_golem(world))
+            .take(5)
+            .count();
+        if wanting < villagers_needed_to_agree {
+            return;
+        }
+        if try_spawn_mob(
+            world,
+            &vanilla_entities::IRON_GOLEM,
+            EntitySpawnReason::MobSummoned,
+            self.block_position(),
+            10,
+            8,
+            6,
+            legacy_iron_golem,
+            false,
+        )
+        .is_some()
+        {
+            for villager in nearby
+                .iter()
+                .filter_map(|entity| entity.downcast_ref::<Self>())
+            {
+                brain::golem_detected(&mut villager.brain.memories().lock());
+            }
+        }
+    }
+
+    /// Vanilla `wantsToSpawnGolem`: slept in the last day and has not seen a
+    /// golem recently.
+    pub(super) fn wants_to_spawn_golem(&self, world: &World) -> bool {
+        let memories = self.brain.memories().lock();
+        memories
+            .get(&LAST_SLEPT)
+            .is_some_and(|last_slept| world.game_time() - last_slept < GOLEM_SLEEP_WINDOW)
+            && !memories.has_value(&GOLEM_DETECTED_RECENTLY)
     }
 
     /// Vanilla `Villager.canBreed`: fed enough, awake and grown up.
