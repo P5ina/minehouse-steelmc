@@ -1,8 +1,11 @@
 //! Recipe matching and crafting-grid interpretation.
 
+use std::mem;
+
 use steel_registry::data_components::vanilla_components::{
     BANNER_PATTERNS, BASE_COLOR, DYE, DYED_COLOR, ENCHANTMENTS, FIREWORK_EXPLOSION, FIREWORKS,
-    MAP_POST_PROCESSING, MAX_DAMAGE, POT_DECORATIONS, POTION_CONTENTS, WRITTEN_BOOK_CONTENT,
+    MAP_ID, MAP_POST_PROCESSING, MAX_DAMAGE, POT_DECORATIONS, POTION_CONTENTS,
+    WRITTEN_BOOK_CONTENT,
 };
 use steel_registry::data_components::vanilla_components::{
     DyedItemColor, FireworkExplosion, FireworkExplosionShape, Fireworks, ItemEnchantments,
@@ -10,8 +13,8 @@ use steel_registry::data_components::vanilla_components::{
 };
 use steel_registry::recipe::{
     BookCloningRecipe, CraftingInput, CraftingRecipe, DyeRecipe, FireworkRocketRecipe,
-    FireworkStarFadeRecipe, FireworkStarRecipe, PositionedCraftingInput, ShieldDecorationRecipe,
-    TypedRecipeRef, vanilla_recipe_types,
+    FireworkStarFadeRecipe, FireworkStarRecipe, MapRecipeData, PositionedCraftingInput,
+    ShieldDecorationRecipe, TypedRecipeRef, vanilla_recipe_types,
 };
 use steel_registry::{
     DyeColor, ItemStackTemplate, REGISTRY, RegistryExt as _, TaggedRegistryExt as _,
@@ -19,6 +22,7 @@ use steel_registry::{
 };
 
 use crate::inventory::container::CraftingContainer;
+use crate::world::World;
 
 use super::container::Container;
 
@@ -26,27 +30,53 @@ use super::container::Container;
 pub type CraftingRecipeRef = TypedRecipeRef<CraftingRecipe, CraftingInput>;
 
 /// Updates a result container from the first matching crafting recipe.
-pub fn slot_changed_crafting_grid<R: Container>(crafting: &CraftingContainer, result: &mut R) {
+pub fn slot_changed_crafting_grid<R: Container>(
+    crafting: &CraftingContainer,
+    world: &World,
+    result: &mut R,
+) {
     result.set_item(
         0,
-        assemble_for_container(crafting).unwrap_or_else(ItemStack::empty),
+        assemble_for_container(crafting, world).unwrap_or_else(ItemStack::empty),
     );
+}
+
+/// Vanilla `CraftingContainer.asPositionedCraftInput`, with the saved data of every filled map
+/// in the grid attached the way vanilla recipes read it through `Level.getMapData`.
+#[must_use]
+pub fn positioned_input(crafting: &CraftingContainer, world: &World) -> PositionedCraftingInput {
+    let mut positioned = crafting.as_positioned_input();
+    let map_data: Vec<(usize, MapRecipeData)> = positioned
+        .input
+        .items
+        .iter()
+        .enumerate()
+        .filter_map(|(slot, stack)| {
+            let data = world.map_data(*stack.get(MAP_ID)?)?;
+            let scale = data.lock().scale;
+            Some((slot, MapRecipeData { scale }))
+        })
+        .collect();
+    for (slot, data) in map_data {
+        positioned.input =
+            mem::replace(&mut positioned.input, CraftingInput::EMPTY).with_map_data(slot, data);
+    }
+    positioned
 }
 
 /// Finds the first crafting recipe in deterministic registry order.
 #[must_use]
-pub fn find_recipe(crafting: &CraftingContainer) -> Option<CraftingRecipeRef> {
-    let positioned = crafting.as_positioned_input();
+pub fn find_recipe(input: &CraftingInput) -> Option<CraftingRecipeRef> {
     REGISTRY
         .recipes
-        .find_match(&vanilla_recipe_types::CRAFTING, &positioned.input)
+        .find_match(&vanilla_recipe_types::CRAFTING, input)
 }
 
 /// Finds and interprets the output for the current crafting container.
 #[must_use]
-pub fn assemble_for_container(crafting: &CraftingContainer) -> Option<ItemStack> {
-    let positioned = crafting.as_positioned_input();
-    let recipe = find_recipe(crafting)?;
+pub fn assemble_for_container(crafting: &CraftingContainer, world: &World) -> Option<ItemStack> {
+    let positioned = positioned_input(crafting, world);
+    let recipe = find_recipe(&positioned.input)?;
     Some(assemble_recipe(recipe, &positioned.input))
 }
 
@@ -139,9 +169,10 @@ pub fn assemble_recipe(recipe: CraftingRecipeRef, input: &CraftingInput) -> Item
 #[must_use]
 pub fn get_remaining_items(
     crafting: &CraftingContainer,
+    world: &World,
 ) -> Option<(Vec<ItemStack>, PositionedCraftingInput)> {
-    let positioned = crafting.as_positioned_input();
-    let recipe = find_recipe(crafting)?;
+    let positioned = positioned_input(crafting, world);
+    let recipe = find_recipe(&positioned.input)?;
     let mut remainders: Vec<_> = positioned
         .input
         .items

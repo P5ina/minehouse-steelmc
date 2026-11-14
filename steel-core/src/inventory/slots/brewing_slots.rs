@@ -68,7 +68,7 @@ impl Slot for PotionSlot {
     fn on_take(
         &self,
         guard: &mut ContainerLockGuard,
-        stack: &ItemStack,
+        stack: &mut ItemStack,
         player: &Player,
     ) -> Option<ItemStack> {
         if let Some(contents) = stack.get(POTION_CONTENTS).cloned() {

@@ -234,7 +234,7 @@ impl ResultHandler for LoomResultHandler {
     }
 
     /// The menu sets the result when a pattern is selected or the inputs change.
-    fn update_result(&self, _guard: &mut ContainerLockGuard) {}
+    fn update_result(&self, _guard: &mut ContainerLockGuard, _player: &Player) {}
 
     /// Vanilla `LoomMenu`'s result slot `onTake`.
     fn on_result_taken(

@@ -288,7 +288,7 @@ impl MenuKind for BeaconKind {
             return Some(ItemStack::empty());
         }
         let slot = &behavior.slots()[slot_index];
-        if let Some(leftover) = slot.on_take(guard, &remaining, player) {
+        if let Some(leftover) = slot.on_take(guard, &mut remaining, player) {
             player.add_item_or_drop_with_guard(guard, leftover, Prediction::Predicted);
         }
         Some(clicked)

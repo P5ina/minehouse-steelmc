@@ -250,12 +250,12 @@ impl Menu {
 
     /// Recomputes the base inventory menu's crafting result. A no-op for any
     /// other menu.
-    pub(crate) fn update_crafting_result(&mut self) {
+    pub(crate) fn update_crafting_result(&mut self, player: &Player) {
         let Some(kind) = self.kind.downcast_mut::<InventoryKind>() else {
             return;
         };
         let mut guard = self.behavior.lock_all_containers();
-        kind.update_result(&mut guard);
+        kind.update_result(&mut guard, player);
     }
 
     /// Recomputes recipe-driven slots after a change (delegates to the kind).
@@ -484,13 +484,14 @@ impl Menu {
                 };
                 inventory.set_item(inventory_slot, target_item.clone());
                 target_slot.set_by_player(&mut guard, ItemStack::empty(), &target_item);
-                if let Some(remainder) = target_slot.on_take(&mut guard, &target_item, player) {
-                    player.add_item_or_drop_with_guard(
-                        &mut guard,
-                        remainder,
-                        Prediction::Predicted,
-                    );
-                }
+                take_into_inventory_slot(
+                    &mut guard,
+                    target_slot.as_ref(),
+                    player,
+                    player_inv_id,
+                    inventory_slot,
+                    target_item,
+                );
             }
         } else if target_item.is_empty() {
             // Move inventory -> target.
@@ -521,14 +522,15 @@ impl Menu {
                     };
                     let to_place = inv.get_item_mut(inventory_slot).split(max_size);
                     target_slot.set_by_player(&mut guard, to_place, &target_item);
-                    if let Some(remainder) = target_slot.on_take(&mut guard, &target_item, player) {
+                    let mut displaced = target_item;
+                    if let Some(remainder) = target_slot.on_take(&mut guard, &mut displaced, player)
+                    {
                         player.add_item_or_drop_with_guard(
                             &mut guard,
                             remainder,
                             Prediction::Predicted,
                         );
                     }
-                    let mut displaced = target_item;
                     let Some(inventory) = guard.get_mut(player_inv_id) else {
                         unreachable!("the explicitly locked player inventory must be present");
                     };
@@ -545,13 +547,14 @@ impl Menu {
                     };
                     inventory.set_item(inventory_slot, target_item.clone());
                     target_slot.set_by_player(&mut guard, source_item, &target_item);
-                    if let Some(remainder) = target_slot.on_take(&mut guard, &target_item, player) {
-                        player.add_item_or_drop_with_guard(
-                            &mut guard,
-                            remainder,
-                            Prediction::Predicted,
-                        );
-                    }
+                    take_into_inventory_slot(
+                        &mut guard,
+                        target_slot.as_ref(),
+                        player,
+                        player_inv_id,
+                        inventory_slot,
+                        target_item,
+                    );
                 }
             }
         }
@@ -606,6 +609,29 @@ impl Menu {
                 i += step;
             }
         }
+    }
+}
+
+/// Runs `on_take` for a stack a swap already put in the player's inventory, keeping any change
+/// `on_take` makes to it: vanilla hands `onTake` the very stack the inventory holds.
+fn take_into_inventory_slot(
+    guard: &mut ContainerLockGuard,
+    slot: &dyn Slot,
+    player: &Player,
+    inventory_id: ContainerId,
+    inventory_slot: usize,
+    mut taken: ItemStack,
+) {
+    let placed = taken.clone();
+    if let Some(remainder) = slot.on_take(guard, &mut taken, player) {
+        player.add_item_or_drop_with_guard(guard, remainder, Prediction::Predicted);
+    }
+    let Some(inventory) = guard.get_mut(inventory_id) else {
+        unreachable!("the explicitly locked player inventory must be present");
+    };
+    let held = inventory.get_item_mut(inventory_slot);
+    if ItemStack::matches(held, &placed) {
+        *held = taken;
     }
 }
 

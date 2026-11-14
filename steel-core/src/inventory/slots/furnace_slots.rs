@@ -129,7 +129,7 @@ impl Slot for FurnaceResultSlot {
     fn on_take(
         &self,
         guard: &mut ContainerLockGuard,
-        _stack: &ItemStack,
+        _stack: &mut ItemStack,
         player: &Player,
     ) -> Option<ItemStack> {
         // TODO: Award crafted stats/recipes and trigger RECIPE_CRAFTED once supported.

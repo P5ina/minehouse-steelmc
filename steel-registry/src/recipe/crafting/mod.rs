@@ -287,7 +287,7 @@ impl RecipeData for CraftingRecipe {
 /// Saved-map facts needed by the vanilla map-extending matcher.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MapRecipeData {
-    pub exploration_map: bool,
+    /// The zoom level of the map's saved data.
     pub scale: u8,
 }
 

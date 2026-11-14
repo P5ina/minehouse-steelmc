@@ -84,6 +84,7 @@ impl MenuLayout {
         }
 
         let mut remaining = clicked.clone();
+        behavior.slots()[slot_index].prepare_quick_move(&mut remaining, player);
         let moved = route.targets.iter().any(|target| {
             behavior.move_item_stack_to(
                 guard,
@@ -106,7 +107,7 @@ impl MenuLayout {
         }
 
         let slot = &behavior.slots()[slot_index];
-        if let Some(leftover) = slot.on_take(guard, &remaining, player) {
+        if let Some(leftover) = slot.on_take(guard, &mut remaining, player) {
             player.add_item_or_drop_with_guard(guard, leftover, Prediction::Predicted);
         }
         // Result handlers may replace the fake source in `on_take`; apply the

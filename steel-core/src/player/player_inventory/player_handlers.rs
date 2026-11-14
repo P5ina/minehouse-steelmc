@@ -508,7 +508,7 @@ impl Player {
 
             menu.set_slot_by_player(slot_index, item_stack.clone(), self);
             if (1..=4).contains(&slot_index) {
-                menu.update_crafting_result();
+                menu.update_crafting_result(self);
             }
             menu.behavior_mut()
                 .set_remote_slot_known(slot_index, &item_stack);
@@ -1121,7 +1121,7 @@ impl Player {
             }
         }
 
-        self.inventory_menu.lock().update_crafting_result();
+        self.inventory_menu.lock().update_crafting_result(self);
         self.broadcast_inventory_changes();
         count
     }

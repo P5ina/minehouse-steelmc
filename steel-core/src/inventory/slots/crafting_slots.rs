@@ -4,6 +4,7 @@ use std::sync::Arc;
 use steel_registry::item_stack::ItemStack;
 use steel_utils::locks::Shared;
 
+use crate::behavior::on_crafted_by;
 use crate::inventory::container::{CraftingContainer, ResultContainer};
 use crate::{
     inventory::{
@@ -65,14 +66,14 @@ impl ResultHandler for CraftingHandler {
         vec![ContainerRef::from(Arc::clone(&self.crafting_container))]
     }
 
-    fn update_result(&self, guard: &mut ContainerLockGuard) {
+    fn update_result(&self, guard: &mut ContainerLockGuard, player: &Player) {
         // TODO: Enforce limited crafting and retain the recipe once player recipe books exist.
         let crafting = guard
             .get_typed::<CraftingContainer>(self.crafting_id())
             .expect("crafting container not locked");
 
-        let result_stack =
-            recipe_manager::assemble_for_container(crafting).unwrap_or_else(ItemStack::empty);
+        let result_stack = recipe_manager::assemble_for_container(crafting, &player.get_world())
+            .unwrap_or_else(ItemStack::empty);
 
         let result_container = guard
             .get_typed_mut::<ResultContainer>(self.result_id())
@@ -93,7 +94,7 @@ impl ResultHandler for CraftingHandler {
             let crafting = guard
                 .get_typed::<CraftingContainer>(self.crafting_id())
                 .expect("crafting container not locked");
-            recipe_manager::get_remaining_items(crafting)
+            recipe_manager::get_remaining_items(crafting, &player.get_world())
         };
 
         let Some((remainders, positioned)) = remainders_and_positioned else {
@@ -148,7 +149,7 @@ impl ResultHandler for CraftingHandler {
             crafting.set_changed();
         }
 
-        self.update_result(guard);
+        self.update_result(guard, player);
 
         for remainder in remainder_overflow {
             player.add_item_or_drop_with_guard(guard, remainder, Prediction::Predicted);
@@ -157,7 +158,13 @@ impl ResultHandler for CraftingHandler {
         None
     }
 
-    fn is_result_valid(&self, guard: &ContainerLockGuard, _player: &Player) -> bool {
+    /// Vanilla `ResultSlot.checkTakeAchievements` runs the item's `onCraftedBy`, which gives a
+    /// scaled map its own new map.
+    fn on_crafted_by(&self, stack: &mut ItemStack, player: &Player) {
+        on_crafted_by(stack, player);
+    }
+
+    fn is_result_valid(&self, guard: &ContainerLockGuard, player: &Player) -> bool {
         let Some(result) = guard.get(self.result_id()) else {
             return false;
         };
@@ -170,7 +177,8 @@ impl ResultHandler for CraftingHandler {
             return false;
         };
 
-        let Some(assembled) = recipe_manager::assemble_for_container(crafting) else {
+        let Some(assembled) = recipe_manager::assemble_for_container(crafting, &player.get_world())
+        else {
             return false;
         };
 

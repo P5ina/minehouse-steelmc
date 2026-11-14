@@ -23,8 +23,13 @@ pub trait ResultHandler: Send + Sync {
     /// [`result_container`](Self::result_container) and must not be repeated.
     fn dependencies(&self) -> Vec<ContainerRef>;
 
-    /// Recalculate the result based on current inputs.
-    fn update_result(&self, guard: &mut ContainerLockGuard);
+    /// Recalculate the result based on current inputs, as seen by `player`.
+    fn update_result(&self, guard: &mut ContainerLockGuard, player: &Player);
+
+    /// Vanilla `Item.onCraftedBy` as the result slot runs it on a taken result, before the
+    /// inputs are consumed; quick moves run it before the result moves. Most results need
+    /// nothing.
+    fn on_crafted_by(&self, _stack: &mut ItemStack, _player: &Player) {}
 
     /// Consume inputs when the result is taken. Return overflow remainders.
     fn on_result_taken(&self, guard: &mut ContainerLockGuard, player: &Player)
@@ -43,8 +48,12 @@ impl<T: ResultHandler + ?Sized> ResultHandler for Arc<T> {
         (**self).dependencies()
     }
 
-    fn update_result(&self, guard: &mut ContainerLockGuard) {
-        (**self).update_result(guard);
+    fn update_result(&self, guard: &mut ContainerLockGuard, player: &Player) {
+        (**self).update_result(guard, player);
+    }
+
+    fn on_crafted_by(&self, stack: &mut ItemStack, player: &Player) {
+        (**self).on_crafted_by(stack, player);
     }
 
     fn on_result_taken(
