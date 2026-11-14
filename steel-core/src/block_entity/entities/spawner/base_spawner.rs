@@ -566,7 +566,7 @@ impl BaseSpawner {
 }
 
 /// Returns the index of a weighted pick from `entries`.
-pub(super) fn choose_weighted<R: Rng + ?Sized>(
+pub(crate) fn choose_weighted<R: Rng + ?Sized>(
     entries: &[WeightedSpawnData],
     random: &mut R,
 ) -> Option<usize> {
@@ -589,12 +589,12 @@ pub(super) fn choose_weighted<R: Rng + ?Sized>(
     None
 }
 
-fn entity_type_from_owned_nbt(entity: &NbtCompound) -> Option<EntityTypeRef> {
+pub(crate) fn entity_type_from_owned_nbt(entity: &NbtCompound) -> Option<EntityTypeRef> {
     let id = entity.string("id")?.to_str().parse::<Identifier>().ok()?;
     REGISTRY.entity_types.by_key(&id)
 }
 
-fn configured_or_random_position<R: Rng + ?Sized>(
+pub(crate) fn configured_or_random_position<R: Rng + ?Sized>(
     entity: &NbtCompound,
     spawner_pos: BlockPos,
     spawn_range: i32,
@@ -623,7 +623,7 @@ fn random_spawn_position<R: Rng + ?Sized>(
     )
 }
 
-fn equip_from_table(mob: &dyn Mob, equipment: &EquipmentTable) {
+pub(crate) fn equip_from_table(mob: &dyn Mob, equipment: &EquipmentTable) {
     let Some(table): Option<LootTableRef> = REGISTRY.loot_tables.by_key(&equipment.loot_table)
     else {
         return;

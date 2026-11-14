@@ -216,6 +216,11 @@ pub fn init_block_entities() {
             Arc::new(VaultBlockEntity::new(level, pos, state))
         });
 
+        registry.register(
+            &vanilla_block_entity_types::TRIAL_SPAWNER,
+            |level, pos, state| Arc::new(TrialSpawnerBlockEntity::new(level, pos, state)),
+        );
+
         registry.register(&vanilla_block_entity_types::CHEST, |level, pos, state| {
             Arc::new(ChestBlockEntity::new(level, pos, state))
         });

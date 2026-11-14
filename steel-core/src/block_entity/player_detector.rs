@@ -72,7 +72,7 @@ impl PlayerDetector {
     }
 }
 
-fn block_center(pos: BlockPos) -> DVec3 {
+pub(crate) fn block_center(pos: BlockPos) -> DVec3 {
     let (x, y, z) = pos.get_center();
     DVec3::new(x, y, z)
 }
@@ -84,7 +84,7 @@ fn eye_position(player: &Player) -> DVec3 {
 
 /// Vanilla `inLineOfSight`: a visual clip from the eye back to the block
 /// either misses or stops in the block itself.
-fn in_line_of_sight(world: &World, origin: DVec3, dest: DVec3) -> bool {
+pub(crate) fn in_line_of_sight(world: &World, origin: DVec3, dest: DVec3) -> bool {
     let hit = world.clip(dest, origin, ClipBlockShape::Visual, ClipFluid::None);
     hit.block_pos == BlockPos::containing(origin.x, origin.y, origin.z) || hit.miss
 }
