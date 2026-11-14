@@ -164,7 +164,7 @@ impl Explosion for ServerExplosion<'_> {
 }
 
 /// Vanilla `DamageSources.explosion(direct, indirect)`.
-fn default_damage_source(
+pub(crate) fn default_damage_source(
     direct: Option<SharedEntity>,
     indirect: Option<SharedEntity>,
 ) -> DamageSource {

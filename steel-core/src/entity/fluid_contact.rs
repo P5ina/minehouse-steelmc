@@ -9,7 +9,8 @@ use steel_utils::{BlockPos, ChunkPos, SectionPos, WorldAabb, axis::Axis};
 use crate::fluid::{get_flow, get_fluid_state, get_height};
 use crate::world::World;
 
-const FLUID_INTERACTION_MARGIN: f64 = 0.001;
+/// Vanilla `Entity.getFluidInteractionBox` deflates the bounding box by this much.
+pub(crate) const FLUID_INTERACTION_MARGIN: f64 = 0.001;
 const MIN_CURRENT_LENGTH_SQUARED: f64 = 1.0e-5;
 const STILL_CURRENT_VELOCITY_THRESHOLD: f64 = 0.003;
 const MIN_STILL_CURRENT_IMPULSE: f64 = 0.004_500_000_000_000_000_5;
@@ -99,21 +100,13 @@ impl EntityFluidContact {
     /// Scans the world for water/lava touching `bounding_box`.
     #[must_use]
     pub fn scan(world: &Arc<World>, position: DVec3, eye_y: f64, bounding_box: WorldAabb) -> Self {
-        let Some(bounds) = Self::scan_bounds(bounding_box) else {
-            return Self::default();
-        };
-        if !has_fluid_and_loaded(world, bounds) {
-            return Self::default();
-        }
-
-        Self::scan_with_bounds(
-            bounds,
+        Self::scan_in(
+            world,
             position,
             eye_y,
+            bounding_box,
+            bounding_box.deflate(FLUID_INTERACTION_MARGIN),
             false,
-            |pos| get_fluid_state(world, pos),
-            |pos, fluid_state| get_height(world, pos, fluid_state),
-            |_pos, _fluid_state| DVec3::ZERO,
         )
     }
 
@@ -126,22 +119,56 @@ impl EntityFluidContact {
         bounding_box: WorldAabb,
         include_current: bool,
     ) -> Self {
-        let Some(bounds) = Self::scan_bounds(bounding_box) else {
+        Self::scan_in(
+            world,
+            position,
+            eye_y,
+            bounding_box,
+            bounding_box.deflate(FLUID_INTERACTION_MARGIN),
+            include_current,
+        )
+    }
+
+    /// Scans the fluids inside `interaction_box`, vanilla
+    /// `EntityFluidInteraction.update` over `getFluidInteractionBox`; heights
+    /// are still measured from the bottom of `bounding_box`.
+    #[must_use]
+    pub fn scan_in(
+        world: &Arc<World>,
+        position: DVec3,
+        eye_y: f64,
+        bounding_box: WorldAabb,
+        interaction_box: WorldAabb,
+        include_current: bool,
+    ) -> Self {
+        let Some(bounds) = Self::scan_bounds(bounding_box, interaction_box) else {
             return Self::default();
         };
         if !has_fluid_and_loaded(world, bounds) {
             return Self::default();
         }
 
-        Self::scan_with_bounds(
-            bounds,
-            position,
-            eye_y,
-            include_current,
-            |pos| get_fluid_state(world, pos),
-            |pos, fluid_state| get_height(world, pos, fluid_state),
-            |pos, fluid_state| get_flow(world, pos, fluid_state),
-        )
+        if include_current {
+            Self::scan_with_bounds(
+                bounds,
+                position,
+                eye_y,
+                true,
+                |pos| get_fluid_state(world, pos),
+                |pos, fluid_state| get_height(world, pos, fluid_state),
+                |pos, fluid_state| get_flow(world, pos, fluid_state),
+            )
+        } else {
+            Self::scan_with_bounds(
+                bounds,
+                position,
+                eye_y,
+                false,
+                |pos| get_fluid_state(world, pos),
+                |pos, fluid_state| get_height(world, pos, fluid_state),
+                |_pos, _fluid_state| DVec3::ZERO,
+            )
+        }
     }
 
     /// Returns the highest water surface above the entity's feet.
@@ -215,7 +242,9 @@ impl EntityFluidContact {
         height_at: impl FnMut(BlockPos, FluidState) -> f32,
         flow_at: impl FnMut(BlockPos, FluidState) -> DVec3,
     ) -> Self {
-        let Some(bounds) = Self::scan_bounds(bounding_box) else {
+        let Some(bounds) =
+            Self::scan_bounds(bounding_box, bounding_box.deflate(FLUID_INTERACTION_MARGIN))
+        else {
             return Self::default();
         };
 
@@ -230,8 +259,7 @@ impl EntityFluidContact {
         )
     }
 
-    fn scan_bounds(bounding_box: WorldAabb) -> Option<FluidScanBounds> {
-        let interaction_box = bounding_box.deflate(FLUID_INTERACTION_MARGIN);
+    fn scan_bounds(bounding_box: WorldAabb, interaction_box: WorldAabb) -> Option<FluidScanBounds> {
         if interaction_box.is_empty() {
             return None;
         }

@@ -55,6 +55,9 @@ pub use end_portal::EndPortalBlockEntity;
 pub use ender_chest::EnderChestBlockEntity;
 pub(crate) use hopper::add_item;
 pub use hopper::{HOPPER_SLOTS, HopperBlockEntity};
+pub(crate) use hopper::{
+    add_item_entity as hopper_add_item_entity, suck_in_items as hopper_suck_in_items,
+};
 pub use jukebox::JukeboxBlockEntity;
 pub use piston_moving::PistonMovingBlockEntity;
 pub use potent_sulfur::PotentSulfurBlockEntity;

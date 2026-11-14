@@ -29,6 +29,7 @@ use crate::entity::{Entity as _, RemovalReason};
 use crate::inventory::container::Container;
 use crate::inventory::lock::{ContainerId, ContainerLockGuard, ContainerRef, SharedContainer};
 use crate::world::World;
+use rand::RngExt as _;
 
 pub(crate) use transfer::{add_item, is_full_container};
 
@@ -138,14 +139,12 @@ impl HopperBlockEntity {
     /// A double chest yields both halves. Vanilla `HopperBlockEntity.getContainerAt`.
     #[must_use]
     pub fn get_container_at(world: &World, pos: BlockPos) -> Option<Vec<ContainerRef>> {
-        let state = world.get_block_state(pos);
-        // TODO: Composters expose a container without a block entity (WorldlyContainerHolder).
-        // TODO: Fall back to container entities (chest and hopper minecarts) at the position.
-        if let Some(chest) = chest_container(state, world, pos, true) {
-            return (!chest.is_empty()).then_some(chest);
-        }
-        let container = world.get_block_entity(pos)?.container_ref()?;
-        Some(vec![container])
+        let center = DVec3::new(
+            f64::from(pos.x()) + 0.5,
+            f64::from(pos.y()) + 0.5,
+            f64::from(pos.z()) + 0.5,
+        );
+        get_container_at_point(world, pos, center)
     }
 
     /// Hopper behavior when an entity is inside the block.
@@ -234,66 +233,130 @@ impl HopperBlockEntity {
     }
 
     fn suck_in_items(&self, world: &World) -> bool {
-        let above = self.base.pos().above();
-        if let Some(sources) = Self::get_container_at(world, above) {
-            let hopper = self.container_ref.container_id();
-            let source_ids: Vec<ContainerId> =
-                sources.iter().map(ContainerRef::container_id).collect();
-            let mut locked = vec![self.container_ref.clone()];
-            locked.extend(sources);
-            let mut guard = ContainerLockGuard::lock_all(&locked);
-            return transfer::get_slots(&guard, &source_ids, Some(Direction::Down))
-                .into_iter()
-                .any(|slot| {
-                    transfer::try_take_in_item_from_slot(
-                        &mut guard,
-                        hopper,
-                        &source_ids,
-                        slot,
-                        Direction::Down,
-                    )
-                });
-        }
-
-        let above_state = world.get_block_state(above);
-        let blocks_intake = world.is_collision_shape_full_block_at(above, above_state)
-            && !above_state
-                .get_block()
-                .has_tag(&BlockTag::DOES_NOT_BLOCK_HOPPERS);
-        if blocks_intake {
-            return false;
-        }
-
-        let pos = self.base.pos();
-        let area = SUCK_AABB.translate(DVec3::new(
-            f64::from(pos.x()),
-            f64::from(pos.y()),
-            f64::from(pos.z()),
-        ));
-        world
-            .get_entities_in_aabb_matching(&area, |entity| {
-                !entity.is_removed() && entity.downcast_ref::<ItemEntity>().is_some()
-            })
-            .iter()
-            .filter_map(|entity| entity.downcast_ref::<ItemEntity>())
-            .any(|item| self.add_item_entity(item))
+        suck_in_items(world, &self.container_ref, self.level_position(), true)
     }
 
     /// Moves as much of `entity`'s stack into the hopper as fits.
     fn add_item_entity(&self, entity: &ItemEntity) -> bool {
-        let hopper = self.container_ref.container_id();
-        let rest = {
-            let mut guard = ContainerLockGuard::lock_all(&[&self.container_ref]);
-            add_item(&mut guard, None, &[hopper], entity.get_item(), None)
-        };
-        if rest.is_empty() {
-            entity.set_item(ItemStack::empty());
-            entity.set_removed(RemovalReason::Discarded);
-            true
-        } else {
-            entity.set_item(rest);
-            false
-        }
+        add_item_entity(&self.container_ref, entity)
+    }
+
+    /// Vanilla `HopperBlockEntity.getLevelX/Y/Z`: the block's center.
+    fn level_position(&self) -> DVec3 {
+        let pos = self.base.pos();
+        DVec3::new(
+            f64::from(pos.x()) + 0.5,
+            f64::from(pos.y()) + 0.5,
+            f64::from(pos.z()) + 0.5,
+        )
+    }
+}
+
+/// Vanilla `HopperBlockEntity.getContainerAt(level, pos, state, x, y, z)`: the
+/// block's container, or else a container entity around `point`.
+fn get_container_at_point(world: &World, pos: BlockPos, point: DVec3) -> Option<Vec<ContainerRef>> {
+    get_block_container(world, pos)
+        .or_else(|| get_entity_container(world, point).map(|container| vec![container]))
+}
+
+/// Vanilla `HopperBlockEntity.getBlockContainer`.
+fn get_block_container(world: &World, pos: BlockPos) -> Option<Vec<ContainerRef>> {
+    let state = world.get_block_state(pos);
+    // TODO: Composters expose a container without a block entity (WorldlyContainerHolder).
+    if let Some(chest) = chest_container(state, world, pos, true) {
+        return (!chest.is_empty()).then_some(chest);
+    }
+    let container = world.get_block_entity(pos)?.container_ref()?;
+    Some(vec![container])
+}
+
+/// Vanilla `HopperBlockEntity.getEntityContainer`: a random container entity
+/// (chest or hopper minecart) in the block-sized box around `point`.
+fn get_entity_container(world: &World, point: DVec3) -> Option<ContainerRef> {
+    let area = WorldAabb::new(
+        point.x - 0.5,
+        point.y - 0.5,
+        point.z - 0.5,
+        point.x + 0.5,
+        point.y + 0.5,
+        point.z + 0.5,
+    );
+    let entities =
+        world.get_entities_in_aabb_matching(&area, |entity| entity.container_entity().is_some());
+    if entities.is_empty() {
+        return None;
+    }
+    let index = rand::rng().random_range(0..entities.len());
+    entities[index].container_entity()
+}
+
+/// Vanilla `HopperBlockEntity.suckInItems(level, hopper)`: pulls one item from
+/// the container above `level_position`, or else picks up item entities there.
+///
+/// `grid_aligned` hoppers (the block) are blocked by a full block above;
+/// hopper minecarts are not.
+pub(crate) fn suck_in_items(
+    world: &World,
+    hopper: &ContainerRef,
+    level_position: DVec3,
+    grid_aligned: bool,
+) -> bool {
+    let above = BlockPos::containing(level_position.x, level_position.y + 1.0, level_position.z);
+    let source_point = DVec3::new(level_position.x, level_position.y + 1.0, level_position.z);
+    if let Some(sources) = get_container_at_point(world, above, source_point) {
+        let hopper_id = hopper.container_id();
+        let source_ids: Vec<ContainerId> = sources.iter().map(ContainerRef::container_id).collect();
+        let mut locked = vec![hopper.clone()];
+        locked.extend(sources);
+        let mut guard = ContainerLockGuard::lock_all(&locked);
+        return transfer::get_slots(&guard, &source_ids, Some(Direction::Down))
+            .into_iter()
+            .any(|slot| {
+                transfer::try_take_in_item_from_slot(
+                    &mut guard,
+                    hopper_id,
+                    &source_ids,
+                    slot,
+                    Direction::Down,
+                )
+            });
+    }
+
+    let above_state = world.get_block_state(above);
+    let blocks_intake = grid_aligned
+        && world.is_collision_shape_full_block_at(above, above_state)
+        && !above_state
+            .get_block()
+            .has_tag(&BlockTag::DOES_NOT_BLOCK_HOPPERS);
+    if blocks_intake {
+        return false;
+    }
+
+    let area = SUCK_AABB.translate(level_position - DVec3::splat(0.5));
+    world
+        .get_entities_in_aabb_matching(&area, |entity| {
+            entity.is_alive() && entity.downcast_ref::<ItemEntity>().is_some()
+        })
+        .iter()
+        .filter_map(|entity| entity.downcast_ref::<ItemEntity>())
+        .any(|item| add_item_entity(hopper, item))
+}
+
+/// Vanilla `HopperBlockEntity.addItem(container, entity)`: moves as much of
+/// `entity`'s stack into `hopper` as fits, discarding the entity when emptied.
+pub(crate) fn add_item_entity(hopper: &ContainerRef, entity: &ItemEntity) -> bool {
+    let hopper_id = hopper.container_id();
+    let rest = {
+        let mut guard = ContainerLockGuard::lock_all(&[hopper]);
+        add_item(&mut guard, None, &[hopper_id], entity.get_item(), None)
+    };
+    if rest.is_empty() {
+        entity.set_item(ItemStack::empty());
+        entity.set_removed(RemovalReason::Discarded);
+        true
+    } else {
+        entity.set_item(rest);
+        false
     }
 }
 

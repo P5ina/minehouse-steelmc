@@ -25,6 +25,7 @@ use crate::player::connection::NetworkConnection as _;
 use crate::world::World;
 
 use server::ServerExplosion;
+pub(crate) use server::default_damage_source as explosion_damage_source;
 
 mod server;
 

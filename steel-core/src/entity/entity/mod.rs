@@ -8,7 +8,9 @@ use crate::entity::entities::mobs::passive::equine::{AbstractHorse, Llama, Playe
 use crate::entity::entities::mobs::villagers::Merchant;
 use crate::entity::entities::objects::vehicles::AbstractMinecart;
 use crate::entity::entities::{Guardian, LightningBoltEntity, Squid};
+use crate::entity::fluid_contact::FLUID_INTERACTION_MARGIN;
 use crate::entity::{leash::Leashable, pushing::EntityPush};
+use crate::inventory::lock::ContainerRef;
 use crate::world::game_event::DynamicListenerAction;
 use crate::world::game_event::vibrations::VibrationSystem;
 use crate::world::ticking_world::LevelRef;
@@ -539,6 +541,13 @@ pub trait Entity: EntityEventSource + ErasedType + Send + Sync + 'static {
     fn explosion_damage_origin(&self) -> DVec3 {
         let position = self.position();
         DVec3::new(position.x, self.get_eye_y(), position.z)
+    }
+
+    /// The inventory of an entity that is a vanilla `Container` (chest and
+    /// hopper minecarts, chest boats), while it is alive; hoppers, droppers
+    /// and detector rails reach it through vanilla `CONTAINER_ENTITY_SELECTOR`.
+    fn container_entity(&self) -> Option<ContainerRef> {
+        None
     }
 
     /// Returns whether this entity is wholly ignored by an explosion.
@@ -2604,21 +2613,17 @@ pub trait Entity: EntityEventSource + ErasedType + Send + Sync + 'static {
             return contact;
         };
 
-        let contact = if advance_eye_water_history {
-            EntityFluidContact::scan_with_currents(
+        let bounding_box = self.bounding_box();
+        let contact = match self.fluid_interaction_box() {
+            Some(interaction_box) => EntityFluidContact::scan_in(
                 &world,
                 self.position(),
                 self.get_eye_y(),
-                self.bounding_box(),
-                self.is_pushed_by_fluid(),
-            )
-        } else {
-            EntityFluidContact::scan(
-                &world,
-                self.position(),
-                self.get_eye_y(),
-                self.bounding_box(),
-            )
+                bounding_box,
+                interaction_box,
+                advance_eye_water_history && self.is_pushed_by_fluid(),
+            ),
+            None => EntityFluidContact::default(),
         };
         if advance_eye_water_history {
             self.base().set_fluid_interaction(contact);
@@ -2626,6 +2631,25 @@ pub trait Entity: EntityEventSource + ErasedType + Send + Sync + 'static {
             self.base().set_fluid_contact(contact);
         }
         contact
+    }
+
+    /// Vanilla `Entity.getFluidInteractionBox`: the slightly shrunk bounding
+    /// box, trimmed by the vehicle (a boat keeps its riders dry), or `None`
+    /// when no fluid can reach the entity.
+    fn fluid_interaction_box(&self) -> Option<WorldAabb> {
+        let interaction_box = self.bounding_box().deflate(FLUID_INTERACTION_MARGIN);
+        match self.vehicle() {
+            Some(vehicle) => vehicle.modify_passenger_fluid_interaction_box(interaction_box),
+            None => Some(interaction_box),
+        }
+    }
+
+    /// Vanilla `Entity.modifyPassengerFluidInteractionBox`.
+    fn modify_passenger_fluid_interaction_box(
+        &self,
+        passenger_box: WorldAabb,
+    ) -> Option<WorldAabb> {
+        Some(passenger_box)
     }
 
     /// Applies vanilla water/lava current impulses from a fluid interaction update.
