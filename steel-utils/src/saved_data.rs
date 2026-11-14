@@ -31,6 +31,12 @@ pub mod names {
     pub const SCOREBOARD: SavedDataName = SavedDataName::trusted("scoreboard");
     /// Domain command storage, persisted through the domain default world.
     pub const COMMAND_STORAGE: SavedDataName = SavedDataName::trusted("command_storage");
+    /// Vanilla `MapIndex.TYPE`, persisted through the domain default world as `data/map_index.bin`.
+    pub const MAP_INDEX: WincodeSavedDataName =
+        WincodeSavedDataName::trusted("map_index", *b"STMI", 1);
+    /// Vanilla `MapItemSavedData.type(id)`, persisted through the domain default world
+    /// as `data/maps/<id>.bin`.
+    pub const MAPS: WincodeSavedDataName = WincodeSavedDataName::trusted("maps", *b"STMP", 1);
     /// Vanilla `WanderingTraderData.TYPE`, persisted as `data/wandering_trader.toml`.
     pub const WANDERING_TRADER: SavedDataName = SavedDataName::trusted("wandering_trader");
 }
@@ -131,23 +137,63 @@ impl SavedDataManager {
         let Some(path) = self.wincode_path_for(name) else {
             return Ok(None);
         };
+        Self::load_wincode_file(name, &path)
+    }
+
+    /// Loads the versioned wincode entry `number` of a numbered collection
+    /// (`data/<name>/<number>.bin`), or `None` when it is absent or this world
+    /// has no persistent storage.
+    pub fn sync_load_numbered_wincode<T>(
+        &self,
+        name: WincodeSavedDataName,
+        number: i32,
+    ) -> io::Result<Option<T>>
+    where
+        for<'de> T: SchemaRead<'de, DefaultConfig, Dst = T>,
+    {
+        let Some(path) = self.numbered_wincode_path_for(name, number) else {
+            return Ok(None);
+        };
+        Self::load_wincode_file(name, &path)
+    }
+
+    /// Saves the versioned wincode entry `number` of a numbered collection.
+    pub fn sync_save_numbered_wincode<T>(
+        &self,
+        name: WincodeSavedDataName,
+        number: i32,
+        data: &T,
+    ) -> io::Result<()>
+    where
+        T: SchemaWrite<DefaultConfig, Src = T>,
+    {
+        let Some(path) = self.numbered_wincode_path_for(name, number) else {
+            return Ok(());
+        };
+        Self::save_wincode_file(name, &path, data)
+    }
+
+    fn load_wincode_file<T>(name: WincodeSavedDataName, path: &Path) -> io::Result<Option<T>>
+    where
+        for<'de> T: SchemaRead<'de, DefaultConfig, Dst = T>,
+    {
         if !path.exists() {
             return Ok(None);
         }
 
-        let bytes = sync_fs::read(&path)?;
+        let bytes = sync_fs::read(path)?;
         let Some((magic, remainder)) = bytes.split_first_chunk::<4>() else {
-            return Err(invalid_binary_data(&path, "missing magic header"));
+            return Err(invalid_binary_data(path, "missing magic header"));
         };
         if magic != &name.magic {
-            return Err(invalid_binary_data(&path, "unexpected magic header"));
+            return Err(invalid_binary_data(path, "unexpected magic header"));
         }
         let Some((version, payload)) = remainder.split_first_chunk::<2>() else {
-            return Err(invalid_binary_data(&path, "missing format version"));
+            return Err(invalid_binary_data(path, "missing format version"));
         };
         if u16::from_le_bytes(*version) != name.version {
             return Err(invalid_binary_data(
-                &path,
+                path,
                 format!(
                     "unsupported format version {}",
                     u16::from_le_bytes(*version)
@@ -196,6 +242,13 @@ impl SavedDataManager {
         let Some(path) = self.wincode_path_for(name) else {
             return Ok(());
         };
+        Self::save_wincode_file(name, &path, data)
+    }
+
+    fn save_wincode_file<T>(name: WincodeSavedDataName, path: &Path, data: &T) -> io::Result<()>
+    where
+        T: SchemaWrite<DefaultConfig, Src = T>,
+    {
         if let Some(parent) = path.parent() {
             sync_fs::create_dir_all(parent)?;
         }
@@ -232,6 +285,16 @@ impl SavedDataManager {
         self.data_dir
             .as_ref()
             .map(|data_dir| data_dir.join(name.file_name()))
+    }
+
+    fn numbered_wincode_path_for(
+        &self,
+        name: WincodeSavedDataName,
+        number: i32,
+    ) -> Option<PathBuf> {
+        self.data_dir
+            .as_ref()
+            .map(|data_dir| data_dir.join(name.name).join(format!("{number}.bin")))
     }
 
     fn wincode_path_for(&self, name: WincodeSavedDataName) -> Option<PathBuf> {
@@ -389,5 +452,33 @@ mod tests {
         ephemeral
             .sync_save_wincode(TEST_BINARY_DATA, &TestBinaryData { value: 42 })
             .expect("ephemeral binary save should be a no-op");
+    }
+
+    #[test]
+    fn numbered_wincode_entries_live_in_a_named_directory() {
+        let dir = temp_world_dir("binary-numbered");
+        let manager = SavedDataManager::new(Some(dir.as_path()));
+
+        manager
+            .sync_save_numbered_wincode(TEST_BINARY_DATA, 7, &TestBinaryData { value: 9 })
+            .expect("numbered binary data should write");
+        let loaded: TestBinaryData = manager
+            .sync_load_numbered_wincode(TEST_BINARY_DATA, 7)
+            .expect("numbered binary data should load")
+            .expect("numbered binary data should exist");
+
+        assert_eq!(loaded, TestBinaryData { value: 9 });
+        assert!(
+            dir.join("data")
+                .join("test_binary_data")
+                .join("7.bin")
+                .exists()
+        );
+        assert!(
+            manager
+                .sync_load_numbered_wincode::<TestBinaryData>(TEST_BINARY_DATA, 8)
+                .expect("missing numbered data should load")
+                .is_none()
+        );
     }
 }

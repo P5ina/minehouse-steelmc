@@ -84,6 +84,44 @@ impl StateBooleanData {
 }
 
 #[derive(Debug, Clone, Copy)]
+pub struct StateByteOverwrite {
+    pub offset: u16,
+    pub value: u8,
+}
+
+impl StateByteOverwrite {
+    #[must_use]
+    pub const fn new(offset: u16, value: u8) -> Self {
+        Self { offset, value }
+    }
+}
+
+/// Small per-state integer values indexed by block-local state offset.
+#[derive(Debug, Clone, Copy)]
+pub struct StateByteData {
+    pub default: u8,
+    pub overwrites: &'static [StateByteOverwrite],
+}
+
+impl StateByteData {
+    #[must_use]
+    pub const fn new(default: u8, overwrites: &'static [StateByteOverwrite]) -> Self {
+        Self {
+            default,
+            overwrites,
+        }
+    }
+
+    #[must_use]
+    pub fn value(self, offset: u16) -> u8 {
+        self.overwrites
+            .iter()
+            .find(|overwrite| overwrite.offset == offset)
+            .map_or(self.default, |overwrite| overwrite.value)
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
 pub struct StateFluidOverwrite {
     pub offset: u16,
     pub value: FluidState,
@@ -202,6 +240,8 @@ pub struct Block {
     pub redstone_conductor: StateBooleanData,
     /// Vanilla `BlockState.getFluidState` values indexed by block-local state offset.
     pub fluid_state: StateFluidData,
+    /// Vanilla `MapColor.id` of `BlockState.getMapColor`, indexed by block-local state offset.
+    pub map_color: StateByteData,
     /// Vanilla `BlockState.isRandomlyTicking` values indexed by block-local state offset.
     pub randomly_ticking: StateBooleanData,
     /// Extracted vanilla light properties indexed by block-local state offset.
@@ -264,6 +304,7 @@ impl Block {
             suffocating: StateBooleanData::TRUE,
             redstone_conductor: StateBooleanData::TRUE,
             fluid_state: StateFluidData::EMPTY,
+            map_color: StateByteData::new(0, &[]),
             randomly_ticking,
             light_properties: opaque_full_block_light_properties,
             collision_shape: full_block_shape,
@@ -299,6 +340,12 @@ impl Block {
     /// Sets the extracted vanilla `BlockState.isSuffocating` values for this block.
     pub const fn with_suffocating(mut self, suffocating: StateBooleanData) -> Self {
         self.suffocating = suffocating;
+        self
+    }
+
+    /// Sets the extracted vanilla `BlockState.getMapColor` ids for this block.
+    pub const fn with_map_color(mut self, map_color: StateByteData) -> Self {
+        self.map_color = map_color;
         self
     }
 
@@ -991,6 +1038,15 @@ impl BlockRegistry {
     #[must_use]
     pub fn get_static_collision_shape(&self, state_id: BlockStateId) -> shapes::VoxelShape {
         self.static_shape_for_state(state_id, Block::get_collision_shape)
+    }
+
+    /// Returns the vanilla `MapColor.id` of `BlockState.getMapColor`.
+    #[must_use]
+    pub fn map_color_id(&self, state_id: BlockStateId) -> u8 {
+        let Some((block, offset)) = self.block_and_state_offset(state_id) else {
+            return 0;
+        };
+        block.map_color.value(offset)
     }
 
     #[must_use]

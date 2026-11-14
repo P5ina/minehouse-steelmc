@@ -1,5 +1,6 @@
 //! Domain-aware loaded world map.
 
+use std::io;
 use std::sync::Arc;
 
 use rustc_hash::FxHashMap;
@@ -7,6 +8,7 @@ use small_map::FxSmallMap;
 use steel_utils::Identifier;
 
 use crate::config::{ResolvedDomainConfig, ResolvedWorldConfig};
+use crate::world::maps::DomainMaps;
 use crate::world::{DomainEntityDirectory, World};
 
 pub(crate) const OVERWORLD_WORLD_NAME: &str = "overworld";
@@ -21,6 +23,7 @@ pub struct WorldMap {
     nether_portal_targets: FxHashMap<Identifier, Identifier>,
     end_portal_targets: FxHashMap<Identifier, Identifier>,
     entity_directories: FxHashMap<String, Arc<DomainEntityDirectory>>,
+    domain_maps: FxHashMap<String, Arc<DomainMaps>>,
 }
 
 impl WorldMap {
@@ -52,6 +55,7 @@ impl WorldMap {
             nether_portal_targets,
             end_portal_targets,
             entity_directories: FxHashMap::default(),
+            domain_maps: FxHashMap::default(),
         }
     }
 
@@ -109,6 +113,25 @@ impl WorldMap {
             .or_insert_with(|| Arc::new(DomainEntityDirectory::new()));
         directory.add_world(&world);
         world.set_domain_entity_directory(Arc::clone(directory));
+
+        let maps = self
+            .domain_maps
+            .entry(world.domain().to_owned())
+            .or_insert_with(|| Arc::new(DomainMaps::new()));
+        // Vanilla keeps maps in the overworld's data storage; Steel uses the domain default world.
+        if self.default_worlds.get(world.domain()) == Some(&world.key) {
+            maps.set_storage(world.saved_data.clone());
+        }
+        world.set_domain_maps(Arc::clone(maps));
+    }
+
+    /// Writes every domain's dirty maps, returning how many maps were written.
+    pub fn save_maps(&self) -> io::Result<usize> {
+        let mut saved = 0;
+        for maps in self.domain_maps.values() {
+            saved += maps.save()?;
+        }
+        Ok(saved)
     }
 
     /// Returns a world by loaded world identifier.
