@@ -1690,6 +1690,11 @@ pub trait Entity: EntityEventSource + ErasedType + Send + Sync + 'static {
         try_as_dyn::<Self, dyn LivingEntity>(self)
     }
 
+    /// Returns this entity as a hanging entity, vanilla `HangingEntity`.
+    fn as_hanging_entity(&self) -> Option<&dyn HangingEntity> {
+        try_as_dyn::<Self, dyn HangingEntity>(self)
+    }
+
     /// Returns this entity as an item frame when it has item-frame behavior.
     fn as_item_frame(&self) -> Option<&dyn ItemFrame> {
         try_as_dyn::<Self, dyn ItemFrame>(self)

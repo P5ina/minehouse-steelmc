@@ -66,6 +66,30 @@ impl Direction {
         Direction::ALL[idx]
     }
 
+    /// Vanilla `Direction.get2DDataValue()`: South=0, West=1, North=2, East=3,
+    /// and -1 for the vertical directions.
+    #[must_use]
+    pub const fn get_2d_data_value(self) -> i32 {
+        match self {
+            Direction::South => 0,
+            Direction::West => 1,
+            Direction::North => 2,
+            Direction::East => 3,
+            Direction::Down | Direction::Up => -1,
+        }
+    }
+
+    /// Vanilla `Direction.from2DDataValue(int)`: `BY_2D_DATA[Mth.abs(data % 4)]`.
+    #[must_use]
+    pub const fn from_2d_data_value(data: i32) -> Direction {
+        match (data % 4).unsigned_abs() {
+            0 => Direction::South,
+            1 => Direction::West,
+            2 => Direction::North,
+            _ => Direction::East,
+        }
+    }
+
     /// Returns the block position offset for this direction.
     #[must_use]
     pub const fn offset(self) -> (i32, i32, i32) {

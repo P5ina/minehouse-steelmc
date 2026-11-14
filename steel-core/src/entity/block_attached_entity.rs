@@ -9,7 +9,7 @@ use crate::entity::mob::block_pos_distance_sqr;
 use crate::entity::{BorrowedNbtCompoundView, EntityMoveError, SharedEntity};
 use crate::entity::{Entity, RemovalReason};
 use crate::physics::{MoveResult, MoverType};
-use crate::world::World;
+use crate::world::{Explosion, World};
 use glam::DVec3;
 use simdnbt::owned::{NbtCompound, NbtTag};
 use std::sync::Arc;
@@ -204,6 +204,14 @@ pub trait BlockAttachedEntity: Entity {
         }
     }
 
+    /// Vanilla `BlockAttachedEntity.ignoreExplosion`.
+    fn ignore_explosion_block_attached_entity(&self, explosion: &dyn Explosion) -> bool {
+        explosion
+            .direct_source_entity()
+            .is_some_and(Entity::is_in_water)
+            || !explosion.should_affect_blocklike_entities()
+    }
+
     fn refresh_dimensions_block_attached_entity(&self) {}
 
     fn try_set_position_block_attached_entity(&self, pos: DVec3) -> Result<(), EntityMoveError> {
@@ -213,6 +221,4 @@ pub trait BlockAttachedEntity: Entity {
         self.base().mark_velocity_sync();
         Ok(())
     }
-
-    // TODO: Add a default implementation for `thunderHit` and `ignoreExplosion`
 }

@@ -805,6 +805,7 @@ mod fluid_contact;
 #[rustfmt::skip]
 #[path = "generated/entities.rs"]
 mod generated_entities;
+mod hanging_entity;
 mod identity;
 mod illager;
 mod inside_block_effects;
@@ -872,6 +873,7 @@ pub(crate) use fish::{
     water_animal_experience_reward, water_animal_spawn_unobstructed,
 };
 pub use fluid_contact::EntityFluidContact;
+pub use hanging_entity::HangingEntity;
 pub use identity::EntityGeneration;
 pub(crate) use illager::{AbstractIllager, is_abstract_illager, is_abstract_villager};
 pub use inside_block_effects::{

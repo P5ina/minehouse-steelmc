@@ -394,11 +394,13 @@ mod tests {
     use steel_utils::ChunkPos;
 
     use super::*;
-    use crate::entity::{EntityBase, SharedEntity};
+    use crate::entity::block_attached_entity::{BlockAttachedEntity, BlockAttachedEntityBase};
+    use crate::entity::{EntityBase, EntityMoveError, HangingEntity, SharedEntity};
     use crate::test_support::{fresh_test_world, insert_ready_full_chunk};
 
     struct TestItemFrame {
         base: EntityBase,
+        block_attached_entity_base: BlockAttachedEntityBase,
         direction: Direction,
         analog_output: i32,
     }
@@ -415,11 +417,29 @@ mod tests {
         }
     }
 
-    impl ItemFrame for TestItemFrame {
+    impl BlockAttachedEntity for TestItemFrame {
+        fn block_attached_entity_base(&self) -> &BlockAttachedEntityBase {
+            &self.block_attached_entity_base
+        }
+
+        fn survives(&self) -> bool {
+            true
+        }
+
+        fn drop_item(&self, _caused_by: Option<&dyn Entity>) {}
+
+        fn recalculate_bounding_box(&self) -> Result<(), EntityMoveError> {
+            Ok(())
+        }
+    }
+
+    impl HangingEntity for TestItemFrame {
         fn direction(&self) -> Direction {
             self.direction
         }
+    }
 
+    impl ItemFrame for TestItemFrame {
         fn analog_output(&self) -> i32 {
             self.analog_output
         }
@@ -494,6 +514,7 @@ mod tests {
                 vanilla_entities::ITEM_FRAME.dimensions,
                 Arc::downgrade(world),
             ),
+            block_attached_entity_base: BlockAttachedEntityBase::new(pos),
             direction: Direction::North,
             analog_output: 6,
         });
