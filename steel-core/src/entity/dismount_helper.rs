@@ -87,10 +87,6 @@ pub(crate) fn up_from_bottom_center_of(pos: BlockPos, floor_height: f64) -> DVec
 }
 
 #[must_use]
-#[expect(
-    dead_code,
-    reason = "vanilla DismountHelper foundation; boat dismounts use this next"
-)]
 pub(crate) fn can_dismount_to_pose(
     world: &Arc<World>,
     location: DVec3,

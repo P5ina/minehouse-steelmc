@@ -6,7 +6,7 @@ use crate::entity::entities::mobs::hostile::cube_mob::AbstractCubeMob;
 use crate::entity::entities::mobs::passive::AbstractNautilus;
 use crate::entity::entities::mobs::passive::equine::{AbstractHorse, Llama, PlayerRideableJumping};
 use crate::entity::entities::mobs::villagers::Merchant;
-use crate::entity::entities::objects::vehicles::AbstractMinecart;
+use crate::entity::entities::objects::vehicles::{AbstractBoat, AbstractMinecart};
 use crate::entity::entities::{Guardian, LightningBoltEntity, Squid};
 use crate::entity::fluid_contact::FLUID_INTERACTION_MARGIN;
 use crate::entity::{leash::Leashable, pushing::EntityPush};
@@ -1579,7 +1579,8 @@ pub trait Entity: EntityEventSource + ErasedType + Send + Sync + 'static {
         hand: InteractionHand,
         _location: DVec3,
     ) -> InteractionResult {
-        let Some(mob) = self.as_mob() else {
+        // Vanilla `Entity.interact` handles leads for every `Leashable`.
+        let Some(mob) = self.as_leashable() else {
             return InteractionResult::Pass;
         };
         let is_alive = self.as_living_entity().is_none_or(LivingEntity::is_alive);
@@ -1751,6 +1752,11 @@ pub trait Entity: EntityEventSource + ErasedType + Send + Sync + 'static {
     /// Returns this entity as a minecart.
     fn as_abstract_minecart(&self) -> Option<&dyn AbstractMinecart> {
         try_as_dyn::<Self, dyn AbstractMinecart>(self)
+    }
+
+    /// Returns this entity as a boat or raft.
+    fn as_abstract_boat(&self) -> Option<&dyn AbstractBoat> {
+        try_as_dyn::<Self, dyn AbstractBoat>(self)
     }
 
     /// Returns this entity as a fish when it has vanilla `AbstractFish` behavior.

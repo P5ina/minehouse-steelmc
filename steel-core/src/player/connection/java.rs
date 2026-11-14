@@ -16,10 +16,10 @@ use steel_protocol::packets::game::{
     SChatCommand, SChatSessionUpdate, SChunkBatchReceived, SClientCommand, SClientTickEnd,
     SCommandSuggestion, SContainerButtonClick, SContainerClick, SContainerClose,
     SContainerSlotStateChanged, SInteract, SMovePlayer, SMovePlayerPos, SMovePlayerPosRot,
-    SMovePlayerRot, SMovePlayerStatusOnly, SMoveVehicle, SPickItemFromBlock, SPlayerAbilities,
-    SPlayerAction, SPlayerCommand, SPlayerInput, SPlayerLoad, SPunch, SRenameItem,
-    SSeenAdvancement, SSelectTrade, SSetBeacon, SSetCarriedItem, SSetCreativeModeSlot, SSignUpdate,
-    SSpectatorAction, SUseItem, SUseItemOn,
+    SMovePlayerRot, SMovePlayerStatusOnly, SMoveVehicle, SPaddleBoat, SPickItemFromBlock,
+    SPlayerAbilities, SPlayerAction, SPlayerCommand, SPlayerInput, SPlayerLoad, SPunch,
+    SRenameItem, SSeenAdvancement, SSelectTrade, SSetBeacon, SSetCarriedItem, SSetCreativeModeSlot,
+    SSignUpdate, SSpectatorAction, SUseItem, SUseItemOn,
 };
 
 use crate::command::{handle_client_request, sender::CommandSender};
@@ -91,6 +91,7 @@ enum ScheduledPlayPacketKind {
     ClientTickEnd,
     MovePlayer(SMovePlayer),
     MoveVehicle(SMoveVehicle),
+    PaddleBoat(SPaddleBoat),
     PlayerLoaded,
     ChatCommand(SChatCommand),
     CommandSuggestion(SCommandSuggestion),
@@ -212,6 +213,7 @@ impl ScheduledPlayPacket {
             | ScheduledPlayPacketKind::ChatAck(_)
             | ScheduledPlayPacketKind::MovePlayer(_)
             | ScheduledPlayPacketKind::MoveVehicle(_)
+            | ScheduledPlayPacketKind::PaddleBoat(_)
             | ScheduledPlayPacketKind::ContainerClick(_)
             | ScheduledPlayPacketKind::RenameItem(_)
             | ScheduledPlayPacketKind::UseItemOn(_)
@@ -279,6 +281,7 @@ impl ScheduledPlayPacket {
             ScheduledPlayPacketKind::ClientTickEnd => player.handle_client_tick_end(),
             ScheduledPlayPacketKind::MovePlayer(packet) => player.handle_move_player(packet),
             ScheduledPlayPacketKind::MoveVehicle(packet) => player.handle_move_vehicle(packet),
+            ScheduledPlayPacketKind::PaddleBoat(packet) => player.handle_paddle_boat(&packet),
             ScheduledPlayPacketKind::PlayerLoaded => {
                 if player.mark_client_loaded_from_network() {
                     player.send_inventory_to_remote();
@@ -742,6 +745,9 @@ impl JavaConnection {
             )),
             play::S_MOVE_VEHICLE => scheduled(ScheduledPlayPacketKind::MoveVehicle(
                 SMoveVehicle::read_packet(data)?,
+            )),
+            play::S_PADDLE_BOAT => scheduled(ScheduledPlayPacketKind::PaddleBoat(
+                SPaddleBoat::read_packet(data)?,
             )),
             play::S_PLAYER_LOADED => {
                 let _ = SPlayerLoad::read_packet(data)?;

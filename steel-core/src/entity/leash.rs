@@ -426,7 +426,7 @@ impl LeashData {
         self.angular_momentum = 0.0;
     }
 
-    pub(super) fn save(&self, nbt: &mut NbtCompound) {
+    pub(crate) fn save(&self, nbt: &mut NbtCompound) {
         if let Some(attachment) = self.saved_attachment() {
             match attachment {
                 LeashAttachment::Entity(uuid) => {
@@ -441,7 +441,7 @@ impl LeashData {
         }
     }
 
-    pub(super) fn load(nbt: BorrowedNbtCompoundView<'_, '_>) -> Option<Self> {
+    pub(crate) fn load(nbt: BorrowedNbtCompoundView<'_, '_>) -> Option<Self> {
         if let Some(leash) = nbt.compound("leash")
             && let Some(uuid_array) = leash.int_array("UUID")
             && let Some(uuid) = Uuid::from_int_array(&uuid_array)

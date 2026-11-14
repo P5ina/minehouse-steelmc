@@ -1261,6 +1261,7 @@ fn closest_direction_with_blocked_neighbors(
     })
 }
 
+mod boat;
 mod damage;
 mod death_loot;
 mod equipment_and_freezing;
