@@ -8,6 +8,7 @@ use steel_registry::blocks::block_state_ext::BlockStateExt as _;
 use steel_registry::blocks::shapes::VoxelShape;
 use steel_registry::entity_type::EntityTypeRef;
 use steel_registry::vanilla_block_tags::BlockTag;
+use steel_registry::vanilla_blocks;
 use steel_utils::{BlockPos, BlockStateId, Direction};
 
 use crate::behavior::{BLOCK_BEHAVIORS, BlockCollisionContext};
@@ -38,6 +39,45 @@ pub(crate) fn on_top_of_collider_no_leaves(
             VoxelShape::EMPTY,
             Direction::Up,
         )
+}
+
+/// Vanilla `Strategy.LEGACY_IRON_GOLEM`: on a solid block (or powder snow)
+/// with air or liquid above, never on glass, leaves, ice and a few other
+/// see-through or special blocks.
+pub(crate) fn legacy_iron_golem(
+    _world: &World,
+    _pos: BlockPos,
+    state: BlockStateId,
+    _above_pos: BlockPos,
+    above_state: BlockStateId,
+) -> bool {
+    let block = state.get_block();
+    let path = block.key.path.as_ref();
+    // Vanilla `StainedGlassBlock` and `StainedGlassPaneBlock` are exactly the
+    // sixteen colored glass blocks and panes.
+    let stained_glass = path.ends_with("_stained_glass") || path.ends_with("_stained_glass_pane");
+    let excluded = [
+        &vanilla_blocks::COBWEB,
+        &vanilla_blocks::CACTUS,
+        &vanilla_blocks::GLASS_PANE,
+        &vanilla_blocks::CONDUIT,
+        &vanilla_blocks::ICE,
+        &vanilla_blocks::TNT,
+        &vanilla_blocks::GLOWSTONE,
+        &vanilla_blocks::BEACON,
+        &vanilla_blocks::SEA_LANTERN,
+        &vanilla_blocks::FROSTED_ICE,
+        &vanilla_blocks::TINTED_GLASS,
+        &vanilla_blocks::GLASS,
+    ]
+    .into_iter()
+    .any(|excluded| block == excluded);
+    // Every vanilla `LeavesBlock` is in the leaves tag.
+    if excluded || stained_glass || block.has_tag(&BlockTag::LEAVES) {
+        return false;
+    }
+    (above_state.is_air() || above_state.get_block().config.liquid)
+        && (state.is_solid() || block == &vanilla_blocks::POWDER_SNOW)
 }
 
 fn collision_shape_is_empty(world: &World, pos: BlockPos, state: BlockStateId) -> bool {
