@@ -17,7 +17,7 @@ use std::sync::Arc;
 use steel_math::wrap_degrees;
 use steel_protocol::packets::game::{
     CMoveVehicle, CPlayerPosition, PlayerCommandAction, RelativeMovement, SAcceptTeleportation,
-    SMovePlayer, SMoveVehicle, SPlayerCommand, SPlayerInput,
+    SMovePlayer, SMoveVehicle, SPaddleBoat, SPlayerCommand, SPlayerInput,
 };
 use steel_registry::entity_type::EntityTypeRef;
 use steel_registry::stat::custom::CustomStatRef;
@@ -949,6 +949,15 @@ impl Player {
         )
     }
 
+    /// Vanilla `ServerGamePacketListenerImpl.handlePaddleBoat`.
+    pub fn handle_paddle_boat(&self, packet: &SPaddleBoat) {
+        if let Some(vehicle) = self.controlled_vehicle()
+            && let Some(boat) = vehicle.as_abstract_boat()
+        {
+            boat.set_paddle_state(packet.left, packet.right);
+        }
+    }
+
     /// Handles a player input packet (movement keys, sneaking, sprinting).
     pub fn handle_player_input(&self, packet: SPlayerInput) {
         // Vanilla stores the input unconditionally before the guard check.
@@ -1016,13 +1025,14 @@ impl Player {
                 }
             }
             PlayerCommandAction::OpenVehicleInventory => {
-                // Vanilla `HasCustomInventoryScreen`; chest boats and minecarts
-                // join this once they have inventory screens.
+                // Vanilla `HasCustomInventoryScreen`.
                 if let Some(vehicle) = self.vehicle() {
                     if let Some(horse) = vehicle.as_abstract_horse() {
                         horse.open_custom_inventory_screen(self);
                     } else if let Some(nautilus) = vehicle.as_abstract_nautilus() {
                         nautilus.open_custom_inventory_screen(self);
+                    } else if let Some(boat) = vehicle.as_abstract_boat() {
+                        boat.open_custom_inventory_screen(self);
                     }
                 }
             }

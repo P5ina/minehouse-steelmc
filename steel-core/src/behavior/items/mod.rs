@@ -6,6 +6,7 @@
 mod air;
 mod block_item;
 pub(crate) mod block_transformer;
+mod boat_item;
 mod bonemeal;
 mod bottle;
 pub(crate) mod bow;
@@ -51,6 +52,7 @@ mod lead;
 
 pub use air::AirItem;
 pub use block_item::{BlockItem, DoubleHighBlockItem};
+pub use boat_item::BoatItem;
 pub use bonemeal::BoneMealItem;
 pub use bottle::BottleItem;
 pub use bow::BowItem;

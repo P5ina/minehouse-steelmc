@@ -88,6 +88,7 @@ mod s_container_slot_state_changed;
 mod s_interact;
 mod s_move_player;
 mod s_move_vehicle;
+mod s_paddle_boat;
 mod s_pick_item_from_block;
 mod s_player_abilities;
 mod s_player_action;
@@ -224,6 +225,7 @@ pub use s_move_player::{
     SMovePlayer, SMovePlayerPos, SMovePlayerPosRot, SMovePlayerRot, SMovePlayerStatusOnly,
 };
 pub use s_move_vehicle::SMoveVehicle;
+pub use s_paddle_boat::SPaddleBoat;
 pub use s_pick_item_from_block::SPickItemFromBlock;
 pub use s_player_abilities::SPlayerAbilities;
 pub use s_player_action::{PlayerAction, SPlayerAction};

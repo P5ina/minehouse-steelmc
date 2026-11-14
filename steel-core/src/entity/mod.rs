@@ -498,7 +498,7 @@ fn collided_with_fluid(
     )
 }
 
-fn physics_state_for_move(entity: &dyn Entity) -> EntityPhysicsState {
+pub(crate) fn physics_state_for_move(entity: &dyn Entity) -> EntityPhysicsState {
     entity.base().physics_state(base::EntityPhysicsStateInput {
         max_up_step: entity.max_up_step(),
         backs_off_from_edge: entity.backs_off_from_edge(),
