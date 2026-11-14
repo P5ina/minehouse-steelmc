@@ -7,13 +7,15 @@ use simdnbt::owned::{NbtCompound, NbtList};
 use steel_registry::data_components::DataComponentMap;
 use steel_registry::data_components::components::PotionContents;
 use steel_registry::data_components::vanilla_components::{
-    ADDITIONAL_TRADE_COST, DYED_COLOR, POTION_CONTENTS, STORED_ENCHANTMENTS,
-    SUSPICIOUS_STEW_EFFECTS,
+    ADDITIONAL_TRADE_COST, DYED_COLOR, MAP_DECORATIONS, MAP_ID, POTION_CONTENTS,
+    STORED_ENCHANTMENTS, SUSPICIOUS_STEW_EFFECTS,
 };
 use steel_registry::item_stack::ItemStack;
+use steel_registry::loot_table::ExplorationMaps;
 use steel_registry::vanilla_villager_trades::{
     TRADE_ARMORER_1_EMERALD_IRON_HELMET,
     TRADE_CARTOGRAPHER_2_EMERALD_AND_COMPASS_EXPLORER_JUNGLE_MAP,
+    TRADE_CARTOGRAPHER_2_EMERALD_AND_COMPASS_VILLAGE_PLAINS_MAP,
     TRADE_FARMER_4_EMERALD_SUSPICIOUS_STEW, TRADE_FLETCHER_5_ARROW_AND_EMERALD_TIPPED_ARROW,
     TRADE_LEATHERWORKER_1_EMERALD_DYED_LEATHER_CHESTPLATE,
     TRADE_LIBRARIAN_1_EMERALD_AND_BOOK_ENCHANTED_BOOK, TRADE_SETS,
@@ -24,8 +26,8 @@ use steel_registry::{
     init_vanilla_registry, vanilla_entities, vanilla_items, vanilla_potions,
     vanilla_villager_professions, vanilla_villager_types,
 };
-use steel_utils::Identifier;
 use steel_utils::random::legacy_random::LegacyRandom;
+use steel_utils::{BlockPos, Identifier};
 
 use super::{
     ItemCost, MerchantOffer, MerchantOffers, TradeContext, add_offers_from_trade_set, get_offer,
@@ -34,6 +36,8 @@ use super::{
 use crate::behavior::init_behaviors;
 use crate::entity::entities::mobs::villagers::VillagerEntity;
 use crate::entity::{Entity as _, init_entities};
+use crate::test_support::fresh_test_world;
+use crate::world::maps::exploration::{ExplorationMapAnswer, ExplorationMapAnswers};
 
 const SEEDS: u64 = 64;
 
@@ -41,6 +45,8 @@ fn plains_ctx(random: &mut LegacyRandom) -> TradeContext<'_, LegacyRandom> {
     TradeContext {
         random,
         merchant_variant: Some(&vanilla_villager_types::PLAINS),
+        origin: DVec3::ZERO,
+        exploration_maps: None,
     }
 }
 
@@ -135,8 +141,64 @@ fn merchant_predicates_check_the_villager_type() {
     let mut ctx = TradeContext {
         random: &mut random,
         merchant_variant: None,
+        origin: DVec3::ZERO,
+        exploration_maps: None,
     };
     assert!(get_offer(trade, &mut ctx).is_none());
+}
+
+#[test]
+fn map_trades_sell_the_map_their_structure_search_found() {
+    init_vanilla_registry();
+    init_behaviors();
+    let fixture = fresh_test_world("trade_exploration_maps");
+    let world = &fixture.world;
+    let trade = &TRADE_CARTOGRAPHER_2_EMERALD_AND_COMPASS_VILLAGE_PLAINS_MAP;
+    let origin = DVec3::new(10.5, 64.0, -3.5);
+    let mut random = LegacyRandom::from_seed(0);
+    let mut roll = |maps: &mut dyn ExplorationMaps| {
+        get_offer(
+            trade,
+            &mut TradeContext {
+                random: &mut random,
+                merchant_variant: Some(&vanilla_villager_types::TAIGA),
+                origin,
+                exploration_maps: Some(maps),
+            },
+        )
+    };
+
+    // Before the search answers, the map stays plain and the trade is dropped.
+    let mut answers = Vec::new();
+    let mut maps = ExplorationMapAnswers::new(world, &mut answers);
+    assert!(roll(&mut maps).is_none());
+    let request = maps.into_missing().expect("the trade asks for a search");
+    assert_eq!(
+        request.destination,
+        Identifier::vanilla_static("on_plains_village_maps")
+    );
+    assert_eq!(
+        request.decoration,
+        Identifier::vanilla_static("village_plains")
+    );
+    assert_eq!((request.zoom, request.search_radius), (2, 100));
+    assert!(request.skip_existing_chunks);
+    assert_eq!(request.origin, (10.5, 64.0, -3.5));
+
+    let mut answers = vec![ExplorationMapAnswer::Found {
+        pos: BlockPos::new(500, 70, 800),
+        map: None,
+    }];
+    let offer = roll(&mut ExplorationMapAnswers::new(world, &mut answers))
+        .expect("a found village sells its map");
+    assert!(offer.result().is(&vanilla_items::PLAINS_VILLAGE_MAP));
+    assert!(offer.result().has(MAP_ID));
+    let marker = offer
+        .result()
+        .get(MAP_DECORATIONS)
+        .and_then(|decorations| decorations.decorations().get("+").cloned())
+        .expect("the village marker");
+    assert_eq!((marker.x(), marker.z()), (500.0, 800.0));
 }
 
 #[test]
@@ -186,6 +248,8 @@ fn water_bottle_costs_require_a_water_potion() {
     let mut ctx = TradeContext {
         random: &mut random,
         merchant_variant: None,
+        origin: DVec3::ZERO,
+        exploration_maps: None,
     };
     let offer =
         get_offer(&TRADE_WANDERING_TRADER_WATER_BOTTLE_EMERALD, &mut ctx).expect("water offer");

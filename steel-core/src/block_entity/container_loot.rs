@@ -23,9 +23,7 @@ use crate::entity::{LivingEntity as _, entity_loot_ref, living_loot_equipment};
 use crate::inventory::container::Container;
 use crate::player::Player;
 use crate::world::World;
-use crate::world::maps::exploration::{
-    ExplorationMapAnswer, ExplorationMapAnswers, ExplorationMapSearch,
-};
+use crate::world::maps::exploration::{ExplorationMapAnswers, ExplorationRoll};
 
 /// NBT key of the deferred loot table.
 pub const LOOT_TABLE_TAG: &str = "LootTable";
@@ -50,13 +48,6 @@ pub enum LootUnpack {
     Rolled,
     /// The roll waits for an exploration map search; the table stays pending.
     Searching,
-}
-
-/// A roll waiting on exploration map searches, replayed with the same seed.
-struct ExplorationRoll {
-    seed: u64,
-    answers: Vec<ExplorationMapAnswer>,
-    search: Option<ExplorationMapSearch>,
 }
 
 /// The loot table a container still has to roll.
@@ -154,36 +145,26 @@ impl ContainerLoot {
         );
 
         let mut exploration = self.exploration.lock();
-        let roll = exploration.get_or_insert_with(|| ExplorationRoll {
-            #[expect(
-                clippy::cast_sign_loss,
-                reason = "the seed's bits are reused as the random source's seed"
-            )]
-            seed: if pending.seed == 0 {
+        let roll = exploration.get_or_insert_with(|| {
+            ExplorationRoll::new(if pending.seed == 0 {
                 rand::rng().random()
             } else {
-                pending.seed as u64
-            },
-            answers: Vec::new(),
-            search: None,
+                #[expect(
+                    clippy::cast_sign_loss,
+                    reason = "the seed's bits are reused as the random source's seed"
+                )]
+                let seed = pending.seed as u64;
+                seed
+            })
         });
-        if let Some(search) = &mut roll.search {
-            let Some(found) = search.poll() else {
-                return LootUnpack::Searching;
-            };
-            roll.answers.push(found);
-            roll.search = None;
-        }
-
-        let mut rng = StdRng::seed_from_u64(roll.seed);
-        let mut maps = ExplorationMapAnswers::new(world, &mut roll.answers);
-        let items = roll_items(table, origin, player, &mut rng, &mut maps);
-        if let Some(request) = maps.into_missing() {
-            roll.search = Some(ExplorationMapSearch::start(world, &request));
+        let mut rng = StdRng::seed_from_u64(roll.seed());
+        let Some(items) = roll.roll(world, |maps| {
+            roll_items(table, origin, player, &mut rng, maps)
+        }) else {
             drop(exploration);
             world.track_exploration_loot(self);
             return LootUnpack::Searching;
-        }
+        };
         *exploration = None;
         drop(exploration);
         *self.pending.lock() = None;
@@ -193,19 +174,10 @@ impl ContainerLoot {
 
     /// Polls the running exploration map search; false once there is none.
     pub(crate) fn advance_exploration_search(&self) -> bool {
-        let mut exploration = self.exploration.lock();
-        let Some(roll) = exploration.as_mut() else {
-            return false;
-        };
-        let Some(search) = &mut roll.search else {
-            return false;
-        };
-        let Some(found) = search.poll() else {
-            return true;
-        };
-        roll.answers.push(found);
-        roll.search = None;
-        false
+        self.exploration
+            .lock()
+            .as_mut()
+            .is_some_and(ExplorationRoll::advance)
     }
 }
 

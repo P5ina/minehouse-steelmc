@@ -1,5 +1,6 @@
 //! Vanilla `VillagerTrade.getOffer` and `AbstractVillager.addOffersFromTradeSet`.
 
+use glam::DVec3;
 use steel_registry::data_components::DataComponentMap;
 use steel_registry::data_components::components::{
     DyedItemColor, PotionContents, SuspiciousStewEffect, SuspiciousStewEffects,
@@ -10,6 +11,7 @@ use steel_registry::data_components::vanilla_components::{
 };
 use steel_registry::enchantment::EnchantmentRef;
 use steel_registry::item_stack::ItemStack;
+use steel_registry::loot_table::{ExplorationMapRequest, ExplorationMaps};
 use steel_registry::potion::PotionRef;
 use steel_registry::villager_profession::VillagerProfessionRef;
 use steel_registry::villager_trade::{
@@ -50,6 +52,11 @@ pub struct TradeContext<'a, R: Random> {
     pub random: &'a mut R,
     /// The merchant's `villager/variant` component; `None` for a wandering trader.
     pub merchant_variant: Option<VillagerTypeRef>,
+    /// Vanilla `ORIGIN`: the merchant's position.
+    pub origin: DVec3,
+    /// The level's structure search for exploration maps; without one, map trades
+    /// find no structure and are dropped.
+    pub exploration_maps: Option<&'a mut dyn ExplorationMaps>,
 }
 
 impl<R: Random> TradeContext<'_, R> {
@@ -316,10 +323,30 @@ fn apply_modifier<R: Random>(
             }
             result
         }
-        TradeItemModifier::ExplorationMap { .. } => {
-            // TODO: Steel has no map saved data yet. Vanilla returns the plain map
-            // when no destination structure is found, which the `map_id` filter that
-            // follows every vanilla exploration map trade then discards.
+        TradeItemModifier::ExplorationMap {
+            destination,
+            decoration,
+            zoom,
+            search_radius,
+            skip_existing_chunks,
+        } => {
+            // Vanilla `ExplorationMapFunction.run`: without a structure the plain map
+            // stays, which the `map_id` filter after every map trade then discards.
+            if !item.is_empty()
+                && let Some(maps) = ctx.exploration_maps.as_deref_mut()
+            {
+                maps.create_exploration_map(
+                    &mut item,
+                    ExplorationMapRequest {
+                        destination: destination.clone(),
+                        decoration: decoration.clone(),
+                        zoom: *zoom,
+                        search_radius: *search_radius,
+                        skip_existing_chunks: *skip_existing_chunks,
+                        origin: (ctx.origin.x, ctx.origin.y, ctx.origin.z),
+                    },
+                );
+            }
             item
         }
         TradeItemModifier::SetPotion { id } => {

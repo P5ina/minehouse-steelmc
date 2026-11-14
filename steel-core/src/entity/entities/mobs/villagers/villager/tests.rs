@@ -13,14 +13,16 @@ use steel_utils::types::InteractionHand;
 use steel_utils::{ChunkPos, Downcast as _, Identifier, WorldAabb};
 use uuid::Uuid;
 
-use super::VillagerEntity;
+use super::{PendingTrades, VillagerEntity};
 use crate::behavior::{InteractionResult, init_behaviors};
 use crate::entity::ai::gossip::ReputationEventType;
 use crate::entity::entities::mobs::villagers::Merchant;
+use crate::entity::entities::mobs::villagers::trading::{MerchantOffers, profession_trade_set};
 use crate::entity::entities::mobs::villagers::villager_data::villager_type_by_biome;
 use crate::entity::entities::{LightningBoltEntity, WitchEntity};
 use crate::entity::{AgeableMob, Entity, Mob, SharedEntity, init_entities, next_entity_id};
 use crate::test_support::{TestPlayerBuilder, fresh_test_world, insert_ready_full_chunk};
+use crate::world::maps::exploration::{ExplorationMapAnswers, ExplorationRoll};
 
 fn villager(id: i32) -> VillagerEntity {
     VillagerEntity::new(&vanilla_entities::VILLAGER, id, DVec3::ZERO, Weak::new())
@@ -272,4 +274,58 @@ fn trading_starts_with_reputation_discounts() {
     // Closing the screen clears the trading player and the discounts.
     Merchant::set_trading_player(&mob, None);
     assert!(mob.with_offers(|offers| offers.iter().all(|offer| offer.special_price_diff() == 0)));
+}
+
+#[test]
+fn a_map_trade_level_adds_its_offers_once_the_structure_search_answers() {
+    init_vanilla_registry();
+    init_behaviors();
+    init_entities();
+    let fixture = fresh_test_world("villager_map_trades");
+    let world = &fixture.world;
+    let mob = VillagerEntity::new(
+        &vanilla_entities::VILLAGER,
+        next_entity_id(),
+        DVec3::new(0.5, 64.0, 0.5),
+        Arc::downgrade(world),
+    );
+    mob.set_villager_data(
+        &vanilla_villager_types::TAIGA,
+        &vanilla_villager_professions::CARTOGRAPHER,
+        2,
+    );
+    mob.set_offers(MerchantOffers::new());
+    let trade_set = profession_trade_set(mob.profession(), 2).expect("cartographer level 2");
+    let seed = (0..64)
+        .find(|&seed| {
+            let mut answers = Vec::new();
+            let mut maps = ExplorationMapAnswers::new(world, &mut answers);
+            mob.roll_trade_set(seed, trade_set, Some(&mut maps));
+            maps.into_missing().is_some()
+        })
+        .expect("a seed that rolls a map trade");
+
+    let mut pending = PendingTrades {
+        roll: ExplorationRoll::new(seed),
+        trade_set,
+    };
+    assert!(mob.try_roll_trades(world, &mut pending).is_none());
+    mob.state.lock().pending_trades.push(pending);
+    assert_eq!(mob.with_offers(|offers| offers.len()), 0);
+
+    // The test world places no structures, so each map trade is dropped, and the
+    // replay may roll another map trade with its own search, until the level gets
+    // trades without maps.
+    for _ in 0..16 {
+        mob.advance_pending_trades();
+    }
+    assert!(mob.state.lock().pending_trades.is_empty());
+    // Of a taiga cartographer's level 2 trades, only the glass pane sells no map.
+    let offers = mob.with_offers(|offers| offers.clone());
+    assert_eq!(offers.len(), 1);
+    assert!(
+        offers
+            .get(0)
+            .is_some_and(|offer| offer.result().is(&vanilla_items::EMERALD))
+    );
 }

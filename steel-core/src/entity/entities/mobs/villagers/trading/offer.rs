@@ -400,6 +400,11 @@ impl MerchantOffers {
         self.offers.push(offer);
     }
 
+    /// Appends every offer of `other`, in order.
+    pub fn append(&mut self, mut other: Self) {
+        self.offers.append(&mut other.offers);
+    }
+
     /// Number of offers.
     #[must_use]
     pub const fn len(&self) -> usize {

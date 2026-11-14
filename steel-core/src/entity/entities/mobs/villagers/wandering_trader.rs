@@ -283,24 +283,27 @@ impl WanderingTraderEntity {
 
     /// Vanilla `AbstractVillager.getOffers`: rolls the trades on first use.
     pub fn with_offers<T>(&self, f: impl FnOnce(&mut MerchantOffers) -> T) -> T {
+        let origin = self.position();
         let mut state = self.state.lock();
         let offers = state.offers.get_or_insert_with(|| {
             let mut offers = MerchantOffers::new();
-            Self::update_trades(&mut offers);
+            Self::update_trades(&mut offers, origin);
             offers
         });
         f(offers)
     }
 
     /// Vanilla `WanderingTrader.updateTrades`: one buying trade set, then the
-    /// uncommon and the common ones.
-    fn update_trades(offers: &mut MerchantOffers) {
+    /// uncommon and the common ones. None of its trades sells an exploration map.
+    fn update_trades(offers: &mut MerchantOffers, origin: DVec3) {
         // Vanilla seeds the trade set's random sequence from the world; Steel has no
         // random sequences yet, so every roll gets a fresh seed.
         let mut random = Xoroshiro::from_seed(rand::random());
         let mut ctx = TradeContext {
             random: &mut random,
             merchant_variant: None,
+            origin,
+            exploration_maps: None,
         };
         for key in &TRADE_SETS {
             match trade_set(key) {
