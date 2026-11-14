@@ -89,6 +89,9 @@ pub trait BlockAttachedEntity: Entity {
 
     fn drop_item(&self, caused_by: Option<&dyn Entity>);
 
+    /// Vanilla `BlockAttachedEntity.onKilled`, run before the entity is removed as killed.
+    fn on_killed(&self) {}
+
     fn recalculate_bounding_box(&self) -> Result<(), EntityMoveError>;
 
     fn tick_block_attached_entity(self: Arc<Self>) {
@@ -124,6 +127,7 @@ pub trait BlockAttachedEntity: Entity {
     /// Removes this entity as killed, attributing the death game event to `attributed_to`
     /// (or to this entity when `None`).
     fn kill_attributed(&self, attributed_to: Option<&dyn Entity>) {
+        self.on_killed();
         self.set_removed(RemovalReason::Killed);
         self.game_event_with_source_entity(
             &vanilla_game_events::ENTITY_DIE,
@@ -160,11 +164,8 @@ pub trait BlockAttachedEntity: Entity {
     }
 
     fn drop_if_dvec3_is_nonzero(&self, impulse: DVec3) {
-        if let Some(world) = self.level()
-            && !self.is_removed()
-            && impulse.length_squared() > 0.0
-        {
-            self.kill(&world);
+        if self.level().is_some() && !self.is_removed() && impulse.length_squared() > 0.0 {
+            self.kill_attributed(None);
             self.drop_item(None);
         }
     }

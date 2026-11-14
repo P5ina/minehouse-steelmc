@@ -2,6 +2,7 @@
 
 mod banner;
 mod data;
+mod frame;
 
 use std::io;
 use std::sync::{Arc, OnceLock};
@@ -15,6 +16,7 @@ use wincode::{SchemaRead, SchemaWrite};
 pub use banner::MapBanner;
 pub(crate) use data::java_floor;
 pub use data::{HoldingPlayer, MAP_SIZE, MAX_SCALE, MapItemSavedData, TRACKED_DECORATION_LIMIT};
+pub use frame::MapFrame;
 
 /// A loaded map, shared by every world in the domain.
 pub type SharedMapData = Arc<SyncMutex<MapItemSavedData>>;

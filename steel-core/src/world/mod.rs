@@ -19,6 +19,7 @@ use crate::chunk::light::{
 };
 use crate::chunk::status::ChunkStatus;
 use crate::entity::damage::DamageHistory;
+use crate::entity::entities::ItemFrameEntity;
 use crate::entity::entity_selector::no_creative_or_spectator;
 use crate::poi::OccupationStatus;
 use crate::portal::WorldChangeRequest;
@@ -688,7 +689,7 @@ impl World {
 
         {
             let _span = tracing::trace_span!("entity_tracker_send_changes").entered();
-            self.entity_tracker.send_changes(
+            let framed_map_syncs = self.entity_tracker.send_changes(
                 |chunk| self.get_packet_tracking_players(chunk),
                 |player_id| self.players.get_by_entity_id(player_id),
                 EntityChangeSenders {
@@ -768,6 +769,11 @@ impl World {
                     },
                 },
             );
+            for frame in framed_map_syncs {
+                if let Some(frame) = frame.downcast_ref::<ItemFrameEntity>() {
+                    frame.sync_framed_map(self);
+                }
+            }
         }
 
         chunk_map_timings

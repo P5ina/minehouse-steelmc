@@ -576,6 +576,12 @@ impl ServerEntityMovementSyncState {
         }
     }
 
+    /// Vanilla `ServerEntity.tickCount`: how many send-changes passes this entity has had.
+    #[must_use]
+    pub const fn tick_count(&self) -> i32 {
+        self.tick_count
+    }
+
     /// Selects packets for a vanilla `ServerEntity.sendChanges` movement pass.
     #[must_use]
     pub fn record_send_changes(
