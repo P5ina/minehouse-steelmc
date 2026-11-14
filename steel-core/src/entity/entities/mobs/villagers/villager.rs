@@ -248,7 +248,7 @@ impl VillagerEntity {
     /// Vanilla `refreshBrain` and `registerBrainGoals`: rebuilds the brain
     /// for the villager's age, keeping the saved memories, and picks up its
     /// schedule right away.
-    fn refresh_brain(&self) {
+    pub(crate) fn refresh_brain(&self) {
         let baby = AgeableMob::is_baby(self);
         let world = self.level();
         if let Some(world) = &world {
@@ -673,6 +673,11 @@ impl VillagerEntity {
             state.gossips.decay();
             state.last_gossip_decay_time = game_time;
         }
+    }
+
+    /// Vanilla `AbstractVillager.setOffers`.
+    pub fn set_offers(&self, offers: MerchantOffers) {
+        self.state.lock().offers = Some(offers);
     }
 
     /// Vanilla `AbstractVillager.getOffers`: rolls the first trades on first use.

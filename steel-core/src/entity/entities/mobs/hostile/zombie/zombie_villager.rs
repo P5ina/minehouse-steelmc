@@ -1,8 +1,8 @@
 //! Vanilla `ZombieVillager`: a zombie that keeps the villager it once was.
 //!
 //! It carries the villager's data, trades, gossip and experience so that
-//! curing can hand them back. Curing itself (the golden apple and the
-//! conversion back into a villager) lives with the villager.
+//! curing (weakness plus a golden apple) can hand them back to the villager
+//! it turns into.
 
 use std::sync::{Arc, Weak};
 
@@ -10,37 +10,58 @@ use glam::DVec3;
 use simdnbt::borrow::NbtCompound as BorrowedNbtCompoundView;
 use simdnbt::owned::{NbtCompound, NbtTag};
 use steel_macros::entity_behavior;
+use steel_registry::blocks::block_state_ext::BlockStateExt as _;
+use steel_registry::enchantment_effect::EnchantmentEffectComponent;
 use steel_registry::entity_data::VillagerData;
 use steel_registry::entity_type::EntityTypeRef;
+use steel_registry::item_stack::ItemStack;
+use steel_registry::vanilla_block_tags::BlockTag;
 use steel_registry::vanilla_entity_data::ZombieVillagerEntityData;
 use steel_registry::villager_profession::VillagerProfessionRef;
 use steel_registry::villager_type::VillagerTypeRef;
 use steel_registry::{
-    REGISTRY, RegistryExt as _, vanilla_mob_effects, vanilla_villager_professions,
-    vanilla_villager_types,
+    REGISTRY, RegistryExt as _, level_events, vanilla_entities, vanilla_items, vanilla_mob_effects,
+    vanilla_villager_professions, vanilla_villager_types,
 };
 use steel_utils::entity_events::EntityStatus;
 use steel_utils::locks::SyncMutex;
 use steel_utils::random::legacy_random::LegacyRandom;
-use steel_utils::{DowncastType, DowncastTypeKey, UuidExt as _};
+use steel_utils::types::InteractionHand;
+use steel_utils::{BlockPos, Downcast as _, DowncastType, DowncastTypeKey, UuidExt as _};
 use uuid::Uuid;
 
 use super::{ZombieState, ZombieVariant, ZombieVariantSaveData, zombie_mob_base};
-use crate::entity::ai::gossip::GossipContainer;
+use crate::behavior::InteractionResult;
+use crate::entity::ai::gossip::{GossipContainer, ReputationEventType};
+use crate::entity::conversion::ConversionParams;
+use crate::entity::entities::VillagerEntity;
 use crate::entity::entities::mobs::villagers::trading::MerchantOffers;
 use crate::entity::entities::mobs::villagers::villager_data::{
     read_villager_data, villager_type_at, write_villager_data,
 };
 use crate::entity::{
-    Entity, EntityBase, EntityBaseLoad, EntitySpawnReason, LivingEntity, LivingEntityBase, MobBase,
-    MobEffectInstance, Monster, SpawnGroupData, SpawnRule,
+    Entity, EntityBase, EntityBaseLoad, EntitySpawnReason, LivingEntity, LivingEntityBase, Mob,
+    MobBase, MobEffectInstance, Monster, SpawnGroupData, SpawnRule,
 };
+use crate::inventory::container::Container as _;
+use crate::inventory::equipment::EquipmentSlot;
+use crate::player::Player;
 use crate::world::World;
 
 /// Vanilla `ZombieVillager.NOT_CONVERTING`.
 const NOT_CONVERTING: i32 = -1;
 /// Vanilla `ZombieVillager.DEFAULT_XP`.
 const DEFAULT_XP: i32 = 0;
+/// Vanilla `ZombieVillager.mobInteract`: the cure takes `3600 + nextInt(2401)` ticks.
+const MIN_CONVERSION_TIME: i32 = 3600;
+const CONVERSION_TIME_SPREAD: i32 = 2401;
+/// Vanilla `ZombieVillager.getConversionProgress`.
+const SPEED_UP_CHECK_CHANCE: f32 = 0.01;
+const SPEED_UP_BLOCK_CHANCE: f32 = 0.3;
+const MAX_SPEED_UP_BLOCKS: i32 = 14;
+const SPEED_UP_SEARCH_RADIUS: i32 = 4;
+/// Vanilla `ZombieVillager.finishConversion`: the cured villager's nausea.
+const CURED_NAUSEA_DURATION: i32 = 200;
 
 /// Server-only zombie villager state that is not synced to clients.
 pub(super) struct ZombieVillagerState {
@@ -215,6 +236,165 @@ impl ZombieVillagerEntity {
     /// Vanilla `setGossips`.
     pub fn set_gossips(&self, gossips: GossipContainer) {
         self.villager_state.lock().gossips = Some(gossips);
+    }
+
+    /// The server half of vanilla `ZombieVillager.tick`, run before the
+    /// zombie tick: counts the cure down and finishes it.
+    pub(super) fn tick_villager_conversion(&self) {
+        if !LivingEntity::is_alive(self) || !self.is_converting() {
+            return;
+        }
+        let Some(world) = self.level() else {
+            return;
+        };
+        let amount = self.conversion_progress(&world);
+        let finished = {
+            let mut state = self.villager_state.lock();
+            state.conversion_time -= amount;
+            state.conversion_time <= 0
+        };
+        if finished {
+            self.finish_conversion(&world);
+        }
+    }
+
+    /// Vanilla `ZombieVillager.getConversionProgress`: now and then, beds and
+    /// iron bars nearby speed the cure up.
+    fn conversion_progress(&self, world: &World) -> i32 {
+        let mut amount = 1;
+        if rand::random::<f32>() < SPEED_UP_CHECK_CHANCE {
+            let mut special_blocks = 0;
+            let pos = self.position();
+            // Vanilla truncates with `(int)` casts, not `floor`.
+            let (x, y, z) = (pos.x as i32, pos.y as i32, pos.z as i32);
+            let mut xx = x - SPEED_UP_SEARCH_RADIUS;
+            while xx < x + SPEED_UP_SEARCH_RADIUS && special_blocks < MAX_SPEED_UP_BLOCKS {
+                let mut yy = y - SPEED_UP_SEARCH_RADIUS;
+                while yy < y + SPEED_UP_SEARCH_RADIUS && special_blocks < MAX_SPEED_UP_BLOCKS {
+                    let mut zz = z - SPEED_UP_SEARCH_RADIUS;
+                    while zz < z + SPEED_UP_SEARCH_RADIUS && special_blocks < MAX_SPEED_UP_BLOCKS {
+                        let state = world.get_block_state(BlockPos::new(xx, yy, zz));
+                        if state
+                            .get_block()
+                            .has_tag(&BlockTag::SPEEDS_UP_ZOMBIE_VILLAGER_CURING)
+                        {
+                            if rand::random::<f32>() < SPEED_UP_BLOCK_CHANCE {
+                                amount += 1;
+                            }
+                            special_blocks += 1;
+                        }
+                        zz += 1;
+                    }
+                    yy += 1;
+                }
+                xx += 1;
+            }
+        }
+        amount
+    }
+
+    /// Vanilla `ZombieVillager.mobInteract`: a golden apple starts the cure
+    /// of a weakened zombie villager.
+    pub(super) fn mob_interact_zombie_villager(
+        &self,
+        player: &Player,
+        hand: InteractionHand,
+    ) -> InteractionResult {
+        let holds_golden_apple = player
+            .inventory
+            .lock()
+            .get_item_in_hand(hand)
+            .is(&vanilla_items::GOLDEN_APPLE);
+        if !holds_golden_apple {
+            return InteractionResult::Pass;
+        }
+        if !self.has_mob_effect(vanilla_mob_effects::WEAKNESS) {
+            return InteractionResult::Consume;
+        }
+        // Vanilla `ItemStack.consume(1, player)`.
+        if !player.has_infinite_materials() {
+            player.inventory.lock().shrink_item_in_hand(hand, 1);
+        }
+        let time = MIN_CONVERSION_TIME + rand::random_range(0..CONVERSION_TIME_SPREAD);
+        self.start_converting(Some(player.uuid()), time);
+        InteractionResult::SuccessServer
+    }
+
+    /// Vanilla `ZombieVillager.finishConversion`: turns back into the
+    /// villager it was, with its trades, gossip and experience.
+    fn finish_conversion(&self, world: &Arc<World>) {
+        let after_conversion = |converted: &dyn Mob| {
+            let converted: &dyn Entity = converted;
+            let Some(villager) = converted.downcast_ref::<VillagerEntity>() else {
+                return;
+            };
+            let kept = self.drop_preserved_equipment(&|item_stack: &ItemStack| {
+                !item_stack.has_enchantment_effect(EnchantmentEffectComponent::PreventArmorChange)
+            });
+            for slot in kept {
+                // Vanilla `villager.getSlot(slot.getIndex() + 300)`, which
+                // `AbstractVillager.getSlot` maps to inventory slot `getIndex()`.
+                let inventory_slot = index_within_type(slot);
+                let mut inventory = villager.inventory().lock();
+                if inventory_slot < inventory.get_container_size() {
+                    inventory.set_item(inventory_slot, self.equipment_in_slot(slot));
+                }
+            }
+
+            villager.set_villager_data_finalized(self.villager_data_finalized());
+            villager.set_villager_data(
+                self.villager_type(),
+                self.profession(),
+                self.villager_level(),
+            );
+            let (gossips, trade_offers, villager_xp, starter) = {
+                let state = self.villager_state.lock();
+                (
+                    state.gossips.clone(),
+                    state.trade_offers.clone(),
+                    state.villager_xp,
+                    state.conversion_starter,
+                )
+            };
+            if let Some(gossips) = gossips {
+                villager.set_gossips(&gossips);
+            }
+            if let Some(trade_offers) = trade_offers {
+                villager.set_offers(trade_offers);
+            }
+            villager.set_villager_xp(villager_xp);
+            villager.finalize_spawn(world, EntitySpawnReason::Conversion, None);
+            villager.refresh_brain();
+            if let Some(starter) = starter
+                && let Some(player) = world.players.get_by_uuid(&starter)
+            {
+                // TODO(advancements): vanilla triggers
+                // CriteriaTriggers.CURED_ZOMBIE_VILLAGER here.
+                villager.on_reputation_event_from(
+                    ReputationEventType::ZombieVillagerCured,
+                    player.uuid(),
+                );
+            }
+
+            let _ = villager.add_mob_effect(MobEffectInstance::with_duration(
+                vanilla_mob_effects::NAUSEA,
+                CURED_NAUSEA_DURATION,
+                0,
+            ));
+            if !self.is_silent() {
+                world.level_event(
+                    level_events::SOUND_ZOMBIE_CONVERTED,
+                    self.block_position(),
+                    0,
+                    None,
+                );
+            }
+        };
+        let _ = self.convert_to(
+            &vanilla_entities::VILLAGER,
+            ConversionParams::single(false, false),
+            Some(&after_conversion),
+        );
     }
 
     /// Vanilla `ZombieVillager.removeWhenFarAway`.
@@ -399,5 +579,19 @@ impl ZombieVariantSaveData for ZombieVillagerEntity {
             self.start_converting(starter, conversion_time);
         }
         self.villager_state.lock().villager_xp = nbt.int("Xp").unwrap_or(DEFAULT_XP);
+    }
+}
+
+/// Vanilla `EquipmentSlot.getIndex`: the slot's index within its own kind
+/// (hands, humanoid armor, body, saddle).
+const fn index_within_type(slot: EquipmentSlot) -> usize {
+    match slot {
+        EquipmentSlot::MainHand
+        | EquipmentSlot::Feet
+        | EquipmentSlot::Body
+        | EquipmentSlot::Saddle => 0,
+        EquipmentSlot::OffHand | EquipmentSlot::Legs => 1,
+        EquipmentSlot::Chest => 2,
+        EquipmentSlot::Head => 3,
     }
 }

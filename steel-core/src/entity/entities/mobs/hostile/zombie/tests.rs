@@ -14,25 +14,31 @@ use steel_registry::{
     vanilla_villager_types,
 };
 use steel_utils::geometry::WorldAabb;
+use steel_utils::types::InteractionHand;
 use steel_utils::types::{Difficulty, UpdateFlags};
-use steel_utils::{BlockPos, ChunkPos, Downcast as _};
+use steel_utils::{BlockPos, ChunkPos, Downcast as _, Identifier};
 
 use super::{
     DrownedEntity, GiantEntity, HuskEntity, ZombieEntity, ZombieGroupData, ZombieVillagerEntity,
 };
-use crate::behavior::init_behaviors;
+use crate::behavior::{InteractionResult, init_behaviors};
 use crate::entity::RangedAttackMob as _;
 use crate::entity::ai::navigation::NavigationKind;
 use crate::entity::ai::path::PathType;
 use crate::entity::damage::DamageSource;
 use crate::entity::entities::mobs::villagers::villager_data::villager_type_at;
+use crate::entity::entities::objects::items::ItemEntity;
 use crate::entity::entities::{CowEntity, VillagerEntity};
 use crate::entity::{
-    Entity, EntitySpawnReason, LivingEntity, Mob, SharedEntity, SpawnGroupData, init_entities,
-    next_entity_id,
+    Entity, EntitySpawnReason, LivingEntity, Mob, MobEffectInstance, SharedEntity, SpawnGroupData,
+    init_entities, next_entity_id,
 };
+use crate::inventory::container::Container as _;
 use crate::inventory::equipment::EquipmentSlot;
-use crate::test_support::{TestWorld, fresh_test_world, insert_ready_full_chunk};
+use crate::player::{Player, ResetReason};
+use crate::test_support::{
+    TestPlayerBuilder, TestWorld, fresh_test_world, insert_ready_full_chunk,
+};
 use crate::world::World;
 
 fn add<T: Entity + 'static>(world: &Arc<World>, entity: T) -> SharedEntity {
@@ -905,4 +911,176 @@ fn zombie_walks_to_an_occupied_village_poi() {
         !(0..200).any(|_| goal.can_use(zombie_ref)),
         "an unclaimed bed is no village"
     );
+}
+
+/// A zombie villager at the origin chunk's center, and a player in its world.
+fn zombie_villager_and_player(name: &'static str) -> (TestWorld, SharedEntity, Arc<Player>) {
+    init_vanilla_registry();
+    init_behaviors();
+    init_entities();
+    let fixture = fresh_test_world(name);
+    let world = &fixture.world;
+    insert_ready_full_chunk(world, ChunkPos::new(0, 0));
+    let zombie_villager = add(
+        world,
+        ZombieVillagerEntity::new(
+            &vanilla_entities::ZOMBIE_VILLAGER,
+            next_entity_id(),
+            DVec3::new(8.5, 65.0, 8.5),
+            Arc::downgrade(world),
+        ),
+    );
+    let player = TestPlayerBuilder::new(Arc::clone(world), "Healer", 900).build();
+    assert!(world.add_player(Arc::clone(&player), ResetReason::InitialJoin));
+    (fixture, zombie_villager, player)
+}
+
+#[test]
+fn golden_apple_cures_only_a_weakened_zombie_villager() {
+    let (_fixture, entity, player) = zombie_villager_and_player("zombie_villager_golden_apple");
+    let zombie_villager = entity
+        .downcast_ref::<ZombieVillagerEntity>()
+        .expect("zombie villager is concrete");
+    let apples_in_hand = || player.inventory.lock().get_selected_item().count();
+
+    player
+        .inventory
+        .lock()
+        .set_selected_item(ItemStack::new(&vanilla_items::APPLE));
+    assert_eq!(
+        zombie_villager.mob_interact(&player, InteractionHand::MainHand),
+        InteractionResult::Pass,
+        "only a golden apple cures"
+    );
+
+    player
+        .inventory
+        .lock()
+        .set_selected_item(ItemStack::with_count(&vanilla_items::GOLDEN_APPLE, 2));
+    assert_eq!(
+        zombie_villager.mob_interact(&player, InteractionHand::MainHand),
+        InteractionResult::Consume,
+        "without weakness the apple is refused but the click is used up"
+    );
+    assert_eq!(apples_in_hand(), 2);
+    assert!(!zombie_villager.is_converting());
+
+    let _ = zombie_villager.add_mob_effect(MobEffectInstance::with_duration(
+        vanilla_mob_effects::WEAKNESS,
+        600,
+        0,
+    ));
+    assert_eq!(
+        zombie_villager.mob_interact(&player, InteractionHand::MainHand),
+        InteractionResult::SuccessServer
+    );
+    assert_eq!(apples_in_hand(), 1, "one apple is eaten");
+    assert!(zombie_villager.is_converting());
+    assert_eq!(zombie_villager.conversion_starter(), Some(player.uuid()));
+    assert!((3600..=6000).contains(&zombie_villager.villager_conversion_time()));
+    assert!(!zombie_villager.has_mob_effect(vanilla_mob_effects::WEAKNESS));
+    assert!(zombie_villager.has_mob_effect(vanilla_mob_effects::STRENGTH));
+}
+
+#[test]
+fn cured_zombie_villager_turns_back_into_its_villager() {
+    let (fixture, entity, player) = zombie_villager_and_player("zombie_villager_cured");
+    let world = &fixture.world;
+    let zombie_villager = entity
+        .downcast_ref::<ZombieVillagerEntity>()
+        .expect("zombie villager is concrete");
+
+    // A farmer far from the cure lends its trades.
+    let farmer = VillagerEntity::new(
+        &vanilla_entities::VILLAGER,
+        next_entity_id(),
+        DVec3::new(1.5, 65.0, 1.5),
+        Arc::downgrade(world),
+    );
+    farmer.set_villager_data(
+        &vanilla_villager_types::DESERT,
+        &vanilla_villager_professions::FARMER,
+        2,
+    );
+    let offers = farmer.with_offers(|offers| offers.clone());
+    let offer_count = offers.iter().count();
+    assert!(offer_count > 0, "a farmer rolls trades");
+
+    zombie_villager.set_villager_data_finalized(true);
+    zombie_villager.set_villager_data(
+        &vanilla_villager_types::DESERT,
+        &vanilla_villager_professions::FARMER,
+        2,
+    );
+    zombie_villager.set_trade_offers(Some(offers));
+    zombie_villager.set_villager_xp(17);
+
+    let mut bound_helmet = ItemStack::new(&vanilla_items::IRON_HELMET);
+    bound_helmet.set_enchantments(&[(Identifier::vanilla_static("binding_curse"), 1)], false);
+    zombie_villager.set_item_slot(EquipmentSlot::Head, bound_helmet);
+    zombie_villager.set_item_slot(
+        EquipmentSlot::MainHand,
+        ItemStack::new(&vanilla_items::IRON_SWORD),
+    );
+    zombie_villager.set_guaranteed_drop(EquipmentSlot::MainHand);
+    zombie_villager.set_item_slot(
+        EquipmentSlot::Feet,
+        ItemStack::new(&vanilla_items::IRON_BOOTS),
+    );
+
+    zombie_villager.start_converting(Some(player.uuid()), 3600);
+    zombie_villager.set_villager_conversion_time(1);
+    Arc::clone(&entity).tick();
+
+    assert!(entity.is_removed(), "the zombie villager is gone");
+    let villager = world
+        .get_entities_in_aabb_matching(&around_villager(), |candidate| {
+            candidate.entity_type() == &vanilla_entities::VILLAGER
+        })
+        .into_iter()
+        .next()
+        .expect("the cure leaves a villager");
+    let villager = villager
+        .downcast_ref::<VillagerEntity>()
+        .expect("villager is concrete");
+    assert_eq!(
+        villager.villager_type().key,
+        vanilla_villager_types::DESERT.key
+    );
+    assert_eq!(
+        villager.profession().key,
+        vanilla_villager_professions::FARMER.key
+    );
+    assert_eq!(villager.villager_level(), 2);
+    assert_eq!(villager.villager_xp(), 17);
+    assert!(villager.villager_data_finalized());
+    assert_eq!(
+        villager.with_offers(|offers| offers.iter().count()),
+        offer_count
+    );
+    assert_eq!(
+        villager.player_reputation(player.uuid()),
+        20 * 5 + 25,
+        "the healer is remembered"
+    );
+    assert!(villager.has_mob_effect(vanilla_mob_effects::NAUSEA));
+
+    // Curse of binding keeps the helmet: vanilla puts it in inventory slot
+    // `EquipmentSlot.HEAD.getIndex()`, which is 3.
+    let inventory = villager.inventory().lock();
+    assert!(inventory.get_item(3).is(&vanilla_items::IRON_HELMET));
+    drop(inventory);
+    // The guaranteed sword drops; the boots go with the zombie.
+    let dropped = world.get_entities_in_aabb_matching(&around_villager(), |candidate| {
+        candidate
+            .downcast_ref::<ItemEntity>()
+            .is_some_and(|item| item.get_item().is(&vanilla_items::IRON_SWORD))
+    });
+    assert_eq!(dropped.len(), 1, "the preserved sword drops");
+    let boots = world.get_entities_in_aabb_matching(&around_villager(), |candidate| {
+        candidate
+            .downcast_ref::<ItemEntity>()
+            .is_some_and(|item| item.get_item().is(&vanilla_items::IRON_BOOTS))
+    });
+    assert!(boots.is_empty(), "unpreserved gear is not dropped");
 }
