@@ -164,7 +164,7 @@ pub(super) fn ingredient_tokens(value: &Value) -> TokenStream {
     }
 }
 
-fn identifier_tokens(identifier: &str) -> TokenStream {
+pub(super) fn identifier_tokens(identifier: &str) -> TokenStream {
     match identifier.split_once(':') {
         Some(("minecraft", path)) => quote! { Identifier::vanilla_static(#path) },
         Some((namespace, path)) => quote! { Identifier::new_static(#namespace, #path) },

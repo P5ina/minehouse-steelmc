@@ -5,6 +5,7 @@ mod barrel;
 mod beacon;
 mod beehive;
 mod bell;
+mod brewing_stand;
 mod brushable;
 mod campfire;
 mod chest;
@@ -39,6 +40,11 @@ pub use beehive::{
     BeehiveBlockEntity,
 };
 pub use bell::BellBlockEntity;
+pub(crate) use brewing_stand::BrewingStandContainer;
+pub use brewing_stand::{
+    BOTTLE_SLOTS, BREWING_STAND_SLOTS, BrewingStandBlockEntity, FUEL_SLOT as BREWING_FUEL_SLOT,
+    HAS_BOTTLE, INGREDIENT_SLOT as BREWING_INGREDIENT_SLOT,
+};
 pub use brushable::BrushableBlockEntity;
 pub use campfire::{CAMPFIRE_SLOTS, CampfireBlockEntity};
 pub use chest::{CHEST_SLOTS, ChestBlockEntity};

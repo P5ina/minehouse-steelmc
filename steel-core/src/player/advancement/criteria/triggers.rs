@@ -1,6 +1,8 @@
 //! Vanilla `CriteriaTriggers` fired by players.
 
+use steel_registry::data_components::vanilla_components::PotionContents;
 use steel_registry::item_stack::ItemStack;
+use steel_registry::{REGISTRY, TaggedRegistryExt as _};
 use steel_utils::Identifier;
 
 use super::trigger;
@@ -17,6 +19,8 @@ pub(crate) const SLEPT_IN_BED: Identifier = Identifier::vanilla_static("slept_in
 pub(crate) const RAID_WIN: Identifier = Identifier::vanilla_static("hero_of_the_village");
 /// `minecraft:voluntary_exile` (vanilla `CriteriaTriggers.RAID_OMEN`)
 pub(crate) const RAID_OMEN: Identifier = Identifier::vanilla_static("voluntary_exile");
+/// `minecraft:brewed_potion`
+pub(crate) const BREWED_POTION: Identifier = Identifier::vanilla_static("brewed_potion");
 /// `minecraft:inventory_changed`
 pub(crate) const INVENTORY_CHANGED: Identifier = Identifier::vanilla_static("inventory_changed");
 
@@ -25,6 +29,21 @@ impl Player {
     /// conditions of its own (`tick`, `location`, `slept_in_bed`, ...).
     pub(crate) fn trigger_player_criteria(&self, trigger_id: &Identifier) {
         trigger(self, trigger_id, |_| true);
+    }
+
+    /// Vanilla `BrewedPotionTrigger.trigger(player, potion)`.
+    pub(crate) fn trigger_brewed_potion(&self, contents: &PotionContents) {
+        trigger(self, &BREWED_POTION, |conditions| {
+            // Vanilla `PotionsPredicate.matches`.
+            conditions.potion.as_ref().is_none_or(|predicate| {
+                predicate.potions.as_ref().is_none_or(|potions| {
+                    contents.potion().is_some_and(|potion| {
+                        let potion = potion.value();
+                        potions.contains(&potion.key, |tag| REGISTRY.potions.is_in_tag(potion, tag))
+                    })
+                })
+            })
+        });
     }
 
     /// Vanilla `InventoryChangeTrigger.trigger(player, inventory, changedItem)`.
