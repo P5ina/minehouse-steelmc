@@ -18,39 +18,18 @@ use crate::block_entity::{BlockEntity, BlockEntityBase};
 use crate::world::World;
 
 pub use base_spawner::{BaseSpawner, BaseSpawnerConfig};
+pub(crate) use base_spawner::{
+    choose_weighted, configured_or_random_position, entity_type_from_owned_nbt, equip_from_table,
+};
 pub use spawn_data::{CustomSpawnRules, EquipmentTable, LightRange, SpawnData, WeightedSpawnData};
 
-/// Capability implemented by normal spawner block entities.
+/// Vanilla `Spawner`: a block entity a spawn egg can set the mob of.
 pub trait Spawner {
     /// Sets the next spawn entity type.
     fn set_entity_id(&self, entity_type: EntityTypeRef);
 
     /// Sets the next spawn entity type and merges the rest of `entity_data` into it.
     fn set_entity_data(&self, entity_data: &EntityData);
-
-    /// Returns the ticks left until the next spawn cycle.
-    fn spawn_delay(&self) -> i32;
-
-    /// Sets the ticks left until the next spawn cycle.
-    fn set_spawn_delay(&self, delay: i32);
-
-    /// Returns the spawn-cycle limits.
-    fn config(&self) -> BaseSpawnerConfig;
-
-    /// Replaces the spawn-cycle limits.
-    fn set_config(&self, config: BaseSpawnerConfig);
-
-    /// Returns the weighted entries the next spawn data is picked from.
-    fn spawn_potentials(&self) -> Vec<WeightedSpawnData>;
-
-    /// Replaces the weighted entries the next spawn data is picked from.
-    fn set_spawn_potentials(&self, potentials: Vec<WeightedSpawnData>);
-
-    /// Returns the active spawn data, if one has been selected.
-    fn next_spawn_data(&self) -> Option<SpawnData>;
-
-    /// Replaces the active spawn data.
-    fn set_next_spawn_data(&self, data: SpawnData);
 }
 
 /// Concrete normal mob-spawner block entity.
@@ -92,39 +71,53 @@ impl Spawner for SpawnerBlockEntity {
         self.spawner.set_entity_data(entity_data);
         self.save_and_sync();
     }
+}
 
-    fn spawn_delay(&self) -> i32 {
+impl SpawnerBlockEntity {
+    /// Returns the ticks left until the next spawn cycle.
+    #[must_use]
+    pub fn spawn_delay(&self) -> i32 {
         self.spawner.spawn_delay()
     }
 
-    fn set_spawn_delay(&self, delay: i32) {
+    /// Sets the ticks left until the next spawn cycle.
+    pub fn set_spawn_delay(&self, delay: i32) {
         self.spawner.set_spawn_delay(delay);
         self.save_and_sync();
     }
 
-    fn config(&self) -> BaseSpawnerConfig {
+    /// Returns the spawn-cycle limits.
+    #[must_use]
+    pub fn config(&self) -> BaseSpawnerConfig {
         self.spawner.config()
     }
 
-    fn set_config(&self, config: BaseSpawnerConfig) {
+    /// Replaces the spawn-cycle limits.
+    pub fn set_config(&self, config: BaseSpawnerConfig) {
         self.spawner.set_config(config);
         self.save_and_sync();
     }
 
-    fn spawn_potentials(&self) -> Vec<WeightedSpawnData> {
+    /// Returns the weighted entries the next spawn data is picked from.
+    #[must_use]
+    pub fn spawn_potentials(&self) -> Vec<WeightedSpawnData> {
         self.spawner.spawn_potentials()
     }
 
-    fn set_spawn_potentials(&self, potentials: Vec<WeightedSpawnData>) {
+    /// Replaces the weighted entries the next spawn data is picked from.
+    pub fn set_spawn_potentials(&self, potentials: Vec<WeightedSpawnData>) {
         self.spawner.set_spawn_potentials(potentials);
         self.save_and_sync();
     }
 
-    fn next_spawn_data(&self) -> Option<SpawnData> {
+    /// Returns the active spawn data, if one has been selected.
+    #[must_use]
+    pub fn next_spawn_data(&self) -> Option<SpawnData> {
         self.spawner.next_spawn_data()
     }
 
-    fn set_next_spawn_data(&self, data: SpawnData) {
+    /// Replaces the active spawn data.
+    pub fn set_next_spawn_data(&self, data: SpawnData) {
         self.spawner.set_next_spawn_data(data);
         self.save_and_sync();
     }

@@ -31,6 +31,7 @@ mod shulker_box;
 mod sign;
 mod skull;
 mod spawner;
+mod trial_spawner;
 mod unimplemented;
 mod vault;
 
@@ -86,6 +87,11 @@ pub use skull::SkullBlockEntity;
 pub use spawner::{
     BaseSpawner, BaseSpawnerConfig, CustomSpawnRules, EquipmentTable, LightRange, SpawnData,
     Spawner, SpawnerBlockEntity, WeightedSpawnData,
+};
+pub use trial_spawner::{
+    DEFAULT_PLAYER_SCAN_RANGE, DEFAULT_TARGET_COOLDOWN_LENGTH,
+    FullConfig as TrialSpawnerFullConfig, TrialSpawnerBlockEntity, TrialSpawnerConfig,
+    TrialSpawnerConfigHolder, WeightedLootTable,
 };
 pub use unimplemented::UnimplementedBlockEntity;
 pub use vault::{VaultBlockEntity, VaultConfig};

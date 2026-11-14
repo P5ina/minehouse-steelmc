@@ -90,7 +90,7 @@ pub struct CustomSpawnRules {
 }
 
 impl CustomSpawnRules {
-    pub(super) fn from_nbt(nbt: &NbtCompoundView<'_, '_>) -> Option<Self> {
+    pub(crate) fn from_nbt(nbt: &NbtCompoundView<'_, '_>) -> Option<Self> {
         Some(Self {
             block_light_limit: LightRange::from_nbt(nbt.get("block_light_limit"))?,
             sky_light_limit: LightRange::from_nbt(nbt.get("sky_light_limit"))?,
@@ -228,7 +228,7 @@ impl Default for SpawnData {
 }
 
 impl SpawnData {
-    pub(super) fn from_nbt(nbt: &NbtCompoundView<'_, '_>) -> Option<Self> {
+    pub(crate) fn from_nbt(nbt: &NbtCompoundView<'_, '_>) -> Option<Self> {
         let mut entity_to_spawn = nbt.compound("entity")?.to_owned();
         normalize_entity_id(&mut entity_to_spawn);
         let custom_spawn_rules = nbt
@@ -244,7 +244,7 @@ impl SpawnData {
         })
     }
 
-    pub(super) fn to_nbt(&self) -> NbtCompound {
+    pub(crate) fn to_nbt(&self) -> NbtCompound {
         let mut nbt = NbtCompound::new();
         nbt.insert("entity", self.entity_to_spawn.clone());
         if let Some(rules) = self.custom_spawn_rules {
