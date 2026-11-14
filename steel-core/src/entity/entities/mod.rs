@@ -30,7 +30,9 @@ pub use objects::display_ui::{
 };
 pub use objects::effects::{AreaEffectCloudEntity, LightningBoltEntity};
 pub use objects::explosives::{EndCrystalEntity, PrimedTntEntity};
-pub use objects::items::{ExperienceOrbEntity, FallingBlockEntity, ItemEntity};
+pub use objects::items::{
+    ExperienceOrbEntity, FallingBlockEntity, ItemEntity, OminousItemSpawnerEntity,
+};
 pub use objects::projectiles::ShulkerBulletEntity;
 pub use objects::projectiles::{AbstractWindCharge, BreezeWindChargeEntity, WindChargeEntity};
 pub use objects::projectiles::{

@@ -1,6 +1,12 @@
 //! Wind charge item behavior (vanilla `WindChargeItem.use`).
 
+use crate::behavior::projectile_item::{DispenseConfig, ProjectileItem, charge_direction};
+use crate::entity::AbstractHurtingProjectile as _;
+use crate::world::World;
 use std::sync::Arc;
+use steel_registry::blocks::properties::Direction;
+use steel_registry::item_stack::ItemStack;
+use steel_registry::level_events;
 
 use glam::DVec3;
 use steel_macros::item_behavior;
@@ -27,6 +33,10 @@ const THROW_PITCH_DIVISOR_MAX: f32 = 1.2;
 pub struct WindChargeItem;
 
 impl ItemBehavior for WindChargeItem {
+    fn as_projectile_item(&self) -> Option<&dyn ProjectileItem> {
+        Some(self)
+    }
+
     fn use_item(&self, context: &mut UseItemContext) -> InteractionResult {
         let player = context.player;
         let world = context.world;
@@ -76,5 +86,30 @@ impl ItemBehavior for WindChargeItem {
             .inv
             .with_item(|item| item.consume_one(has_infinite_materials));
         InteractionResult::Success
+    }
+}
+
+impl ProjectileItem for WindChargeItem {
+    fn as_projectile(
+        &self,
+        world: &Arc<World>,
+        position: DVec3,
+        _stack: &ItemStack,
+        direction: Direction,
+    ) -> SharedEntity {
+        let direction = charge_direction(direction);
+        let charge = WindChargeEntity::new(
+            &vanilla_entities::WIND_CHARGE,
+            next_entity_id(),
+            position,
+            Arc::downgrade(world),
+        );
+        charge.assign_directional_movement(direction);
+        charge.set_velocity(direction);
+        Arc::new(charge)
+    }
+
+    fn create_dispense_config(&self) -> DispenseConfig {
+        DispenseConfig::charge(level_events::SOUND_WIND_CHARGE_SHOOT)
     }
 }

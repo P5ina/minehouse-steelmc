@@ -20,6 +20,7 @@ use steel_registry::{
     RegistryEntry, level_events, vanilla_block_entity_types, vanilla_game_events,
     vanilla_particle_types,
 };
+use steel_utils::nbt::NbtNumeric as _;
 use steel_utils::nbt::{merge_nbt_compounds, nbt_compounds_equal};
 use steel_utils::types::UpdateFlags;
 use steel_utils::{
@@ -99,14 +100,7 @@ impl JukeboxBlockEntity {
     }
 
     fn value_input_long(tag: BorrowedNbtTag<'_, '_>) -> Option<i64> {
-        tag.byte()
-            .map(i64::from)
-            .or_else(|| tag.short().map(i64::from))
-            .or_else(|| tag.int().map(i64::from))
-            .or_else(|| tag.long())
-            .or_else(|| tag.float().map(|value| value as i64))
-            // Vanilla's DoubleTag.longValue floors before narrowing.
-            .or_else(|| tag.double().map(|value| value.floor() as i64))
+        tag.long_value()
     }
 
     fn on_song_changed(&self, world: &Arc<World>) {

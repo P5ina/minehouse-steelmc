@@ -24,6 +24,10 @@ pub trait NbtNumeric {
     /// Converts to an integer, flooring floating values.
     fn int_value(&self) -> Option<i32>;
 
+    /// Converts to a long like `NumericTag.longValue`: a float truncates, a
+    /// double floors.
+    fn long_value(&self) -> Option<i64>;
+
     /// Returns the low 16 bits of `int_value`.
     fn short_value(&self) -> Option<i16> {
         self.int_value().map(|value| value as i16)
@@ -95,6 +99,18 @@ impl NbtNumeric for OwnedNbtTag {
             _ => None,
         }
     }
+
+    fn long_value(&self) -> Option<i64> {
+        match self {
+            Self::Byte(value) => Some(i64::from(*value)),
+            Self::Short(value) => Some(i64::from(*value)),
+            Self::Int(value) => Some(i64::from(*value)),
+            Self::Long(value) => Some(*value),
+            Self::Float(value) => Some(*value as i64),
+            Self::Double(value) => Some(value.floor() as i64),
+            _ => None,
+        }
+    }
 }
 
 impl NbtNumeric for BorrowedNbtTag<'_, '_> {
@@ -147,6 +163,16 @@ impl NbtNumeric for BorrowedNbtTag<'_, '_> {
             .or_else(|| self.float().map(|value| value.floor() as i32))
             .or_else(|| self.double().map(|value| value.floor() as i32))
     }
+
+    fn long_value(&self) -> Option<i64> {
+        self.byte()
+            .map(i64::from)
+            .or_else(|| self.short().map(i64::from))
+            .or_else(|| self.int().map(i64::from))
+            .or_else(|| self.long())
+            .or_else(|| self.float().map(|value| value as i64))
+            .or_else(|| self.double().map(|value| value.floor() as i64))
+    }
 }
 
 #[cfg(test)]
@@ -167,6 +193,8 @@ mod tests {
         );
         assert_eq!(NbtTag::Double(f64::NAN).codec_bool(), Some(true));
         assert_eq!(NbtTag::String("1".into()).codec_f64(), None);
+        assert_eq!(NbtTag::Float(-0.5).long_value(), Some(0));
+        assert_eq!(NbtTag::Double(-0.5).long_value(), Some(-1));
     }
 
     #[test]
