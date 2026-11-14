@@ -234,6 +234,7 @@ impl DolphinSwimToTreasureGoal {
             &structures,
             dolphin.block_position(),
             TREASURE_SEARCH_RADIUS,
+            false,
         );
         if self.search.is_none() {
             self.stuck = true;

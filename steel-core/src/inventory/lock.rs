@@ -15,8 +15,12 @@ use steel_utils::locks::Shared;
 use steel_utils::{Downcast as _, DowncastType, locks::SyncMutex};
 
 use crate::entity::Entity as _;
+use crate::world::World;
 use crate::{
-    block_entity::{BlockEntityBase, SharedBlockEntity, container_loot::ContainerLoot},
+    block_entity::{
+        BlockEntityBase, SharedBlockEntity,
+        container_loot::{ContainerLoot, LootUnpack},
+    },
     inventory::container::Container,
     player::{Player, player_inventory::PlayerInventory},
 };
@@ -203,23 +207,45 @@ impl ContainerRef {
     /// table into this container, with `player`'s luck when one opened it.
     ///
     /// Must not be called while this container is locked.
-    pub fn unpack_loot_table(&self, player: Option<&Player>) {
-        let Some(owner) = &self.owner else {
-            return;
+    #[expect(
+        clippy::must_use_candidate,
+        reason = "most callers only need the loot rolled before reading the slots"
+    )]
+    pub fn unpack_loot_table(&self, player: Option<&Player>) -> LootUnpack {
+        let Some((loot, block_entity, world)) = self.pending_loot() else {
+            return LootUnpack::Nothing;
         };
-        let (Some(loot), Some(block_entity)) = (&owner.loot, &owner.block_entity) else {
-            return;
-        };
-        if !loot.is_pending() {
-            return;
-        }
         let unpacked = {
             let mut container = self.source.lock();
-            loot.unpack(&mut *container, block_entity.pos(), player)
+            loot.unpack(&mut *container, block_entity.pos(), player, &world)
         };
-        if unpacked {
+        if unpacked == LootUnpack::Rolled {
             block_entity.set_changed();
         }
+        unpacked
+    }
+
+    /// Vanilla `Containers.dropContents` on a breaking container: rolls the loot
+    /// like [`Self::unpack_loot_table`]; loot still waiting on an exploration map
+    /// search drops where the container stood once the search ends.
+    pub fn unpack_loot_table_for_removal(&self) {
+        if self.unpack_loot_table(None) != LootUnpack::Searching {
+            return;
+        }
+        if let Some((loot, block_entity, world)) = self.pending_loot() {
+            world.drop_after_exploration_loot(loot, block_entity.pos());
+        }
+    }
+
+    fn pending_loot(&self) -> Option<(&Arc<ContainerLoot>, &Arc<BlockEntityBase>, Arc<World>)> {
+        let owner = self.owner.as_ref()?;
+        let (Some(loot), Some(block_entity)) = (&owner.loot, &owner.block_entity) else {
+            return None;
+        };
+        if !loot.is_pending() {
+            return None;
+        }
+        Some((loot, block_entity, block_entity.level()?))
     }
 
     /// Whether this container still has a loot table to roll.
@@ -235,15 +261,26 @@ impl ContainerRef {
     /// spectators cannot open a container whose loot is still unrolled, anyone
     /// else rolls it with their luck before the menu opens.
     ///
-    /// Returns whether the menu may open.
+    /// Returns whether the menu may open. Loot waiting on an exploration map
+    /// search keeps the menu shut; it opens for the player once the loot is in.
     pub fn prepare_open(containers: &[Self], player: &Player) -> bool {
         if player.is_spectator() && containers.iter().any(Self::has_pending_loot) {
             return false;
         }
+        let mut ready = true;
         for container in containers {
-            container.unpack_loot_table(Some(player));
+            if container.unpack_loot_table(Some(player)) == LootUnpack::Searching {
+                ready = false;
+                if let Some((loot, block_entity, world)) = container.pending_loot() {
+                    world.reopen_after_exploration_loot(
+                        loot,
+                        player.gameprofile.id(),
+                        block_entity.pos(),
+                    );
+                }
+            }
         }
-        true
+        ready
     }
 
     /// Returns a unique identifier for this container based on its Arc pointer address.

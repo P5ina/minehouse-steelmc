@@ -4,6 +4,12 @@
 //! table instead of items. The table is rolled the first time anything reaches
 //! the contents: a player opening the container, a hopper, a comparator or the
 //! block breaking.
+//!
+//! A roll with an exploration map waits for its structure search: the roll is
+//! replayed with the same seed once the search answers, see
+//! [`crate::world::maps::exploration`].
+
+use std::sync::Arc;
 
 use rand::{Rng, RngExt as _, SeedableRng as _, rngs::StdRng};
 use simdnbt::borrow::NbtCompound as NbtCompoundView;
@@ -16,6 +22,10 @@ use steel_utils::{BlockPos, Identifier, locks::SyncMutex};
 use crate::entity::{LivingEntity as _, entity_loot_ref, living_loot_equipment};
 use crate::inventory::container::Container;
 use crate::player::Player;
+use crate::world::World;
+use crate::world::maps::exploration::{
+    ExplorationMapAnswer, ExplorationMapAnswers, ExplorationMapSearch,
+};
 
 /// NBT key of the deferred loot table.
 pub const LOOT_TABLE_TAG: &str = "LootTable";
@@ -31,10 +41,29 @@ pub struct PendingLoot {
     pub seed: i64,
 }
 
+/// What [`ContainerLoot::unpack`] did.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LootUnpack {
+    /// No loot table was pending.
+    Nothing,
+    /// The pending table was rolled into the container.
+    Rolled,
+    /// The roll waits for an exploration map search; the table stays pending.
+    Searching,
+}
+
+/// A roll waiting on exploration map searches, replayed with the same seed.
+struct ExplorationRoll {
+    seed: u64,
+    answers: Vec<ExplorationMapAnswer>,
+    search: Option<ExplorationMapSearch>,
+}
+
 /// The loot table a container still has to roll.
 #[derive(Default)]
 pub struct ContainerLoot {
     pending: SyncMutex<Option<PendingLoot>>,
+    exploration: SyncMutex<Option<ExplorationRoll>>,
 }
 
 impl ContainerLoot {
@@ -47,11 +76,13 @@ impl ContainerLoot {
     /// Vanilla `setLootTable(table, seed)`.
     pub fn set(&self, table: Identifier, seed: i64) {
         *self.pending.lock() = Some(PendingLoot { table, seed });
+        *self.exploration.lock() = None;
     }
 
     /// Clears the pending loot without rolling it.
     pub fn clear(&self) {
         *self.pending.lock() = None;
+        *self.exploration.lock() = None;
     }
 
     /// The pending loot table, if any.
@@ -81,6 +112,7 @@ impl ContainerLoot {
         let seed = nbt.long(LOOT_TABLE_SEED_TAG).unwrap_or(0);
         let loaded = table.is_some();
         *self.pending.lock() = table.map(|table| PendingLoot { table, seed });
+        *self.exploration.lock() = None;
         loaded
     }
 
@@ -99,60 +131,106 @@ impl ContainerLoot {
 
     /// Vanilla `RandomizableContainer.unpackLootTable`: rolls the pending table
     /// into `container`, with `player`'s luck when a player opened it.
-    ///
-    /// Returns whether a table was rolled.
     pub fn unpack(
-        &self,
+        self: &Arc<Self>,
         container: &mut dyn Container,
         pos: BlockPos,
         player: Option<&Player>,
-    ) -> bool {
-        let Some(pending) = self.take() else {
-            return false;
+        world: &Arc<World>,
+    ) -> LootUnpack {
+        let Some(pending) = self.get() else {
+            return LootUnpack::Nothing;
         };
         // TODO: Trigger CriteriaTriggers.GENERATE_LOOT once that trigger exists.
         let Some(table) = REGISTRY.loot_tables.by_key(&pending.table) else {
             log::warn!("Unknown container loot table {}", pending.table);
-            return true;
+            self.clear();
+            return LootUnpack::Rolled;
         };
         let origin = (
             f64::from(pos.x()) + 0.5,
             f64::from(pos.y()) + 0.5,
             f64::from(pos.z()) + 0.5,
         );
-        if pending.seed == 0 {
-            fill(container, table, origin, player, &mut rand::rng());
-        } else {
+
+        let mut exploration = self.exploration.lock();
+        let roll = exploration.get_or_insert_with(|| ExplorationRoll {
             #[expect(
                 clippy::cast_sign_loss,
                 reason = "the seed's bits are reused as the random source's seed"
             )]
-            let mut rng = StdRng::seed_from_u64(pending.seed as u64);
-            fill(container, table, origin, player, &mut rng);
+            seed: if pending.seed == 0 {
+                rand::rng().random()
+            } else {
+                pending.seed as u64
+            },
+            answers: Vec::new(),
+            search: None,
+        });
+        if let Some(search) = &mut roll.search {
+            let Some(found) = search.poll() else {
+                return LootUnpack::Searching;
+            };
+            roll.answers.push(found);
+            roll.search = None;
         }
-        true
+
+        let mut rng = StdRng::seed_from_u64(roll.seed);
+        let mut maps = ExplorationMapAnswers::new(world, &mut roll.answers);
+        let items = roll_items(table, origin, player, &mut rng, &mut maps);
+        if let Some(request) = maps.into_missing() {
+            roll.search = Some(ExplorationMapSearch::start(world, &request));
+            drop(exploration);
+            world.track_exploration_loot(self);
+            return LootUnpack::Searching;
+        }
+        *exploration = None;
+        drop(exploration);
+        *self.pending.lock() = None;
+        place_items(container, items, &mut rng);
+        LootUnpack::Rolled
+    }
+
+    /// Polls the running exploration map search; false once there is none.
+    pub(crate) fn advance_exploration_search(&self) -> bool {
+        let mut exploration = self.exploration.lock();
+        let Some(roll) = exploration.as_mut() else {
+            return false;
+        };
+        let Some(search) = &mut roll.search else {
+            return false;
+        };
+        let Some(found) = search.poll() else {
+            return true;
+        };
+        roll.answers.push(found);
+        roll.search = None;
+        false
     }
 }
 
-/// Vanilla `LootTable.fill`: rolls `table` and scatters the stacks over the
-/// container's empty slots.
-pub fn fill<R: Rng>(
-    container: &mut dyn Container,
+/// The rolling half of vanilla `LootTable.fill`.
+fn roll_items<R: Rng>(
     table: LootTableRef,
     origin: (f64, f64, f64),
     player: Option<&Player>,
     rng: &mut R,
-) {
+    maps: &mut ExplorationMapAnswers<'_>,
+) -> Vec<ItemStack> {
     let equipment = player.map(living_loot_equipment);
-    let mut items = {
-        let mut ctx = LootContext::new(&mut *rng).with_origin(origin.0, origin.1, origin.2);
-        if let Some(player) = player {
-            ctx = ctx
-                .with_luck(player.get_luck())
-                .with_this_entity(entity_loot_ref(player, equipment.as_ref()));
-        }
-        split_oversized_stacks(table.get_random_items(&mut ctx))
-    };
+    let mut ctx = LootContext::new(&mut *rng)
+        .with_origin(origin.0, origin.1, origin.2)
+        .with_exploration_maps(maps);
+    if let Some(player) = player {
+        ctx = ctx
+            .with_luck(player.get_luck())
+            .with_this_entity(entity_loot_ref(player, equipment.as_ref()));
+    }
+    split_oversized_stacks(table.get_random_items(&mut ctx))
+}
+
+/// The placing half of vanilla `LootTable.fill`.
+fn place_items<R: Rng>(container: &mut dyn Container, mut items: Vec<ItemStack>, rng: &mut R) {
     let mut available_slots = available_slots(container, rng);
     shuffle_and_split_items(&mut items, available_slots.len(), rng);
     for item in items {
@@ -266,6 +344,7 @@ mod tests {
 
     use super::*;
     use crate::inventory::container::SimpleContainer;
+    use crate::test_support::fresh_test_world;
 
     #[test]
     fn oversized_stacks_split_into_full_stacks() {
@@ -316,13 +395,21 @@ mod tests {
     #[test]
     fn unpacking_fills_an_empty_container_once() {
         init_vanilla_registry();
-        let loot = ContainerLoot::new();
+        let fixture = fresh_test_world("container_loot_unpack_once");
+        let loot = Arc::new(ContainerLoot::new());
         loot.set(Identifier::vanilla_static("chests/simple_dungeon"), 1234);
         let container = SimpleContainer::new(27).into_shared();
+        let pos = BlockPos::new(0, 64, 0);
 
-        assert!(loot.unpack(&mut *container.lock(), BlockPos::new(0, 64, 0), None));
+        assert_eq!(
+            loot.unpack(&mut *container.lock(), pos, None, &fixture.world),
+            LootUnpack::Rolled
+        );
         assert!(!container.lock().is_empty());
         assert!(!loot.is_pending());
-        assert!(!loot.unpack(&mut *container.lock(), BlockPos::new(0, 64, 0), None));
+        assert_eq!(
+            loot.unpack(&mut *container.lock(), pos, None, &fixture.world),
+            LootUnpack::Nothing
+        );
     }
 }

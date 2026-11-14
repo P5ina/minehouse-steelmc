@@ -2,6 +2,7 @@
 
 mod banner;
 mod data;
+pub mod exploration;
 mod frame;
 
 use std::io;

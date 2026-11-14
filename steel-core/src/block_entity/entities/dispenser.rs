@@ -178,7 +178,7 @@ impl BlockEntity for DispenserBlockEntity {
 
     fn pre_remove_side_effects(&self, pos: BlockPos, _state: BlockStateId) {
         // Vanilla `Containers.dropContents` reads every slot, rolling the loot.
-        self.container_ref.unpack_loot_table(None);
+        self.container_ref.unpack_loot_table_for_removal();
         let items = {
             let mut container = self.container.lock();
             mem::replace(

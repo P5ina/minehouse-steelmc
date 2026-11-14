@@ -82,7 +82,10 @@ pub use item_frame_item::ItemFrameItem;
 pub use lead::LeadItem;
 pub use mace::MaceItem;
 pub(crate) use map_item::synchronize_map_updates;
-pub use map_item::{EmptyMapItem, MapItem, create_map};
+pub use map_item::{
+    EmptyMapItem, MapItem, add_target_decoration, apply_new_saved_data, create_map,
+    render_biome_preview_map,
+};
 pub use minecart::MinecartItem;
 pub use name_tag::NameTagItem;
 pub use place_on_water_block_item::PlaceOnWaterBlockItem;

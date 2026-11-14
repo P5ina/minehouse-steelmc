@@ -1,7 +1,7 @@
 use super::{
-    DyeColor, EquipmentSlotGroup, Identifier, InstrumentRef, ItemPredicate, ItemStack,
-    LootCondition, LootContext, LootContextEntity, LootEntry, NumberProvider, REGISTRY, RngExt,
-    TaggedRegistryExt, context::math_round,
+    DyeColor, EquipmentSlotGroup, ExplorationMapRequest, Identifier, InstrumentRef, ItemPredicate,
+    ItemStack, LootCondition, LootContext, LootContextEntity, LootEntry, NumberProvider, REGISTRY,
+    RngExt, TaggedRegistryExt, context::math_round,
 };
 
 /// Options for selecting enchantments - either a tag reference or explicit list.
@@ -92,11 +92,13 @@ pub enum LootFunction {
     },
     /// Smelt the item (convert raw to cooked, ore to ingot, etc.).
     FurnaceSmelt { use_input_count: bool },
-    /// Create an exploration map pointing to a structure.
+    /// Vanilla `ExplorationMapFunction`: a map leading to the nearest structure.
     ExplorationMap {
+        /// Structure tag to look for.
         destination: Identifier,
         decoration: Identifier,
         zoom: i32,
+        search_radius: i32,
         skip_existing_chunks: bool,
     },
     /// Set the custom name of the item.
@@ -409,10 +411,24 @@ impl LootFunction {
                 destination,
                 decoration,
                 zoom,
+                search_radius,
                 skip_existing_chunks,
             } => {
-                // TODO: Implement exploration map creation
-                item.create_exploration_map(destination, decoration, *zoom, *skip_existing_chunks);
+                if !item.is_empty()
+                    && let (Some(origin), Some(maps)) = (ctx.origin, ctx.exploration_maps.as_mut())
+                {
+                    maps.create_exploration_map(
+                        item,
+                        ExplorationMapRequest {
+                            destination: destination.clone(),
+                            decoration: decoration.clone(),
+                            zoom: *zoom,
+                            search_radius: *search_radius,
+                            skip_existing_chunks: *skip_existing_chunks,
+                            origin,
+                        },
+                    );
+                }
             }
             LootFunction::SetName { name, target } => {
                 // TODO: Implement name setting

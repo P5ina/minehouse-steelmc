@@ -825,21 +825,6 @@ impl ItemStack {
         *self = result;
     }
 
-    /// Creates an exploration map pointing to a structure.
-    pub const fn create_exploration_map(
-        &mut self,
-        _destination: &Identifier,
-        _decoration: &Identifier,
-        _zoom: i32,
-        _skip_existing_chunks: bool,
-    ) {
-        // TODO: Implement exploration map creation
-        // 1. Change item to filled_map
-        // 2. Set MAP_DECORATIONS component
-        // 3. Set destination structure tag
-        // This requires world access to find the structure
-    }
-
     /// Sets the custom name or item name of this item.
     pub const fn set_name(&mut self, _name: &str, _target: crate::loot_table::NameTarget) {
         // TODO: Implement name setting

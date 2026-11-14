@@ -220,7 +220,7 @@ mod tests {
     use steel_registry::blocks::BlockRef;
     use steel_registry::blocks::block_state_ext::BlockStateExt as _;
     use steel_registry::blocks::properties::{BlockStateProperties, ChestType, Direction};
-    use steel_registry::{init_vanilla_registry, vanilla_blocks};
+    use steel_registry::{init_vanilla_registry, vanilla_blocks, vanilla_items};
     use steel_utils::types::{GameType, UpdateFlags};
     use steel_utils::{BlockPos, BlockStateId, ChunkPos, Downcast as _, translations};
     use text_components::TextComponent;
@@ -715,5 +715,49 @@ mod tests {
         let chest = place_loot_chest(world);
         assert!(!chest_is_empty(&chest), "any item access rolls the loot");
         assert!(!chest.container_ref().expect("a chest").has_pending_loot());
+    }
+
+    #[test]
+    fn a_treasure_map_chest_opens_once_its_search_answers() {
+        let fixture = arena("loot_chest_treasure_map");
+        let world = &fixture.world;
+        place(
+            world,
+            POS,
+            chest_state(&vanilla_blocks::CHEST, ChestType::Single),
+        );
+        let chest = world.get_block_entity(POS).expect("a chest block entity");
+        let mut nbt = NbtCompound::new();
+        nbt.insert("LootTable", "minecraft:chests/shipwreck_map");
+        nbt.insert("LootTableSeed", 5_i64);
+        chest
+            .load_with_owned_components(&nbt)
+            .expect("loot NBT loads");
+        let container = chest.container_ref().expect("a chest container");
+        let player = viewer(world, "Sailor", 53);
+
+        // The map roll waits for its structure search, so the chest stays shut.
+        let state = world.get_block_state(POS);
+        assert!(
+            !BLOCK_BEHAVIORS
+                .get_behavior(state.get_block())
+                .open_menu_provider(state, world, POS, &player)
+        );
+        assert!(container.has_pending_loot());
+        assert_eq!(chest_viewers(world, POS), 0);
+
+        // The empty test world has no buried treasure: the search answers at once,
+        // the chest opens for the player and the unanswered map is filtered out.
+        world.tick_exploration_loot();
+        assert!(!container.has_pending_loot());
+        assert_eq!(chest_viewers(world, POS), 1);
+        let guard = ContainerLockGuard::lock_all(&[&container]);
+        let items = guard.get(container.container_id()).expect("locked chest");
+        assert!(!items.is_empty(), "the other pools still roll");
+        assert!(
+            (0..items.get_container_size())
+                .all(|slot| !items.get_item(slot).is(&vanilla_items::FILLED_MAP)),
+            "no structure, no map"
+        );
     }
 }

@@ -286,7 +286,7 @@ impl BlockEntityBase {
     }
 
     #[must_use]
-    fn level(&self) -> Option<Arc<World>> {
+    pub(crate) fn level(&self) -> Option<Arc<World>> {
         self.level.upgrade()
     }
 

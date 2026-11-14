@@ -16,6 +16,9 @@ use crate::world::World;
 use crate::worldgen::generator::ChunkGenerator;
 use crate::worldgen::structure::{StructureLocateCandidate, StructureLocatePlan, squared_distance};
 
+/// Vanilla `StructureStart.getMaxReferences`: how many exploration maps may lead to one start.
+const MAX_REFERENCES: i32 = 1;
+
 /// The structure a search found.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FoundStructure {
@@ -63,18 +66,25 @@ pub struct StructureSearch {
     candidates: Vec<StructureLocateCandidate>,
     best: Option<LocatedCandidate>,
     random_radius: i32,
+    /// Vanilla `createReference`: only starts that can still be referenced count,
+    /// and each one found takes a reference.
+    create_reference: bool,
 }
 
 impl StructureSearch {
     /// Starts a search for any of `structures` around `origin`, scanning
     /// random-spread placements up to `max_radius` chunks out. Returns `None`
     /// when the world generator places none of them.
+    ///
+    /// With `create_reference`, as for exploration maps, starts that already
+    /// have a map leading to them are skipped and every start found takes one.
     #[must_use]
     pub fn new(
         world: Arc<World>,
         structures: &[Identifier],
         origin: BlockPos,
         max_radius: i32,
+        create_reference: bool,
     ) -> Option<Self> {
         let plan = world
             .chunk_map
@@ -96,6 +106,7 @@ impl StructureSearch {
             candidates: Vec::new(),
             best: None,
             random_radius: 0,
+            create_reference,
         })
     }
 
@@ -268,14 +279,27 @@ impl StructureSearch {
             .chunks
             .read_sync(&candidate.chunk_pos, |_, holder| Arc::clone(holder))?;
         let chunk = holder.try_chunk(ChunkStatus::StructureStarts)?;
-        let starts = chunk.structure_starts();
         let structures = self.plan.structures_for_candidate(candidate)?;
-        structures.iter().find_map(|structure| {
+        if !self.create_reference {
+            let starts = chunk.structure_starts();
+            return structures.iter().find_map(|structure| {
+                starts
+                    .get(structure)
+                    .is_some_and(|start| !start.pieces.is_empty())
+                    .then(|| structure.clone())
+            });
+        }
+
+        // Vanilla `ChunkGenerator.tryAddReference`.
+        let mut starts = chunk.structure_starts_mut();
+        let structure = structures.iter().find(|structure| {
             starts
-                .get(structure)
-                .is_some_and(|start| !start.pieces.is_empty())
-                .then(|| structure.clone())
-        })
+                .get(*structure)
+                .is_some_and(|start| !start.pieces.is_empty() && start.references < MAX_REFERENCES)
+        })?;
+        starts.get_mut(structure)?.references += 1;
+        chunk.mark_dirty();
+        Some(structure.clone())
     }
 }
 
