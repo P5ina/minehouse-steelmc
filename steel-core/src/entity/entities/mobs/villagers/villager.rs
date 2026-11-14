@@ -6,7 +6,7 @@
 
 use std::borrow::Cow;
 use std::sync::{Arc, Weak};
-use std::{mem, ptr};
+use std::{fmt, mem, ptr};
 
 use glam::DVec3;
 use simdnbt::borrow::NbtCompound as BorrowedNbtCompoundView;
@@ -18,10 +18,12 @@ use steel_registry::data_components::vanilla_components::{VILLAGER_FOOD, VILLAGE
 use steel_registry::entity_type::{EntityDimensions, EntityTypeRef};
 use steel_registry::item_stack::ItemStack;
 use steel_registry::items::ItemRef;
+use steel_registry::loot_table::ExplorationMaps;
 use steel_registry::sound_event::SoundEventRef;
 use steel_registry::vanilla_entity_data::VillagerEntityData;
 use steel_registry::vanilla_item_tags::ItemTag;
 use steel_registry::villager_profession::VillagerProfessionRef;
+use steel_registry::villager_trade::TradeSet;
 use steel_registry::villager_type::VillagerTypeRef;
 use steel_registry::{
     REGISTRY, RegistryExt as _, sound_events, vanilla_attributes, vanilla_blocks,
@@ -77,6 +79,7 @@ use crate::inventory::container::SimpleContainer;
 use crate::physics::MoveResult;
 use crate::player::Player;
 use crate::world::World;
+use crate::world::maps::exploration::ExplorationRoll;
 
 /// Vanilla `Villager.BABY_DIMENSIONS`.
 const BABY_DIMENSIONS: EntityDimensions = EntityDimensions::new(0.49, 0.98, 0.63);
@@ -162,6 +165,24 @@ struct VillagerState {
     /// A behavior changed the profession mid-tick; vanilla rebuilds the
     /// brain right there, Steel once the brain has finished ticking.
     brain_refresh_pending: bool,
+    /// Trade set rolls waiting on exploration map searches, oldest first.
+    pending_trades: Vec<PendingTrades>,
+}
+
+/// A trade set roll waiting on exploration map searches. Vanilla finds the map's
+/// structure on the spot; Steel adds the level's offers once the search answers.
+/// The roll is lost if the villager unloads first.
+struct PendingTrades {
+    roll: ExplorationRoll,
+    trade_set: &'static TradeSet,
+}
+
+impl fmt::Debug for PendingTrades {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PendingTrades")
+            .field("seed", &self.roll.seed())
+            .finish_non_exhaustive()
+    }
 }
 
 /// A villager.
@@ -364,7 +385,9 @@ impl VillagerEntity {
         let mut data = *self.entity_data.lock().villager_data.get();
         // Vanilla `setVillagerData`: a new profession drops the old offers.
         if data.profession != profession_id {
-            self.state.lock().offers = None;
+            let mut state = self.state.lock();
+            state.offers = None;
+            state.pending_trades.clear();
         }
         data.villager_type = type_id;
         data.profession = profession_id;
@@ -698,18 +721,87 @@ impl VillagerEntity {
     /// Vanilla `Villager.updateTrades`: adds the trade set of the current
     /// profession and level. Callers that store the offers re-price them for
     /// the trading player afterwards, see [`Self::increase_merchant_career`].
+    ///
+    /// A trade set whose exploration maps need a structure search adds its
+    /// offers once the search answers, see [`Self::advance_pending_trades`].
     fn update_trades(&self, offers: &mut MerchantOffers) {
         let Some(trade_set) = profession_trade_set(self.profession(), self.villager_level()) else {
             return;
         };
         // Vanilla seeds the trade set's random sequence from the world; Steel has no
         // random sequences yet, so every roll gets a fresh seed.
-        let mut random = Xoroshiro::from_seed(rand::random());
+        let mut pending = PendingTrades {
+            roll: ExplorationRoll::new(rand::random()),
+            trade_set,
+        };
+        let Some(world) = self.level() else {
+            offers.append(self.roll_trade_set(pending.roll.seed(), trade_set, None));
+            return;
+        };
+        // Offers keep the order of their levels: a later roll waits for earlier ones.
+        if self.state.lock().pending_trades.is_empty()
+            && let Some(rolled) = self.try_roll_trades(&world, &mut pending)
+        {
+            offers.append(rolled);
+            return;
+        }
+        self.state.lock().pending_trades.push(pending);
+    }
+
+    /// Rolls `pending`'s trade set with the exploration map answers so far;
+    /// `None` while a search runs.
+    fn try_roll_trades(
+        &self,
+        world: &Arc<World>,
+        pending: &mut PendingTrades,
+    ) -> Option<MerchantOffers> {
+        let seed = pending.roll.seed();
+        let trade_set = pending.trade_set;
+        pending.roll.roll(world, |maps| {
+            self.roll_trade_set(seed, trade_set, Some(maps))
+        })
+    }
+
+    /// Vanilla `addOffersFromTradeSet` with the merchant's loot context.
+    fn roll_trade_set(
+        &self,
+        seed: u64,
+        trade_set: &TradeSet,
+        exploration_maps: Option<&mut dyn ExplorationMaps>,
+    ) -> MerchantOffers {
+        let mut random = Xoroshiro::from_seed(seed);
         let mut ctx = TradeContext {
             random: &mut random,
             merchant_variant: Some(self.villager_type()),
+            origin: self.position(),
+            exploration_maps: exploration_maps.map(|maps| -> &mut dyn ExplorationMaps { maps }),
         };
-        add_offers_from_trade_set(&mut ctx, offers, trade_set);
+        let mut offers = MerchantOffers::new();
+        add_offers_from_trade_set(&mut ctx, &mut offers, trade_set);
+        offers
+    }
+
+    /// Adds the offers of trade set rolls whose exploration map searches answered.
+    fn advance_pending_trades(&self) {
+        let Some(world) = self.level() else {
+            return;
+        };
+        loop {
+            let Some(mut pending) = ({
+                let mut state = self.state.lock();
+                (!state.pending_trades.is_empty()).then(|| state.pending_trades.remove(0))
+            }) else {
+                return;
+            };
+            let Some(rolled) = self.try_roll_trades(&world, &mut pending) else {
+                self.state.lock().pending_trades.insert(0, pending);
+                return;
+            };
+            self.with_offers(|offers| offers.append(rolled));
+            if let Some(player) = trading_player_of(self) {
+                self.update_special_prices(&player);
+            }
+        }
     }
 
     /// Vanilla `Villager.increaseMerchantCareer`: levels up and adds that level's trades.
@@ -1080,6 +1172,7 @@ impl Entity for VillagerEntity {
         if let Some(world) = self.level() {
             self.maybe_decay_gossip(world.game_time());
         }
+        self.advance_pending_trades();
     }
 
     fn base_tick(&self) {

@@ -154,6 +154,66 @@ impl ExplorationMaps for ExplorationMapAnswers<'_> {
     }
 }
 
+/// A roll that may need exploration map searches, replayed with the same seed
+/// until every search it needs has answered.
+pub struct ExplorationRoll {
+    seed: u64,
+    answers: Vec<ExplorationMapAnswer>,
+    search: Option<ExplorationMapSearch>,
+}
+
+impl ExplorationRoll {
+    /// A roll that replays with `seed`.
+    #[must_use]
+    pub const fn new(seed: u64) -> Self {
+        Self {
+            seed,
+            answers: Vec::new(),
+            search: None,
+        }
+    }
+
+    /// The seed every replay of the roll starts from.
+    #[must_use]
+    pub const fn seed(&self) -> u64 {
+        self.seed
+    }
+
+    /// Polls the running search; true while it still runs.
+    pub fn advance(&mut self) -> bool {
+        let Some(search) = &mut self.search else {
+            return false;
+        };
+        let Some(answer) = search.poll() else {
+            return true;
+        };
+        self.answers.push(answer);
+        self.search = None;
+        false
+    }
+
+    /// Replays the roll with the answers so far. Returns `None` while a search
+    /// runs, starting the search when the replay reached a roll without one.
+    pub fn roll<T>(
+        &mut self,
+        world: &Arc<World>,
+        roll: impl FnOnce(&mut ExplorationMapAnswers<'_>) -> T,
+    ) -> Option<T> {
+        if self.advance() {
+            return None;
+        }
+        let mut maps = ExplorationMapAnswers::new(world, &mut self.answers);
+        let rolled = roll(&mut maps);
+        match maps.into_missing() {
+            Some(request) => {
+                self.search = Some(ExplorationMapSearch::start(world, &request));
+                None
+            }
+            None => Some(rolled),
+        }
+    }
+}
+
 /// What to do with a container's loot once its exploration map searches end.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum LootWaiter {
