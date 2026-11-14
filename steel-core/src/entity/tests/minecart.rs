@@ -242,7 +242,7 @@ fn spawn_furnace_minecart(world: &Arc<World>, position: DVec3) -> Arc<FurnaceMin
 }
 
 #[test]
-fn fuelled_furnace_minecart_pushes_itself_along_the_rail() {
+fn fueled_furnace_minecart_pushes_itself_along_the_rail() {
     let world_fixture = rail_world("furnace_minecart_pushes");
     let world = &world_fixture.world;
     let cart = spawn_furnace_minecart(world, DVec3::new(8.5, 65.0, 4.5));
