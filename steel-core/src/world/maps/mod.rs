@@ -1,5 +1,6 @@
 //! Domain-wide map storage (vanilla keeps map data in the overworld's `DimensionDataStorage`).
 
+mod banner;
 mod data;
 
 use std::io;
@@ -11,6 +12,7 @@ use steel_utils::locks::SyncMutex;
 use steel_utils::saved_data::{SavedDataManager, names as saved_data_names};
 use wincode::{SchemaRead, SchemaWrite};
 
+pub use banner::MapBanner;
 pub(crate) use data::java_floor;
 pub use data::{HoldingPlayer, MAP_SIZE, MAX_SCALE, MapItemSavedData, TRACKED_DECORATION_LIMIT};
 

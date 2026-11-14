@@ -1232,6 +1232,12 @@ pub trait BlockBehavior: Send + Sync {
         None
     }
 
+    /// The base color of a banner block (vanilla `AbstractBannerBlock.getColor`); `None` for
+    /// every other block.
+    fn banner_color(&self) -> Option<DyeColor> {
+        None
+    }
+
     /// Returns the server ticker selected by this live block state and entity type.
     ///
     /// Mirrors Vanilla `EntityBlock.getTicker`. Selection runs without chunk,

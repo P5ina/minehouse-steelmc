@@ -8,8 +8,10 @@ use super::{
     SoundSource, UpdateFlags, World, WorldEntityManager, entity_loot_ref, fluid_state_to_block,
     level_events, vanilla_blocks, vanilla_game_events,
 };
+use crate::block_entity::BlockEntity;
 use crate::entity::loot_equipment;
 use crate::inventory::lock::{ContainerLockGuard, ContainerRef};
+use steel_registry::loot_table::BlockEntityRef;
 use steel_registry::sound_event::SoundEventHolder;
 use steel_registry::vanilla_particle_types::{BUBBLE, SPLASH};
 
@@ -378,7 +380,6 @@ impl World {
     /// This is the no-tool/no-entity overload. Player block breaking uses
     /// `block_breaking::drop_block_loot` which includes tool context for
     /// fortune/silk touch.
-    // TODO: block entity and entity drops
     pub fn drop_resources(self: &Arc<Self>, state: BlockStateId, pos: BlockPos) {
         self.drop_resources_with_entity(state, pos, None);
     }
@@ -389,7 +390,10 @@ impl World {
         pos: BlockPos,
         entity: Option<&dyn Entity>,
     ) {
-        let context = BlockLootContext::new(self, pos).with_entity(entity);
+        let block_entity = self.get_block_entity(pos);
+        let context = BlockLootContext::new(self, pos)
+            .with_entity(entity)
+            .with_block_entity(block_entity.as_deref());
         for item in context.get_drops(state) {
             if !item.is_empty() {
                 self.pop_resource(pos, item);
@@ -425,6 +429,8 @@ impl World {
             loot_table
         };
 
+        let block_entity = context.block_entity();
+        let block_entity_components = block_entity.map(BlockEntity::collect_components);
         let mut rng = rand::rng();
         let mut ctx = LootContext::new(&mut rng)
             .with_luck(context.luck())
@@ -443,6 +449,14 @@ impl World {
         }
         if let Some(radius) = context.explosion_radius() {
             ctx = ctx.with_explosion(radius);
+        }
+        if let Some(block_entity) = block_entity {
+            ctx = ctx.with_block_entity(BlockEntityRef {
+                block_entity_type: Some(&block_entity.get_type().key),
+                custom_name: None,
+                inventory: None,
+                components: block_entity_components.as_ref(),
+            });
         }
 
         loot_table.get_random_items(&mut ctx)

@@ -732,16 +732,46 @@ impl ItemStack {
         // 4. Apply enchantments with proper weights
     }
 
-    /// Copies components from a source (block entity, attacker, etc.) to this item.
-    pub const fn copy_components<R: rand::Rng>(
+    /// Vanilla `CopyComponentsFunction`: copies the `include`d components of the source.
+    ///
+    /// Only the block entity source carries components in Steel; entity sources copy nothing.
+    pub fn copy_components<R: rand::Rng>(
         &mut self,
-        _source: crate::loot_table::CopySource,
-        _include: &[Identifier],
-        _ctx: &crate::loot_table::LootContext<'_, R>,
+        source: crate::loot_table::CopySource,
+        include: &[Identifier],
+        ctx: &crate::loot_table::LootContext<'_, R>,
     ) {
-        // TODO: Implement when block entity system is ready
-        // 1. Get the source entity/block entity from context
-        // 2. For each component in `include`, copy it to this item's patch
+        if !matches!(source, crate::loot_table::CopySource::BlockEntity) {
+            return;
+        }
+        let Some(components) = ctx
+            .block_entity
+            .and_then(|block_entity| block_entity.components)
+        else {
+            return;
+        };
+        for key in include {
+            if let Some(data) = components.get_raw(key) {
+                self.set_raw_component(key.clone(), data.clone());
+            }
+        }
+    }
+
+    /// Vanilla `ItemStack.applyComponents`: sets every component of `components`.
+    pub fn apply_components(&mut self, components: &DataComponentMap) {
+        for (key, data) in components.iter() {
+            self.set_raw_component(key.clone(), data.clone());
+        }
+    }
+
+    /// Vanilla `PatchedDataComponentMap.set` for an untyped value: a value equal to the
+    /// prototype clears the patch entry instead of overriding it.
+    pub fn set_raw_component(&mut self, key: Identifier, data: ComponentData) {
+        if self.prototype().get_raw(&key) == Some(&data) {
+            self.patch.clear_raw(&key);
+        } else {
+            self.patch.set_component_data(key, data);
+        }
     }
 
     /// Copies block state properties to this item (for blocks like `note_block`).

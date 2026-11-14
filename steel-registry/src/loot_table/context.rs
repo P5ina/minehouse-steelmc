@@ -1,5 +1,6 @@
 use super::RaiderPredicate;
 use super::{BlockStateId, DyeColor, Identifier, ItemStack, REGISTRY, RegistryExt, RngExt};
+use crate::data_components::DataComponentMap;
 use crate::equipment::EquipmentSlot;
 
 /// Entity target for loot context lookups.
@@ -376,6 +377,8 @@ pub struct BlockEntityRef<'a> {
     pub custom_name: Option<&'a str>,
     /// Inventory contents (for dynamic/slots entries).
     pub inventory: Option<&'a [ItemStack]>,
+    /// Vanilla `BlockEntity.collectComponents`, read by `copy_components`.
+    pub components: Option<&'a DataComponentMap>,
 }
 
 impl<'a, R: rand::Rng> LootContext<'a, R> {
