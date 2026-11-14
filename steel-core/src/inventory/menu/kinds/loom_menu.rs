@@ -240,7 +240,8 @@ impl MenuKind for LoomKind {
         if remaining.count() == clicked.count() {
             return Some(ItemStack::empty());
         }
-        if let Some(remainder) = behavior.slots()[slot_index].on_take(guard, &remaining, player) {
+        if let Some(remainder) = behavior.slots()[slot_index].on_take(guard, &mut remaining, player)
+        {
             player.add_item_or_drop_with_guard(guard, remainder, Prediction::Predicted);
         }
         Some(clicked)

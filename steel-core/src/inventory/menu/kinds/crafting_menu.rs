@@ -100,9 +100,9 @@ impl MenuKind for CraftingKind {
         &mut self,
         _behavior: &mut MenuBehavior,
         guard: &mut ContainerLockGuard,
-        _player: &Player,
+        player: &Player,
     ) {
-        self.handler.update_result(guard);
+        self.handler.update_result(guard, player);
     }
 }
 

@@ -24,7 +24,9 @@ use text_components::TextComponent;
 use crate::behavior::items::{
     BannerItem, BlockItem, DefaultItemBehavior, SpawnEggItem, block_transformer,
 };
-use crate::behavior::{InteractionResult, InventoryTickContext, UseItemContext, UseOnContext};
+use crate::behavior::{
+    ITEM_BEHAVIORS, InteractionResult, InventoryTickContext, UseItemContext, UseOnContext,
+};
 use crate::block_entity::entities::{SignBlockEntity, SignText};
 use crate::entity::consume_effect::apply_consume_effect;
 use crate::entity::damage::DamageSource;
@@ -33,6 +35,13 @@ use crate::player::{Player, player_inventory::EquipmentSwapResult};
 use crate::world::World;
 
 pub use steel_registry::data_components::vanilla_components::ItemUseAnimation;
+
+/// Vanilla `Item.onCraftedBy`: `player` took the crafted `stack`.
+pub fn on_crafted_by(stack: &mut ItemStack, player: &Player) {
+    ITEM_BEHAVIORS
+        .get_behavior(stack.item())
+        .on_crafted_post_process(stack, &player.get_world());
+}
 
 /// Item capability applied by a sign before its editor fallback.
 pub trait SignApplicator: Send + Sync {
@@ -269,6 +278,9 @@ pub trait ItemBehavior: Send + Sync {
 
     /// Called every tick for each carried item.
     fn inventory_tick(&self, _context: &mut InventoryTickContext<'_>) {}
+
+    /// Vanilla `Item.onCraftedPostProcess`: finishes a crafted result once it is taken.
+    fn on_crafted_post_process(&self, _stack: &mut ItemStack, _world: &World) {}
 
     /// Returns how much durability this weapon consumes after a successful entity hit.
     fn item_damage_per_attack(&self, stack: &ItemStack) -> Option<i32> {

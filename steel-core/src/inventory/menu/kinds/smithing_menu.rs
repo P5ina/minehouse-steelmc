@@ -129,9 +129,9 @@ impl MenuKind for SmithingKind {
         &mut self,
         behavior: &mut MenuBehavior,
         guard: &mut ContainerLockGuard,
-        _player: &Player,
+        player: &Player,
     ) {
-        self.handler.update_result(guard);
+        self.handler.update_result(guard, player);
         let Some(inputs) = guard.get(ContainerId::from_arc(&self.input_container)) else {
             return;
         };
@@ -198,7 +198,8 @@ impl MenuKind for SmithingKind {
         if remaining.count() == clicked.count() {
             return Some(ItemStack::empty());
         }
-        if let Some(remainder) = behavior.slots()[slot_index].on_take(guard, &remaining, player) {
+        if let Some(remainder) = behavior.slots()[slot_index].on_take(guard, &mut remaining, player)
+        {
             player.add_item_or_drop_with_guard(guard, remainder, Prediction::Predicted);
         }
         Some(clicked)

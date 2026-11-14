@@ -231,7 +231,9 @@ impl MenuKind for BrewingStandKind {
         if remaining.count() == clicked.count() {
             return Some(ItemStack::empty());
         }
-        if let Some(remainder) = behavior.slots()[slot_index].on_take(guard, &clicked, player) {
+        if let Some(remainder) =
+            behavior.slots()[slot_index].on_take(guard, &mut clicked.clone(), player)
+        {
             player.add_item_or_drop_with_guard(guard, remainder, Prediction::Predicted);
         }
         Some(clicked)

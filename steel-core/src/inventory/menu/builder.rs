@@ -1045,7 +1045,7 @@ mod tests {
             Vec::new()
         }
 
-        fn update_result(&self, _guard: &mut ContainerLockGuard) {}
+        fn update_result(&self, _guard: &mut ContainerLockGuard, _player: &Player) {}
 
         fn on_result_taken(
             &self,
@@ -1074,7 +1074,7 @@ mod tests {
             vec![self.dependency.clone()]
         }
 
-        fn update_result(&self, _guard: &mut ContainerLockGuard) {}
+        fn update_result(&self, _guard: &mut ContainerLockGuard, _player: &Player) {}
 
         fn on_result_taken(
             &self,

@@ -77,7 +77,7 @@ impl ResultHandler for AnvilResultHandler {
         vec![ContainerRef::from(Arc::clone(&self.input_container))]
     }
 
-    fn update_result(&self, _guard: &mut ContainerLockGuard) {}
+    fn update_result(&self, _guard: &mut ContainerLockGuard, _player: &Player) {}
 
     fn on_result_taken(
         &self,

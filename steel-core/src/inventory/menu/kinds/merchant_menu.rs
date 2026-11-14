@@ -179,7 +179,7 @@ impl ResultHandler for MerchantResultHandler {
         vec![ContainerRef::from(Arc::clone(&self.payments))]
     }
 
-    fn update_result(&self, guard: &mut ContainerLockGuard) {
+    fn update_result(&self, guard: &mut ContainerLockGuard, _player: &Player) {
         self.update_sell_item(guard);
     }
 

@@ -168,15 +168,22 @@ pub trait Slot: ErasedType + Send + Sync {
     }
 
     /// Called when an item is taken. Returns any remainder that couldn't be placed back.
+    ///
+    /// Like vanilla's `onTake`, this may change the taken `stack` before it lands where it was
+    /// taken to.
     fn on_take(
         &self,
         guard: &mut ContainerLockGuard,
-        _stack: &ItemStack,
+        _stack: &mut ItemStack,
         _player: &Player,
     ) -> Option<ItemStack> {
         self.set_changed(guard);
         None
     }
+
+    /// Finishes a crafted result a shift-click is about to move, like the `onCraftedBy` call
+    /// vanilla quick-move handlers make on a result stack before moving it.
+    fn prepare_quick_move(&self, _stack: &mut ItemStack, _player: &Player) {}
 
     /// Takes items with all checks and callbacks. Returns the items taken.
     fn safe_take(
@@ -187,7 +194,8 @@ pub trait Slot: ErasedType + Send + Sync {
         player: &Player,
     ) -> ItemStack {
         if let Some(taken) = self.try_remove(guard, amount, max_amount, player) {
-            if let Some(remainder) = self.on_take(guard, &taken, player) {
+            let mut taken = taken;
+            if let Some(remainder) = self.on_take(guard, &mut taken, player) {
                 player.add_item_or_drop_with_guard(guard, remainder, Prediction::Predicted);
             }
             taken

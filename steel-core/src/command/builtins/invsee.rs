@@ -192,18 +192,18 @@ impl MenuKind for InvseeMenuKind {
         &mut self,
         _behavior: &mut MenuBehavior,
         guard: &mut ContainerLockGuard,
-        _player: &Player,
+        player: &Player,
     ) {
-        self.crafting_handler.update_result(guard);
+        self.crafting_handler.update_result(guard, player);
     }
 
     fn slots_changed(
         &mut self,
         _behavior: &mut MenuBehavior,
         guard: &mut ContainerLockGuard,
-        _player: &Player,
+        player: &Player,
     ) {
-        self.crafting_handler.update_result(guard);
+        self.crafting_handler.update_result(guard, player);
         self.queue_changed_target_inventory(guard);
     }
 

@@ -101,7 +101,7 @@ impl ResultHandler for StonecutterResultHandler {
     }
 
     /// The menu sets the result when a recipe is selected or the input changes.
-    fn update_result(&self, _guard: &mut ContainerLockGuard) {}
+    fn update_result(&self, _guard: &mut ContainerLockGuard, _player: &Player) {}
 
     /// Vanilla `StonecutterMenu`'s result slot `onTake`.
     // TODO: Award the used recipe once player recipe books exist.

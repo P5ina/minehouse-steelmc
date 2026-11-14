@@ -90,11 +90,16 @@ impl Slot for ResultSlot {
     fn on_take(
         &self,
         guard: &mut ContainerLockGuard,
-        _stack: &ItemStack,
+        stack: &mut ItemStack,
         player: &Player,
     ) -> Option<ItemStack> {
-        // TODO: Track the crafted count and run ITEM_CRAFTED/item callbacks.
+        // TODO: Track the crafted count and award ITEM_CRAFTED once stats are tracked per take.
+        self.handler.on_crafted_by(stack, player);
         self.handler.on_result_taken(guard, player)
+    }
+
+    fn prepare_quick_move(&self, stack: &mut ItemStack, player: &Player) {
+        self.handler.on_crafted_by(stack, player);
     }
 
     fn remove(&self, guard: &mut ContainerLockGuard, _amount: i32) -> ItemStack {
@@ -136,7 +141,7 @@ mod tests {
             Vec::new()
         }
 
-        fn update_result(&self, _guard: &mut ContainerLockGuard) {}
+        fn update_result(&self, _guard: &mut ContainerLockGuard, _player: &Player) {}
 
         fn on_result_taken(
             &self,

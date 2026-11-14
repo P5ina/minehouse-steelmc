@@ -106,7 +106,7 @@ impl ResultHandler for SmithingResultHandler {
     }
 
     /// Vanilla `SmithingMenu.createResult`.
-    fn update_result(&self, guard: &mut ContainerLockGuard) {
+    fn update_result(&self, guard: &mut ContainerLockGuard, _player: &Player) {
         let Some(input) = guard.get(ContainerId::from_arc(&self.input_container)) else {
             log::warn!("input container not locked while creating the smithing result");
             return;
@@ -129,7 +129,7 @@ impl ResultHandler for SmithingResultHandler {
     fn on_result_taken(
         &self,
         guard: &mut ContainerLockGuard,
-        _player: &Player,
+        player: &Player,
     ) -> Option<ItemStack> {
         {
             let Some(input) = guard.get_mut(ContainerId::from_arc(&self.input_container)) else {
@@ -152,7 +152,7 @@ impl ResultHandler for SmithingResultHandler {
         );
         // Vanilla's input container recomputes the result as soon as it changes,
         // which lets a shift-click keep upgrading while inputs remain.
-        self.update_result(guard);
+        self.update_result(guard, player);
         None
     }
 

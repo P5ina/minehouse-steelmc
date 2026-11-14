@@ -8,7 +8,9 @@ use steel_protocol::packets::game::SoundSource;
 use steel_registry::blocks::block_state_ext::BlockStateExt as _;
 use steel_registry::blocks::properties::Direction;
 use steel_registry::data_components::components::MapId;
-use steel_registry::data_components::vanilla_components::{MAP_DECORATIONS, MAP_ID};
+use steel_registry::data_components::vanilla_components::{
+    MAP_DECORATIONS, MAP_ID, MAP_POST_PROCESSING, MapPostProcessing,
+};
 use steel_registry::equipment::EquipmentSlotType;
 use steel_registry::item_stack::ItemStack;
 use steel_registry::map_color::{MapColor, MapColorBrightness};
@@ -317,6 +319,24 @@ impl ColorCount {
 }
 
 impl ItemBehavior for MapItem {
+    /// Vanilla `MapItem.onCraftedPostProcess`: a scaled or locked result gets its own new map.
+    fn on_crafted_post_process(&self, stack: &mut ItemStack, world: &World) {
+        let Some(post_processing) = stack.get(MAP_POST_PROCESSING).copied() else {
+            return;
+        };
+        stack.remove(MAP_POST_PROCESSING);
+        let Some(original) = stack.get(MAP_ID).and_then(|id| world.map_data(*id)) else {
+            return;
+        };
+        let data = match post_processing {
+            MapPostProcessing::Lock => original.lock().locked(),
+            MapPostProcessing::Scale => original.lock().scaled(),
+        };
+        let id = world.free_map_id();
+        world.set_map_data(id, data);
+        stack.set(MAP_ID, id);
+    }
+
     /// Using a map on a banner marks the banner on the map, or unmarks it.
     fn use_on(&self, context: &mut UseOnContext) -> InteractionResult {
         let pos = context.hit_result.block_pos;
