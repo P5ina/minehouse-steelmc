@@ -26,7 +26,9 @@ type ContainerChangedCallback = Arc<dyn Fn() + Send + Sync>;
 
 #[derive(Clone)]
 struct ContainerOwner {
-    block_entity: Arc<BlockEntityBase>,
+    /// `None` for a container without a block entity (vanilla
+    /// `WorldlyContainerHolder` blocks such as the composter).
+    block_entity: Option<Arc<BlockEntityBase>>,
     after_changed: Option<ContainerChangedCallback>,
     /// Vanilla `RandomizableContainer`: loot rolled on first access.
     loot: Option<Arc<ContainerLoot>>,
@@ -129,7 +131,7 @@ impl ContainerRef {
             id: ContainerId::from_arc(&container),
             source: container,
             owner: Some(ContainerOwner {
-                block_entity: owner,
+                block_entity: Some(owner),
                 after_changed: None,
                 loot: None,
             }),
@@ -152,7 +154,26 @@ impl ContainerRef {
             id: ContainerId::from_arc(&container),
             source: container,
             owner: Some(ContainerOwner {
-                block_entity: owner,
+                block_entity: Some(owner),
+                after_changed: Some(after_changed),
+                loot: None,
+            }),
+        }
+    }
+
+    /// Creates a container a block exposes without a block entity (vanilla
+    /// `WorldlyContainerHolder.getContainer`), whose world effects run in
+    /// `after_changed` once every container lock is released.
+    #[must_use]
+    pub(crate) fn block_container_with_callback(
+        container: SharedContainer,
+        after_changed: ContainerChangedCallback,
+    ) -> Self {
+        Self {
+            id: ContainerId::from_arc(&container),
+            source: container,
+            owner: Some(ContainerOwner {
+                block_entity: None,
                 after_changed: Some(after_changed),
                 loot: None,
             }),
@@ -171,7 +192,7 @@ impl ContainerRef {
             id: ContainerId::from_arc(&container),
             source: container,
             owner: Some(ContainerOwner {
-                block_entity: owner,
+                block_entity: Some(owner),
                 after_changed: None,
                 loot: Some(loot),
             }),
@@ -186,7 +207,7 @@ impl ContainerRef {
         let Some(owner) = &self.owner else {
             return;
         };
-        let Some(loot) = &owner.loot else {
+        let (Some(loot), Some(block_entity)) = (&owner.loot, &owner.block_entity) else {
             return;
         };
         if !loot.is_pending() {
@@ -194,10 +215,10 @@ impl ContainerRef {
         }
         let unpacked = {
             let mut container = self.source.lock();
-            loot.unpack(&mut *container, owner.block_entity.pos(), player)
+            loot.unpack(&mut *container, block_entity.pos(), player)
         };
         if unpacked {
-            owner.block_entity.set_changed();
+            block_entity.set_changed();
         }
     }
 
@@ -236,7 +257,8 @@ impl ContainerRef {
     pub fn still_valid(&self, player: &Player) -> bool {
         self.owner
             .as_ref()
-            .is_none_or(|owner| owner.block_entity.is_valid_container_for(player))
+            .and_then(|owner| owner.block_entity.as_ref())
+            .is_none_or(|block_entity| block_entity.is_valid_container_for(player))
     }
 
     /// Vanilla `Container.startOpen` for a menu opened over this container.
@@ -257,7 +279,11 @@ impl ContainerRef {
     }
 
     fn owner_block_entity(&self) -> Option<SharedBlockEntity> {
-        self.owner.as_ref()?.block_entity.live_block_entity()
+        self.owner
+            .as_ref()?
+            .block_entity
+            .as_ref()?
+            .live_block_entity()
     }
 
     /// Locks this container and returns a guard.
@@ -452,7 +478,9 @@ impl ContainerLockGuard {
         };
 
         self.run_unlocked(|| {
-            owner.block_entity.set_changed();
+            if let Some(block_entity) = &owner.block_entity {
+                block_entity.set_changed();
+            }
             if let Some(after_changed) = owner.after_changed {
                 after_changed();
             }
