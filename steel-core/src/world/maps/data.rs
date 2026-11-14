@@ -6,7 +6,7 @@ use std::sync::{Arc, Weak};
 use std::{mem, ptr};
 
 use simdnbt::borrow::read_compound;
-use simdnbt::owned::{NbtCompound, NbtTag};
+use simdnbt::owned::{NbtCompound, NbtList, NbtTag};
 use steel_protocol::packets::game::{CMapItemData, MapDecorationData, MapPatch};
 use steel_registry::data_components::components::{MapDecorations, MapId};
 use steel_registry::data_components::vanilla_components::MAP_ID;
@@ -15,13 +15,15 @@ use steel_registry::item_stack::ItemStack;
 use steel_registry::map_decoration_type::MapDecorationType;
 use steel_registry::vanilla_item_tags::ItemTag;
 use steel_registry::{RegistryReference, vanilla_items, vanilla_map_decoration_types};
-use steel_utils::Identifier;
+use steel_utils::{BlockPos, Identifier};
 
 use crate::entity::{Entity as _, LivingEntity as _};
 use crate::inventory::container::Container as _;
 use crate::player::Player;
 use crate::server::worlds::NETHER_WORLD_NAME;
-use crate::world::World;
+use crate::world::{LevelReader, World};
+
+use super::MapBanner;
 
 /// Vanilla `MapItem.IMAGE_WIDTH` and `IMAGE_HEIGHT`.
 pub const MAP_SIZE: usize = 128;
@@ -145,6 +147,8 @@ pub struct MapItemSavedData {
     /// Locked maps are never redrawn.
     pub locked: bool,
     carried_by: Vec<HoldingPlayer>,
+    /// Keyed by [`MapBanner::id`], in the order they were marked.
+    banner_markers: Vec<(String, MapBanner)>,
     /// Vanilla keeps a `LinkedHashMap`; the order is the packet order.
     decorations: Vec<(String, MapDecorationData)>,
     tracked_decoration_count: i32,
@@ -171,6 +175,7 @@ impl MapItemSavedData {
             colors: Box::new([0; COLOR_COUNT]),
             locked,
             carried_by: Vec::new(),
+            banner_markers: Vec::new(),
             decorations: Vec::new(),
             tracked_decoration_count: 0,
             dirty: false,
@@ -215,6 +220,7 @@ impl MapItemSavedData {
             true,
             self.dimension.clone(),
         );
+        result.banner_markers.clone_from(&self.banner_markers);
         result.decorations.clone_from(&self.decorations);
         result.tracked_decoration_count = self.tracked_decoration_count;
         result.colors.copy_from_slice(&self.colors[..]);
@@ -536,6 +542,90 @@ impl MapItemSavedData {
         &mut self.carried_by[index]
     }
 
+    /// Vanilla `MapItemSavedData.toggleBanner`: marks the banner at `pos`, or unmarks it when it
+    /// is already marked. Returns `false` when nothing changed.
+    pub fn toggle_banner(&mut self, world: &World, pos: BlockPos) -> bool {
+        let x_pos = f64::from(pos.x()) + 0.5;
+        let z_pos = f64::from(pos.z()) + 0.5;
+        let scale = f64::from(1 << self.scale);
+        let xd = (x_pos - f64::from(self.center_x)) / scale;
+        let yd = (z_pos - f64::from(self.center_z)) / scale;
+        if !(-63.0..=63.0).contains(&xd) || !(-63.0..=63.0).contains(&yd) {
+            return false;
+        }
+        let Some(banner) = MapBanner::from_world(world, pos) else {
+            return false;
+        };
+        let id = banner.id();
+        if let Some(index) = self
+            .banner_markers
+            .iter()
+            .position(|(key, marked)| *key == id && *marked == banner)
+        {
+            self.banner_markers.remove(index);
+            self.remove_decoration(&id);
+            self.set_dirty();
+            return true;
+        }
+        if self.is_tracked_count_over_limit(TRACKED_DECORATION_LIMIT) {
+            return false;
+        }
+        self.add_banner_decoration(Some(world), &banner, x_pos, z_pos);
+        self.put_banner_marker(id, banner);
+        self.set_dirty();
+        true
+    }
+
+    /// Vanilla `MapItemSavedData.checkBanners`: unmarks banners in this column that were broken or
+    /// changed.
+    pub fn check_banners(&mut self, world: &dyn LevelReader, x: i32, z: i32) {
+        let mut i = 0;
+        while i < self.banner_markers.len() {
+            let expected = &self.banner_markers[i].1;
+            if expected.pos.x() == x
+                && expected.pos.z() == z
+                && MapBanner::from_world(world, expected.pos).as_ref() != Some(expected)
+            {
+                let (id, _) = self.banner_markers.remove(i);
+                self.remove_decoration(&id);
+                self.set_dirty();
+            } else {
+                i += 1;
+            }
+        }
+    }
+
+    /// The banners marked on this map.
+    pub fn banners(&self) -> impl Iterator<Item = &MapBanner> {
+        self.banner_markers.iter().map(|(_, banner)| banner)
+    }
+
+    fn put_banner_marker(&mut self, id: String, banner: MapBanner) {
+        if let Some((_, marked)) = self.banner_markers.iter_mut().find(|(key, _)| *key == id) {
+            *marked = banner;
+        } else {
+            self.banner_markers.push((id, banner));
+        }
+    }
+
+    fn add_banner_decoration(
+        &mut self,
+        world: Option<&World>,
+        banner: &MapBanner,
+        x_pos: f64,
+        z_pos: f64,
+    ) {
+        self.add_decoration(
+            type_ref(banner.decoration()),
+            world,
+            &banner.id(),
+            x_pos,
+            z_pos,
+            180.0,
+            banner.name.clone(),
+        );
+    }
+
     /// Vanilla `MapItemSavedData.updateColor`: returns whether the pixel changed.
     pub fn update_color(&mut self, x: usize, y: usize, color: u8) -> bool {
         if self.colors[x + y * MAP_SIZE] == color {
@@ -575,6 +665,12 @@ impl MapItemSavedData {
         nbt.insert("trackingPosition", i8::from(self.tracking_position));
         nbt.insert("unlimitedTracking", i8::from(self.unlimited_tracking));
         nbt.insert("locked", i8::from(self.locked));
+        if !self.banner_markers.is_empty() {
+            nbt.insert(
+                "banners",
+                NbtList::Compound(self.banners().map(MapBanner::to_nbt).collect()),
+            );
+        }
         nbt
     }
 
@@ -613,6 +709,22 @@ impl MapItemSavedData {
             && colors.len() == COLOR_COUNT
         {
             data.colors.copy_from_slice(colors);
+        }
+        for banner in nbt
+            .list("banners")
+            .and_then(|list| list.compounds())
+            .into_iter()
+            .flatten()
+            .filter_map(MapBanner::from_nbt)
+        {
+            let id = banner.id();
+            data.add_banner_decoration(
+                None,
+                &banner,
+                f64::from(banner.pos.x()),
+                f64::from(banner.pos.z()),
+            );
+            data.put_banner_marker(id, banner);
         }
         Ok(data)
     }

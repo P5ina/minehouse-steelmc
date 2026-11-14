@@ -389,7 +389,6 @@ impl LootFunction {
                 item.enchant_with_levels(level, options, ctx.rng);
             }
             LootFunction::CopyComponents { source, include } => {
-                // TODO: Implement when block entity system is ready
                 item.copy_components(*source, include, ctx);
             }
             LootFunction::CopyState { block, properties } => {

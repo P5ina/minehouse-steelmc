@@ -13,9 +13,11 @@ use steel_registry::equipment::EquipmentSlotType;
 use steel_registry::item_stack::ItemStack;
 use steel_registry::map_color::{MapColor, MapColorBrightness};
 use steel_registry::stat::vanilla_stat_types;
+use steel_registry::vanilla_block_tags::BlockTag;
 use steel_registry::{sound_events, vanilla_blocks, vanilla_items};
 use steel_utils::{BlockPos, BlockStateId, ChunkPos, SectionPos};
 
+use crate::behavior::context::UseOnContext;
 use crate::behavior::{InteractionResult, InventoryTickContext, ItemBehavior, UseItemContext};
 use crate::chunk::heightmap::HeightmapType;
 use crate::entity::Entity as _;
@@ -132,6 +134,7 @@ impl MapItem {
         };
         let min_y = world.get_min_y();
         let mut found_consecutive_changes = false;
+        let mut banner_columns = Vec::new();
 
         for img_x in (player_img_x - radius + 1)..(player_img_x + radius) {
             if (img_x & 15) != (step & 15) && !found_consecutive_changes {
@@ -156,6 +159,7 @@ impl MapItem {
 
                 // Vanilla loads the chunk here; maps only draw chunks around their
                 // holder, which the holder's own view keeps loaded.
+                let check_banners = data.banners().next().is_some();
                 let Some(sample) = world.chunk_map.with_full_chunk(chunk_pos, |chunk| {
                     let mut colors = ColorCount::default();
                     let mut water_depth = 0;
@@ -214,8 +218,9 @@ impl MapItem {
                                         state = correct_state_for_fluid_block(world, state, pos);
                                     }
                                 }
-                                // TODO: `MapItemSavedData.checkBanners` once banners
-                                // have block entities.
+                                if check_banners {
+                                    banner_columns.push((x, z));
+                                }
                                 average_area_height +=
                                     f64::from(column_y) / f64::from(scale * scale);
                                 colors.add(state.get_map_color(), 1);
@@ -226,6 +231,11 @@ impl MapItem {
                 }) else {
                     continue;
                 };
+                // Banner block entities are read after the chunk is released.
+                for &(x, z) in &banner_columns {
+                    data.check_banners(world, x, z);
+                }
+                banner_columns.clear();
                 let (color, water_depth, average_area_height) = sample;
                 let water_depth = water_depth / (scale * scale);
                 let parity = (img_x + img_y) & 1;
@@ -307,6 +317,29 @@ impl ColorCount {
 }
 
 impl ItemBehavior for MapItem {
+    /// Using a map on a banner marks the banner on the map, or unmarks it.
+    fn use_on(&self, context: &mut UseOnContext) -> InteractionResult {
+        let pos = context.hit_result.block_pos;
+        if !context
+            .world
+            .get_block_state(pos)
+            .get_block()
+            .has_tag(&BlockTag::BANNERS)
+        {
+            return InteractionResult::Pass;
+        }
+        let data = context
+            .inv
+            .with_item(|item| item.get(MAP_ID).copied())
+            .and_then(|map_id| context.world.map_data(map_id));
+        if let Some(data) = data
+            && !data.lock().toggle_banner(context.world, pos)
+        {
+            return InteractionResult::Fail;
+        }
+        InteractionResult::Success
+    }
+
     /// Vanilla `MapItem.inventoryTick`.
     fn inventory_tick(&self, context: &mut InventoryTickContext<'_>) {
         let Some((Some(map_id), static_decorations)) = context.with_item(|stack| {
@@ -374,9 +407,11 @@ pub(crate) fn synchronize_map_updates(player: &Arc<Player>) {
 mod tests {
     use glam::DVec3;
     use steel_registry::blocks::properties::{Axis, BlockStateProperties};
+    use steel_registry::data_components::vanilla_components::CUSTOM_NAME;
     use steel_registry::{RegistryReference, init_vanilla_registry, vanilla_map_decoration_types};
     use steel_utils::Identifier;
     use steel_utils::types::{InteractionHand, UpdateFlags};
+    use text_components::TextComponent;
 
     use super::*;
     use crate::behavior::init_behaviors;
@@ -500,5 +535,54 @@ mod tests {
         );
         assert_eq!((decorations[0].x, decorations[0].y), (1, 1));
         assert!(data.update_packet(id, &player).is_none());
+    }
+
+    #[test]
+    fn maps_mark_banners_and_drop_them_when_the_banner_goes() {
+        init_vanilla_registry();
+        init_behaviors();
+        let fixture = fresh_test_world("map_banners");
+        let world = &fixture.world;
+        insert_ready_full_chunk(world, ChunkPos::new(0, 0));
+        let pos = BlockPos::new(3, 64, 5);
+        assert!(world.set_block(
+            pos,
+            vanilla_blocks::RED_BANNER.default_state(),
+            UpdateFlags::UPDATE_ALL,
+        ));
+        let mut named = ItemStack::new(&vanilla_items::RED_BANNER);
+        named.set(CUSTOM_NAME, TextComponent::from("Base".to_string()));
+        world
+            .get_block_entity(pos)
+            .expect("banner entity")
+            .apply_components_from_item_stack(&named);
+
+        let mut data = MapItemSavedData::create_fresh(0.0, 0.0, 0, true, false, world.key.clone());
+        assert!(data.toggle_banner(world, pos));
+        let marker = data.decorations().next().expect("a banner marker");
+        assert_eq!(
+            marker.decoration_type,
+            RegistryReference::new(&vanilla_map_decoration_types::BANNER_RED)
+        );
+        assert_eq!(marker.name, Some(TextComponent::from("Base".to_string())));
+        assert_eq!((marker.x, marker.y, marker.rot), (7, 11, 8));
+
+        let reloaded = MapItemSavedData::from_nbt_bytes(&data.to_nbt_bytes()).expect("map NBT");
+        assert_eq!(reloaded.banners().count(), 1);
+        assert_eq!(reloaded.decorations().count(), 1);
+
+        assert!(data.toggle_banner(world, pos), "a second use unmarks it");
+        assert_eq!(data.decorations().count(), 0);
+        assert!(data.toggle_banner(world, pos));
+
+        assert!(world.set_block(
+            pos,
+            vanilla_blocks::AIR.default_state(),
+            UpdateFlags::UPDATE_ALL,
+        ));
+        data.check_banners(world.as_ref(), pos.x(), pos.z());
+        assert_eq!(data.banners().count(), 0);
+        assert_eq!(data.decorations().count(), 0);
+        assert!(!data.toggle_banner(world, pos), "no banner to mark");
     }
 }
