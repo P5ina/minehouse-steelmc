@@ -9,7 +9,9 @@ use simdnbt::owned::NbtCompound;
 use steel_macros::entity_behavior;
 use steel_registry::entity_type::EntityTypeRef;
 use steel_registry::items::ItemRef;
-use steel_registry::vanilla_entity_data::{AbstractMinecartEntityData, HopperMinecartEntityData};
+use steel_registry::vanilla_entity_data::{
+    AbstractMinecartEntityData, HopperMinecartEntityData, VehicleEntityData,
+};
 use steel_registry::vanilla_items;
 use steel_utils::axis::Axis;
 use steel_utils::block_util::FoundRectangle;
@@ -20,7 +22,8 @@ use steel_utils::{BlockPos, Direction, Downcast as _, DowncastType, DowncastType
 use text_components::TextComponent;
 
 use super::abstract_minecart::{AbstractMinecart, MinecartCore, tick_minecart};
-use super::minecart_container::{ContainerMinecartMenuKind, MinecartContainer};
+use super::vehicle_container::{ContainerVehicleMenuKind, VehicleContainer};
+use super::vehicle_entity::VehicleEntity;
 use crate::behavior::InteractionResult;
 use crate::block_entity::entities::{
     HOPPER_SLOTS, hopper_add_item_entity as add_item_entity, hopper_suck_in_items as suck_in_items,
@@ -48,7 +51,7 @@ pub struct HopperMinecartEntity {
     entity_type: EntityTypeRef,
     entity_data: SyncMutex<HopperMinecartEntityData>,
     minecart: MinecartCore,
-    container: MinecartContainer,
+    container: VehicleContainer,
     enabled: AtomicBool,
     consumed_item_this_frame: AtomicBool,
 }
@@ -88,7 +91,7 @@ impl HopperMinecartEntity {
             entity_type,
             entity_data: SyncMutex::new(entity_data),
             minecart: MinecartCore::new(),
-            container: MinecartContainer::new(HOPPER_SLOTS),
+            container: VehicleContainer::new(HOPPER_SLOTS),
             enabled: AtomicBool::new(true),
             consumed_item_this_frame: AtomicBool::new(false),
         }
@@ -176,9 +179,25 @@ impl HopperMinecartEntity {
                 inventory,
                 context.container_id,
                 container.clone(),
-                ContainerMinecartMenuKind::new(Arc::downgrade(&cart), container.clone(), false),
+                ContainerVehicleMenuKind::new(Arc::downgrade(&cart), container.clone(), false),
             )
         });
+    }
+}
+
+impl VehicleEntity for HopperMinecartEntity {
+    fn with_vehicle_data(&self, f: &mut dyn FnMut(&mut VehicleEntityData)) {
+        f(&mut self.entity_data.lock().abstract_minecart.vehicle_entity);
+    }
+
+    fn drop_item(&self) -> ItemRef {
+        &vanilla_items::HOPPER_MINECART
+    }
+
+    /// Vanilla `AbstractMinecartContainer.destroy`.
+    fn destroy(&self, world: &World, source: &DamageSource) {
+        self.default_destroy(world);
+        self.container.destroyed(self, world, source);
     }
 }
 
@@ -189,10 +208,6 @@ impl AbstractMinecart for HopperMinecartEntity {
 
     fn with_minecart_data(&self, f: &mut dyn FnMut(&mut AbstractMinecartEntityData)) {
         f(&mut self.entity_data.lock().abstract_minecart);
-    }
-
-    fn drop_item(&self) -> ItemRef {
-        &vanilla_items::HOPPER_MINECART
     }
 
     fn default_display_offset(&self) -> i32 {
@@ -211,12 +226,6 @@ impl AbstractMinecart for HopperMinecartEntity {
     fn apply_natural_slowdown(&self, movement: DVec3) -> DVec3 {
         self.container
             .apply_natural_slowdown(movement, self.is_in_water())
-    }
-
-    /// Vanilla `AbstractMinecartContainer.destroy`.
-    fn destroy(&self, world: &World, source: &DamageSource) {
-        self.default_destroy(world);
-        self.container.destroyed(self, world, source);
     }
 }
 

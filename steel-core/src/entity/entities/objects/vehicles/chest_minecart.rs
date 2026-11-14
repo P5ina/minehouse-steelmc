@@ -8,7 +8,9 @@ use simdnbt::owned::NbtCompound;
 use steel_macros::entity_behavior;
 use steel_registry::entity_type::EntityTypeRef;
 use steel_registry::items::ItemRef;
-use steel_registry::vanilla_entity_data::{AbstractMinecartEntityData, ChestMinecartEntityData};
+use steel_registry::vanilla_entity_data::{
+    AbstractMinecartEntityData, ChestMinecartEntityData, VehicleEntityData,
+};
 use steel_registry::{vanilla_game_events, vanilla_items};
 use steel_utils::axis::Axis;
 use steel_utils::block_util::FoundRectangle;
@@ -19,7 +21,8 @@ use steel_utils::{Direction, DowncastType, DowncastTypeKey, Identifier};
 use text_components::TextComponent;
 
 use super::abstract_minecart::{AbstractMinecart, MinecartCore, tick_minecart};
-use super::minecart_container::{ContainerMinecartMenuKind, MinecartContainer};
+use super::vehicle_container::{ContainerVehicleMenuKind, VehicleContainer};
+use super::vehicle_entity::VehicleEntity;
 use crate::behavior::InteractionResult;
 use crate::behavior::blocks::anger_nearby_piglins;
 use crate::entity::damage::DamageSource;
@@ -46,7 +49,7 @@ pub struct ChestMinecartEntity {
     entity_type: EntityTypeRef,
     entity_data: SyncMutex<ChestMinecartEntityData>,
     minecart: MinecartCore,
-    container: MinecartContainer,
+    container: VehicleContainer,
 }
 
 // SAFETY: This key is owned by Steel and uniquely identifies `ChestMinecartEntity`.
@@ -84,7 +87,7 @@ impl ChestMinecartEntity {
             entity_type,
             entity_data: SyncMutex::new(entity_data),
             minecart: MinecartCore::new(),
-            container: MinecartContainer::new(CHEST_MINECART_SLOTS),
+            container: VehicleContainer::new(CHEST_MINECART_SLOTS),
         }
     }
 
@@ -129,9 +132,25 @@ impl ChestMinecartEntity {
                 context.container_id,
                 container.clone(),
                 3,
-                ContainerMinecartMenuKind::new(Arc::downgrade(&cart), container.clone(), true),
+                ContainerVehicleMenuKind::new(Arc::downgrade(&cart), container.clone(), true),
             )
         });
+    }
+}
+
+impl VehicleEntity for ChestMinecartEntity {
+    fn with_vehicle_data(&self, f: &mut dyn FnMut(&mut VehicleEntityData)) {
+        f(&mut self.entity_data.lock().abstract_minecart.vehicle_entity);
+    }
+
+    fn drop_item(&self) -> ItemRef {
+        &vanilla_items::CHEST_MINECART
+    }
+
+    /// Vanilla `AbstractMinecartContainer.destroy`.
+    fn destroy(&self, world: &World, source: &DamageSource) {
+        self.default_destroy(world);
+        self.container.destroyed(self, world, source);
     }
 }
 
@@ -144,10 +163,6 @@ impl AbstractMinecart for ChestMinecartEntity {
         f(&mut self.entity_data.lock().abstract_minecart);
     }
 
-    fn drop_item(&self) -> ItemRef {
-        &vanilla_items::CHEST_MINECART
-    }
-
     fn default_display_offset(&self) -> i32 {
         CHEST_DISPLAY_OFFSET
     }
@@ -155,12 +170,6 @@ impl AbstractMinecart for ChestMinecartEntity {
     fn apply_natural_slowdown(&self, movement: DVec3) -> DVec3 {
         self.container
             .apply_natural_slowdown(movement, self.is_in_water())
-    }
-
-    /// Vanilla `AbstractMinecartContainer.destroy`.
-    fn destroy(&self, world: &World, source: &DamageSource) {
-        self.default_destroy(world);
-        self.container.destroyed(self, world, source);
     }
 }
 

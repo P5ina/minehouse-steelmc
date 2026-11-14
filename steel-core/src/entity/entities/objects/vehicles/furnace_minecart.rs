@@ -9,7 +9,9 @@ use steel_macros::entity_behavior;
 use steel_registry::entity_type::EntityTypeRef;
 use steel_registry::item_stack::ItemStack;
 use steel_registry::items::ItemRef;
-use steel_registry::vanilla_entity_data::{AbstractMinecartEntityData, FurnaceMinecartEntityData};
+use steel_registry::vanilla_entity_data::{
+    AbstractMinecartEntityData, FurnaceMinecartEntityData, VehicleEntityData,
+};
 use steel_registry::vanilla_item_tags::ItemTag;
 use steel_registry::vanilla_items;
 use steel_utils::axis::Axis;
@@ -19,6 +21,7 @@ use steel_utils::types::InteractionHand;
 use steel_utils::{Direction, DowncastType, DowncastTypeKey};
 
 use super::abstract_minecart::{AbstractMinecart, MinecartCore, tick_minecart};
+use super::vehicle_entity::VehicleEntity;
 use crate::behavior::InteractionResult;
 use crate::entity::damage::DamageSource;
 use crate::entity::{
@@ -141,6 +144,21 @@ impl FurnaceMinecartEntity {
     }
 }
 
+impl VehicleEntity for FurnaceMinecartEntity {
+    fn with_vehicle_data(&self, f: &mut dyn FnMut(&mut VehicleEntityData)) {
+        f(&mut self
+            .entity_data
+            .lock()
+            .minecart_furnace
+            .abstract_minecart
+            .vehicle_entity);
+    }
+
+    fn drop_item(&self) -> ItemRef {
+        &vanilla_items::FURNACE_MINECART
+    }
+}
+
 impl AbstractMinecart for FurnaceMinecartEntity {
     fn minecart_core(&self) -> &MinecartCore {
         &self.minecart
@@ -148,10 +166,6 @@ impl AbstractMinecart for FurnaceMinecartEntity {
 
     fn with_minecart_data(&self, f: &mut dyn FnMut(&mut AbstractMinecartEntityData)) {
         f(&mut self.entity_data.lock().minecart_furnace.abstract_minecart);
-    }
-
-    fn drop_item(&self) -> ItemRef {
-        &vanilla_items::FURNACE_MINECART
     }
 
     fn is_furnace(&self) -> bool {

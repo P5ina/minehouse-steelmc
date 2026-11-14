@@ -8,7 +8,9 @@ use simdnbt::owned::NbtCompound;
 use steel_macros::entity_behavior;
 use steel_registry::entity_type::EntityTypeRef;
 use steel_registry::items::ItemRef;
-use steel_registry::vanilla_entity_data::{AbstractMinecartEntityData, MinecartEntityData};
+use steel_registry::vanilla_entity_data::{
+    AbstractMinecartEntityData, MinecartEntityData, VehicleEntityData,
+};
 use steel_registry::vanilla_items;
 use steel_utils::axis::Axis;
 use steel_utils::block_util::FoundRectangle;
@@ -17,6 +19,7 @@ use steel_utils::types::InteractionHand;
 use steel_utils::{BlockPos, Direction, DowncastType, DowncastTypeKey};
 
 use super::abstract_minecart::{AbstractMinecart, MinecartCore, tick_minecart};
+use super::vehicle_entity::VehicleEntity;
 use crate::behavior::InteractionResult;
 use crate::entity::damage::DamageSource;
 use crate::entity::{
@@ -69,6 +72,20 @@ impl MinecartEntity {
     }
 }
 
+impl VehicleEntity for MinecartEntity {
+    fn with_vehicle_data(&self, f: &mut dyn FnMut(&mut VehicleEntityData)) {
+        f(&mut self
+            .entity_data
+            .lock()
+            .abstract_minecart_mut()
+            .vehicle_entity);
+    }
+
+    fn drop_item(&self) -> ItemRef {
+        &vanilla_items::MINECART
+    }
+}
+
 impl AbstractMinecart for MinecartEntity {
     fn minecart_core(&self) -> &MinecartCore {
         &self.minecart
@@ -76,10 +93,6 @@ impl AbstractMinecart for MinecartEntity {
 
     fn with_minecart_data(&self, f: &mut dyn FnMut(&mut AbstractMinecartEntityData)) {
         f(self.entity_data.lock().abstract_minecart_mut());
-    }
-
-    fn drop_item(&self) -> ItemRef {
-        &vanilla_items::MINECART
     }
 
     fn is_rideable(&self) -> bool {

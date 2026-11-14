@@ -1,5 +1,5 @@
-//! The inventory shared by chest and hopper minecarts (vanilla
-//! `AbstractMinecartContainer` and `ContainerEntity`).
+//! The inventory of chest and hopper minecarts and chest boats (vanilla
+//! `ContainerEntity`, plus `AbstractMinecartContainer`'s slowdown).
 
 use std::mem;
 use std::sync::Arc;
@@ -29,13 +29,13 @@ use crate::world::game_event::GameEventContext;
 /// Vanilla `ContainerEntity.isChestVehicleStillValid` reach buffer.
 const CONTAINER_REACH_BUFFER: f64 = 4.0;
 
-/// A minecart's item slots with the loot table they may still have to roll.
-pub(super) struct MinecartContainer {
+/// A vehicle's item slots with the loot table they may still have to roll.
+pub(super) struct VehicleContainer {
     container: Shared<SimpleContainer>,
     loot: ContainerLoot,
 }
 
-impl MinecartContainer {
+impl VehicleContainer {
     pub(super) fn new(slots: usize) -> Self {
         Self {
             container: SimpleContainer::new(slots).into_shared(),
@@ -54,17 +54,17 @@ impl MinecartContainer {
     }
 
     /// The slots, rolling a pending loot table first.
-    pub(super) fn container_ref(&self, cart: &dyn Entity) -> ContainerRef {
-        self.unpack(cart, None);
+    pub(super) fn container_ref(&self, vehicle: &dyn Entity) -> ContainerRef {
+        self.unpack(vehicle, None);
         ContainerRef::from(&self.container)
     }
 
     /// Vanilla `ContainerEntity.unpackChestVehicleLootTable`.
-    pub(super) fn unpack(&self, cart: &dyn Entity, player: Option<&Player>) {
+    pub(super) fn unpack(&self, vehicle: &dyn Entity, player: Option<&Player>) {
         if !self.loot.is_pending() {
             return;
         }
-        let pos = block_pos_of(cart);
+        let pos = block_pos_of(vehicle);
         let mut container = self.container.lock();
         // Vanilla rolls with the cart's exact position as origin; the loot
         // origin only feeds location conditions, which use its block.
@@ -73,33 +73,33 @@ impl MinecartContainer {
 
     /// Vanilla `AbstractContainerMenu.getRedstoneSignalFromContainer` over
     /// these slots, rolling a pending loot table first.
-    pub(super) fn redstone_signal(&self, cart: &dyn Entity) -> i32 {
-        self.unpack(cart, None);
+    pub(super) fn redstone_signal(&self, vehicle: &dyn Entity) -> i32 {
+        self.unpack(vehicle, None);
         redstone_signal_from_container(&*self.container.lock())
     }
 
     /// Vanilla `Containers.dropContents(level, entity, container)`.
-    pub(super) fn drop_contents(&self, cart: &dyn Entity, world: &Arc<World>) {
-        self.unpack(cart, None);
+    pub(super) fn drop_contents(&self, vehicle: &dyn Entity, world: &Arc<World>) {
+        self.unpack(vehicle, None);
         let items: Vec<ItemStack> = {
             let mut container = self.container.lock();
             container.items_mut().iter_mut().map(mem::take).collect()
         };
-        let pos = block_pos_of(cart);
+        let pos = block_pos_of(vehicle);
         for item in items {
             world.drop_item_stack(pos, item);
         }
     }
 
     /// Vanilla `ContainerEntity.chestVehicleDestroyed`.
-    pub(super) fn destroyed(&self, cart: &dyn Entity, world: &World, source: &DamageSource) {
+    pub(super) fn destroyed(&self, vehicle: &dyn Entity, world: &World, source: &DamageSource) {
         if !world.get_game_rule(&ENTITY_DROPS) {
             return;
         }
-        let Some(world) = cart.level() else {
+        let Some(world) = vehicle.level() else {
             return;
         };
-        self.drop_contents(cart, &world);
+        self.drop_contents(vehicle, &world);
         if let Some(player) = source.direct_entity().and_then(|entity| entity.as_player()) {
             anger_nearby_piglins(&world, player, true);
         }
@@ -129,11 +129,11 @@ impl MinecartContainer {
     /// Vanilla `AbstractMinecartContainer.createMenu(containerId, inventory, player)`:
     /// spectators cannot open an unrolled cart; anyone else rolls it with
     /// their luck. Returns whether the menu may open.
-    pub(super) fn prepare_open(&self, cart: &dyn Entity, player: &Player) -> bool {
+    pub(super) fn prepare_open(&self, vehicle: &dyn Entity, player: &Player) -> bool {
         if self.loot.is_pending() && player.is_spectator() {
             return false;
         }
-        self.unpack(cart, Some(player));
+        self.unpack(vehicle, Some(player));
         true
     }
 
@@ -152,7 +152,7 @@ impl MinecartContainer {
                 NbtTag::Compound(mut item_nbt) => {
                     #[expect(
                         clippy::cast_possible_truncation,
-                        reason = "minecart container slots fit in a byte"
+                        reason = "vehicle container slots fit in a byte"
                     )]
                     item_nbt.insert("Slot", slot as i8);
                     Some(item_nbt)
@@ -192,8 +192,8 @@ impl MinecartContainer {
     }
 }
 
-fn block_pos_of(cart: &dyn Entity) -> BlockPos {
-    let position = cart.position();
+fn block_pos_of(vehicle: &dyn Entity) -> BlockPos {
+    let position = vehicle.position();
     BlockPos::containing(position.x, position.y, position.z)
 }
 
@@ -224,34 +224,38 @@ pub fn redstone_signal_from_container(container: &dyn Container) -> i32 {
     signal
 }
 
-/// The menu over a container minecart: valid while the cart is alive and in
+/// The menu over a container vehicle: valid while the vehicle is alive and in
 /// reach, optionally emitting `container_close` when it closes (vanilla
 /// `MinecartChest.stopOpen`).
-pub(super) struct ContainerMinecartMenuKind {
-    cart: WeakEntity,
+pub(super) struct ContainerVehicleMenuKind {
+    vehicle: WeakEntity,
     chest: ChestKind,
     emits_close_event: bool,
 }
 
-impl ContainerMinecartMenuKind {
-    pub(super) fn new(cart: WeakEntity, container: ContainerRef, emits_close_event: bool) -> Self {
+impl ContainerVehicleMenuKind {
+    pub(super) fn new(
+        vehicle: WeakEntity,
+        container: ContainerRef,
+        emits_close_event: bool,
+    ) -> Self {
         Self {
-            cart,
+            vehicle,
             chest: ChestKind::new(vec![container]),
             emits_close_event,
         }
     }
 }
 
-// SAFETY: This key is owned by Steel and uniquely identifies the container minecart menu kind.
-unsafe impl DowncastType for ContainerMinecartMenuKind {
-    const TYPE_KEY: DowncastTypeKey = DowncastTypeKey::new("steel:menu/container_minecart");
+// SAFETY: This key is owned by Steel and uniquely identifies the container vehicle menu kind.
+unsafe impl DowncastType for ContainerVehicleMenuKind {
+    const TYPE_KEY: DowncastTypeKey = DowncastTypeKey::new("steel:menu/container_vehicle");
 }
 
-impl MenuKind for ContainerMinecartMenuKind {
+impl MenuKind for ContainerVehicleMenuKind {
     /// Vanilla `ContainerEntity.isChestVehicleStillValid`.
     fn still_valid(&self, _behavior: &MenuBehavior, player: &Player) -> bool {
-        self.cart.upgrade().is_some_and(|cart| {
+        self.vehicle.upgrade().is_some_and(|cart| {
             !cart.is_removed()
                 && player.is_within_entity_interaction_range_with_buffer(
                     cart.bounding_box(),
@@ -273,7 +277,7 @@ impl MenuKind for ContainerMinecartMenuKind {
         if !self.emits_close_event {
             return;
         }
-        let Some(cart) = self.cart.upgrade() else {
+        let Some(cart) = self.vehicle.upgrade() else {
             return;
         };
         let Some(world) = cart.level() else {

@@ -14,7 +14,9 @@ use steel_registry::items::ItemRef;
 use steel_registry::sound_events;
 use steel_registry::vanilla_block_tags::BlockTag;
 use steel_registry::vanilla_damage_type_tags::DamageTypeTag;
-use steel_registry::vanilla_entity_data::{AbstractMinecartEntityData, TntMinecartEntityData};
+use steel_registry::vanilla_entity_data::{
+    AbstractMinecartEntityData, TntMinecartEntityData, VehicleEntityData,
+};
 use steel_registry::vanilla_game_rules::TNT_EXPLODES;
 use steel_registry::vanilla_items;
 use steel_utils::axis::Axis;
@@ -24,6 +26,7 @@ use steel_utils::locks::SyncMutex;
 use steel_utils::{BlockPos, BlockStateId, Direction, DowncastType, DowncastTypeKey};
 
 use super::abstract_minecart::{AbstractMinecart, MinecartCore, tick_minecart};
+use super::vehicle_entity::VehicleEntity;
 use crate::entity::damage::DamageSource;
 use crate::entity::{
     Entity, EntityBase, EntityBaseLoad, EntityMovementEmission, EntitySyncedData, MoveResult,
@@ -207,24 +210,13 @@ impl TntMinecartEntity {
     }
 }
 
-impl AbstractMinecart for TntMinecartEntity {
-    fn minecart_core(&self) -> &MinecartCore {
-        &self.minecart
-    }
-
-    fn with_minecart_data(&self, f: &mut dyn FnMut(&mut AbstractMinecartEntityData)) {
-        f(&mut self.entity_data.lock().abstract_minecart);
+impl VehicleEntity for TntMinecartEntity {
+    fn with_vehicle_data(&self, f: &mut dyn FnMut(&mut VehicleEntityData)) {
+        f(&mut self.entity_data.lock().abstract_minecart.vehicle_entity);
     }
 
     fn drop_item(&self) -> ItemRef {
         &vanilla_items::TNT_MINECART
-    }
-
-    /// Vanilla `MinecartTNT.activateMinecart`: a powered activator rail primes it.
-    fn activate_minecart(&self, _world: &Arc<World>, _pos: BlockPos, powered: bool) {
-        if powered && self.fuse() < 0 {
-            self.prime_fuse(None);
-        }
     }
 
     /// Vanilla `MinecartTNT.destroy`: a slow cart broken by hand drops its
@@ -245,6 +237,23 @@ impl AbstractMinecart for TntMinecartEntity {
 
     fn should_source_destroy(&self, source: &DamageSource) -> bool {
         Self::damage_source_ignites_tnt(source)
+    }
+}
+
+impl AbstractMinecart for TntMinecartEntity {
+    fn minecart_core(&self) -> &MinecartCore {
+        &self.minecart
+    }
+
+    fn with_minecart_data(&self, f: &mut dyn FnMut(&mut AbstractMinecartEntityData)) {
+        f(&mut self.entity_data.lock().abstract_minecart);
+    }
+
+    /// Vanilla `MinecartTNT.activateMinecart`: a powered activator rail primes it.
+    fn activate_minecart(&self, _world: &Arc<World>, _pos: BlockPos, powered: bool) {
+        if powered && self.fuse() < 0 {
+            self.prime_fuse(None);
+        }
     }
 }
 
