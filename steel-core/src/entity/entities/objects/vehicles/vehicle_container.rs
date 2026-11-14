@@ -15,7 +15,7 @@ use steel_utils::locks::{IntoShared as _, Shared};
 use steel_utils::{BlockPos, DowncastType, DowncastTypeKey, Identifier};
 
 use crate::behavior::blocks::anger_nearby_piglins;
-use crate::block_entity::container_loot::ContainerLoot;
+use crate::block_entity::container_loot::{ContainerLoot, LootUnpack};
 use crate::entity::damage::DamageSource;
 use crate::entity::{Entity, WeakEntity};
 use crate::inventory::container::{Container, SimpleContainer};
@@ -32,14 +32,14 @@ const CONTAINER_REACH_BUFFER: f64 = 4.0;
 /// A vehicle's item slots with the loot table they may still have to roll.
 pub(super) struct VehicleContainer {
     container: Shared<SimpleContainer>,
-    loot: ContainerLoot,
+    loot: Arc<ContainerLoot>,
 }
 
 impl VehicleContainer {
     pub(super) fn new(slots: usize) -> Self {
         Self {
             container: SimpleContainer::new(slots).into_shared(),
-            loot: ContainerLoot::new(),
+            loot: Arc::new(ContainerLoot::new()),
         }
     }
 
@@ -60,15 +60,18 @@ impl VehicleContainer {
     }
 
     /// Vanilla `ContainerEntity.unpackChestVehicleLootTable`.
-    pub(super) fn unpack(&self, vehicle: &dyn Entity, player: Option<&Player>) {
+    pub(super) fn unpack(&self, vehicle: &dyn Entity, player: Option<&Player>) -> LootUnpack {
         if !self.loot.is_pending() {
-            return;
+            return LootUnpack::Nothing;
         }
+        let Some(world) = vehicle.level() else {
+            return LootUnpack::Nothing;
+        };
         let pos = block_pos_of(vehicle);
         let mut container = self.container.lock();
         // Vanilla rolls with the cart's exact position as origin; the loot
         // origin only feeds location conditions, which use its block.
-        self.loot.unpack(&mut *container, pos, player);
+        self.loot.unpack(&mut *container, pos, player, &world)
     }
 
     /// Vanilla `AbstractContainerMenu.getRedstoneSignalFromContainer` over
@@ -80,7 +83,9 @@ impl VehicleContainer {
 
     /// Vanilla `Containers.dropContents(level, entity, container)`.
     pub(super) fn drop_contents(&self, vehicle: &dyn Entity, world: &Arc<World>) {
-        self.unpack(vehicle, None);
+        if self.unpack(vehicle, None) == LootUnpack::Searching {
+            world.drop_after_exploration_loot(&self.loot, block_pos_of(vehicle));
+        }
         let items: Vec<ItemStack> = {
             let mut container = self.container.lock();
             container.items_mut().iter_mut().map(mem::take).collect()
@@ -133,8 +138,9 @@ impl VehicleContainer {
         if self.loot.is_pending() && player.is_spectator() {
             return false;
         }
-        self.unpack(vehicle, Some(player));
-        true
+        // Loot waiting on an exploration map search keeps the cart shut until
+        // the player opens it again.
+        self.unpack(vehicle, Some(player)) != LootUnpack::Searching
     }
 
     /// Vanilla `ContainerEntity.addChestVehicleSaveData`.

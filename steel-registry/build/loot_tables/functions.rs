@@ -192,18 +192,25 @@ pub(super) fn generate_function(function: &LootFunctionJson) -> TokenStream {
             quote! { LootFunction::FurnaceSmelt { use_input_count: #use_input_count } }
         }
         "minecraft:exploration_map" => {
+            // Vanilla's codec requires the structure tag.
             let destination = function
                 .destination
                 .as_deref()
-                .unwrap_or("minecraft:buried_treasure");
+                .expect("exploration_map destination");
+            let destination = destination.strip_prefix('#').unwrap_or(destination);
             let destination = destination
                 .strip_prefix("minecraft:")
                 .unwrap_or(destination);
 
-            let decoration = function.decoration.as_deref().unwrap_or("minecraft:red_x");
+            // Vanilla `ExplorationMapFunction.DEFAULT_DECORATION` is the woodland mansion.
+            let decoration = function
+                .decoration
+                .as_deref()
+                .unwrap_or("minecraft:mansion");
             let decoration = decoration.strip_prefix("minecraft:").unwrap_or(decoration);
 
             let zoom = function.zoom.unwrap_or(2);
+            let search_radius = function.search_radius.unwrap_or(50);
             let skip_existing_chunks = function.skip_existing_chunks.unwrap_or(true);
 
             quote! {
@@ -211,6 +218,7 @@ pub(super) fn generate_function(function: &LootFunctionJson) -> TokenStream {
                     destination: Identifier::vanilla_static(#destination),
                     decoration: Identifier::vanilla_static(#decoration),
                     zoom: #zoom,
+                    search_radius: #search_radius,
                     skip_existing_chunks: #skip_existing_chunks,
                 }
             }

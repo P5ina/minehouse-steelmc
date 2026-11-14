@@ -277,6 +277,32 @@ pub struct LootContext<'a, R: rand::Rng> {
     pub block_entity: Option<BlockEntityRef<'a>>,
     /// The entity interacting with a block/entity (e.g., player opening a chest).
     pub interacting_entity: Option<EntityRef<'a>>,
+    /// The level's structure search for vanilla `ExplorationMapFunction`.
+    pub exploration_maps: Option<&'a mut dyn ExplorationMaps>,
+}
+
+/// One vanilla `ExplorationMapFunction` roll.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExplorationMapRequest {
+    /// Structure tag the map leads to.
+    pub destination: Identifier,
+    /// Map decoration type marking the structure.
+    pub decoration: Identifier,
+    /// Scale of the new map.
+    pub zoom: i32,
+    /// How many chunks out the search goes.
+    pub search_radius: i32,
+    /// Vanilla `skipKnownStructures`: structures already on a map are skipped.
+    pub skip_existing_chunks: bool,
+    /// Vanilla `LootContextParams.ORIGIN`.
+    pub origin: (f64, f64, f64),
+}
+
+/// The level side of vanilla `ExplorationMapFunction`.
+pub trait ExplorationMaps {
+    /// Turns `item` into a map leading to the nearest structure of the request,
+    /// or leaves it as it is when none is found.
+    fn create_exploration_map(&mut self, item: &mut ItemStack, request: ExplorationMapRequest);
 }
 
 /// Weather state for `WeatherCheck` condition.
@@ -401,7 +427,15 @@ impl<'a, R: rand::Rng> LootContext<'a, R> {
             damage_source: None,
             block_entity: None,
             interacting_entity: None,
+            exploration_maps: None,
         }
+    }
+
+    /// Lets `ExplorationMapFunction` search the level.
+    #[must_use]
+    pub fn with_exploration_maps(mut self, maps: &'a mut dyn ExplorationMaps) -> Self {
+        self.exploration_maps = Some(maps);
+        self
     }
 
     /// Set the luck value.

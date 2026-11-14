@@ -347,6 +347,8 @@ pub struct World {
     custom_spawners: SyncMutex<Vec<Box<dyn custom_spawner::CustomSpawner>>>,
     /// Vanilla `ServerLevel.raids`.
     raids: raid::Raids,
+    /// Container loot waiting on exploration map searches.
+    exploration_loot: SyncMutex<maps::exploration::ExplorationLoot>,
     /// Vanilla `WanderingTraderData`, read by the wandering trader spawner.
     pub(crate) wandering_trader_data: SyncMutex<custom_spawner::WanderingTraderData>,
     /// World-change requests queued by world-local ticks for server safe-point processing.
@@ -517,6 +519,7 @@ impl World {
                     dimension_type,
                 )),
                 raids,
+                exploration_loot: SyncMutex::new(maps::exploration::ExplorationLoot::default()),
                 pending_world_changes: SyncMutex::new(Vec::new()),
                 wandering_trader_data: SyncMutex::new(wandering_trader_data),
             }
@@ -648,6 +651,7 @@ impl World {
             let _span = tracing::trace_span!("raid").entered();
             self.raids.tick(self);
         }
+        self.tick_exploration_loot();
 
         let early_lookup_stats = lookup_cache_scope.finish();
         let mut chunk_map_timings =

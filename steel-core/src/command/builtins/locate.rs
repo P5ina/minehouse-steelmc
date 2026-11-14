@@ -58,6 +58,7 @@ fn start_structure_search(
         &structure_keys,
         origin,
         MAX_STRUCTURE_SEARCH_RADIUS,
+        false,
     ) else {
         return Err(structure_not_found(query));
     };

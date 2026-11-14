@@ -4,19 +4,22 @@ use std::ptr;
 use std::sync::Arc;
 
 use steel_macros::item_behavior;
+use steel_math::trig;
 use steel_protocol::packets::game::SoundSource;
 use steel_registry::blocks::block_state_ext::BlockStateExt as _;
 use steel_registry::blocks::properties::Direction;
-use steel_registry::data_components::components::MapId;
+use steel_registry::data_components::components::{MapDecorationEntry, MapDecorations, MapId};
 use steel_registry::data_components::vanilla_components::{
     MAP_DECORATIONS, MAP_ID, MAP_POST_PROCESSING, MapPostProcessing,
 };
 use steel_registry::equipment::EquipmentSlotType;
 use steel_registry::item_stack::ItemStack;
 use steel_registry::map_color::{MapColor, MapColorBrightness};
+use steel_registry::map_decoration_type::MapDecorationType;
 use steel_registry::stat::vanilla_stat_types;
+use steel_registry::vanilla_biome_tags::BiomeTag;
 use steel_registry::vanilla_block_tags::BlockTag;
-use steel_registry::{sound_events, vanilla_blocks, vanilla_items};
+use steel_registry::{RegistryReference, sound_events, vanilla_blocks, vanilla_items};
 use steel_utils::{BlockPos, BlockStateId, ChunkPos, SectionPos};
 
 use crate::behavior::context::UseOnContext;
@@ -29,7 +32,7 @@ use crate::player::Player;
 use crate::player::player_inventory::Prediction;
 use crate::world::LevelReader as _;
 use crate::world::World;
-use crate::world::maps::{MapItemSavedData, java_floor};
+use crate::world::maps::{MAP_SIZE, MapItemSavedData, java_floor};
 
 /// Vanilla `MapItem.create`: a filled map with fresh saved data.
 pub fn create_map(
@@ -41,6 +44,28 @@ pub fn create_map(
     unlimited_tracking: bool,
 ) -> ItemStack {
     let mut map = ItemStack::new(&vanilla_items::FILLED_MAP);
+    apply_new_saved_data(
+        world,
+        &mut map,
+        origin_x,
+        origin_z,
+        scale,
+        tracking_position,
+        unlimited_tracking,
+    );
+    map
+}
+
+/// Vanilla `MapItem.applyNewSavedData`: gives `map` fresh saved data under a new id.
+pub fn apply_new_saved_data(
+    world: &World,
+    map: &mut ItemStack,
+    origin_x: i32,
+    origin_z: i32,
+    scale: u8,
+    tracking_position: bool,
+    unlimited_tracking: bool,
+) {
     let data = MapItemSavedData::create_fresh(
         f64::from(origin_x),
         f64::from(origin_z),
@@ -52,7 +77,107 @@ pub fn create_map(
     let id = world.free_map_id();
     world.set_map_data(id, data);
     map.set(MAP_ID, id);
-    map
+}
+
+/// Vanilla `MapItem.renderBiomePreviewMap`: outlines the watery biomes of an
+/// exploration map before anyone has walked it.
+pub fn render_biome_preview_map(world: &World, map: &ItemStack) {
+    let Some(data) = map.get(MAP_ID).and_then(|id| world.map_data(*id)) else {
+        return;
+    };
+    let mut data = data.lock();
+    if data.dimension != world.key {
+        return;
+    }
+    let scale = 1 << data.scale;
+    let unscaled_start_x = data.center_x / scale - 64;
+    let unscaled_start_z = data.center_z / scale - 64;
+    let sample_y = world.sea_level();
+
+    let mut watery = [false; MAP_SIZE * MAP_SIZE];
+    for row in 0..MAP_SIZE {
+        for column in 0..MAP_SIZE {
+            let pos = BlockPos::new(
+                (unscaled_start_x + column as i32) * scale,
+                sample_y,
+                (unscaled_start_z + row as i32) * scale,
+            );
+            watery[row * MAP_SIZE + column] = world
+                .biome_at(pos)
+                .is_some_and(|biome| biome.has_tag(&BiomeTag::WATER_ON_MAP_OUTLINES));
+        }
+    }
+    let is_watery = |x: usize, z: usize| watery[z * MAP_SIZE + x];
+
+    for mx in 1..MAP_SIZE - 1 {
+        for mz in 1..MAP_SIZE - 1 {
+            let mut water_count = 0;
+            for dx in 0..3 {
+                for dz in 0..3 {
+                    if (dx != 1 || dz != 1) && is_watery(mx + dx - 1, mz + dz - 1) {
+                        water_count += 1;
+                    }
+                }
+            }
+
+            let mut brightness = MapColorBrightness::Lowest;
+            let mut color = MapColor::NONE;
+            if is_watery(mx, mz) {
+                color = MapColor::COLOR_ORANGE;
+                if water_count > 7 && mz % 2 == 0 {
+                    #[expect(
+                        clippy::cast_possible_truncation,
+                        reason = "vanilla casts the scaled sine to an int"
+                    )]
+                    let wave = (mx as i32 + (trig::sin(mz as f32) * 7.0) as i32) / 8 % 5;
+                    match wave {
+                        0 | 4 => brightness = MapColorBrightness::Low,
+                        1 | 3 => brightness = MapColorBrightness::Normal,
+                        2 => brightness = MapColorBrightness::High,
+                        _ => {}
+                    }
+                } else if water_count > 7 {
+                    color = MapColor::NONE;
+                } else if water_count > 5 {
+                    brightness = MapColorBrightness::Normal;
+                } else if water_count > 1 {
+                    brightness = MapColorBrightness::Low;
+                }
+            } else if water_count > 0 {
+                color = MapColor::COLOR_BROWN;
+                brightness = if water_count > 3 {
+                    MapColorBrightness::Normal
+                } else {
+                    MapColorBrightness::Lowest
+                };
+            }
+
+            if color != MapColor::NONE {
+                data.set_color(mx, mz, color.packed_id(brightness));
+            }
+        }
+    }
+}
+
+/// Vanilla `MapItemSavedData.addTargetDecoration`: marks `pos` on the map item itself.
+pub fn add_target_decoration(
+    map: &mut ItemStack,
+    pos: BlockPos,
+    key: &str,
+    decoration_type: RegistryReference<MapDecorationType>,
+) {
+    let entry = MapDecorationEntry::new(
+        decoration_type,
+        f64::from(pos.x()),
+        f64::from(pos.z()),
+        180.0,
+    );
+    let decorations = map
+        .get(MAP_DECORATIONS)
+        .cloned()
+        .unwrap_or_else(MapDecorations::empty)
+        .with_decoration(key.to_owned(), entry);
+    map.set(MAP_DECORATIONS, decorations);
 }
 
 /// Vanilla `EmptyMapItem`.

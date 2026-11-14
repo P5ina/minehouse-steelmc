@@ -484,6 +484,8 @@ struct LootFunctionJson {
     #[serde(default)]
     zoom: Option<i32>,
     #[serde(default)]
+    search_radius: Option<i32>,
+    #[serde(default)]
     skip_existing_chunks: Option<bool>,
     // set_name (keep as raw value for text component)
     #[serde(default)]
