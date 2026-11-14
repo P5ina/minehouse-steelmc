@@ -361,7 +361,7 @@ impl Entity for PrimedTntEntity {
             nbt.short("fuse").unwrap_or(Self::DEFAULT_FUSE_TIME as i16),
         ));
         self.set_block_state(
-            nbt.compound("block_state")
+            nbt.get("block_state")
                 .and_then(block_state_nbt::load)
                 .unwrap_or_else(|| vanilla_blocks::TNT.default_state()),
         );

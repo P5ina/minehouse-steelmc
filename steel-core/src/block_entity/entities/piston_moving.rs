@@ -607,7 +607,7 @@ impl BlockEntity for PistonMovingBlockEntity {
         let view = NbtCompoundView::from(nbt);
         let mut moving = self.moving.lock();
         moving.moved_state = view
-            .compound("blockState")
+            .get("blockState")
             .and_then(block_state_nbt::load)
             .unwrap_or_else(|| vanilla_blocks::AIR.default_state());
         moving.direction =
