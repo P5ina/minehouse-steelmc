@@ -5,7 +5,7 @@ use std::sync::Weak;
 
 use glam::DVec3;
 use simdnbt::borrow::NbtCompound as BorrowedNbtCompoundView;
-use simdnbt::owned::{NbtCompound, NbtTag};
+use simdnbt::owned::NbtCompound;
 use steel_macros::entity_behavior;
 use steel_protocol::packets::game::SoundSource;
 use steel_registry::blocks::block_state_ext::BlockStateExt as _;
@@ -432,10 +432,7 @@ impl Entity for EndermanEntity {
     fn save_additional(&self, nbt: &mut NbtCompound) {
         self.save_mob(nbt);
         if let Some(carried) = self.carried_block() {
-            nbt.insert(
-                TAG_CARRIED_BLOCK_STATE,
-                NbtTag::Compound(block_state_nbt::save(carried)),
-            );
+            nbt.insert(TAG_CARRIED_BLOCK_STATE, block_state_nbt::save(carried));
         }
         self.add_persistent_anger_save_data(nbt);
     }
@@ -443,7 +440,7 @@ impl Entity for EndermanEntity {
     fn load_additional(&self, nbt: BorrowedNbtCompoundView<'_, '_>) {
         self.load_mob(nbt);
         let carried = nbt
-            .compound(TAG_CARRIED_BLOCK_STATE)
+            .get(TAG_CARRIED_BLOCK_STATE)
             .and_then(block_state_nbt::load)
             .filter(|state| !state.is_air());
         self.set_carried_block(carried);

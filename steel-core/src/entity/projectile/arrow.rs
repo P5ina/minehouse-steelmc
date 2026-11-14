@@ -12,7 +12,7 @@ use std::sync::Arc;
 use glam::DVec3;
 use simdnbt::ToNbtTag as _;
 use simdnbt::borrow::NbtCompound as BorrowedNbtCompoundView;
-use simdnbt::owned::{NbtCompound, NbtTag};
+use simdnbt::owned::NbtCompound;
 use steel_protocol::packets::game::{CGameEvent, CTakeItemEntity, GameEventType};
 use steel_registry::blocks::block_state_ext::BlockStateExt as _;
 use steel_registry::data_components::vanilla_components::INTANGIBLE_PROJECTILE;
@@ -809,10 +809,7 @@ pub trait AbstractArrow: Projectile {
         let state = self.arrow_base().state.lock();
         nbt.insert("life", state.life as i16);
         if let Some(last_state) = state.last_state {
-            nbt.insert(
-                "inBlockState",
-                NbtTag::Compound(block_state_nbt::save(last_state)),
-            );
+            nbt.insert("inBlockState", block_state_nbt::save(last_state));
         }
         nbt.insert("shake", state.shake_time as i8);
         nbt.insert("inGround", i8::from(self.is_in_ground()));
@@ -838,7 +835,7 @@ pub trait AbstractArrow: Projectile {
         {
             let mut state = self.arrow_base().state.lock();
             state.life = i32::from(nbt.short("life").unwrap_or(0));
-            state.last_state = nbt.compound("inBlockState").and_then(block_state_nbt::load);
+            state.last_state = nbt.get("inBlockState").and_then(block_state_nbt::load);
             state.shake_time = i32::from(nbt.byte("shake").unwrap_or(0) as u8);
             state.base_damage = nbt.double("damage").unwrap_or(ARROW_BASE_DAMAGE);
             state.pickup = ArrowPickup::by_ordinal(nbt.byte("pickup").unwrap_or(0));

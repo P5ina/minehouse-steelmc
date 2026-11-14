@@ -56,7 +56,11 @@ fn carried_block_round_trips_and_keeps_the_enderman() {
 
     let mut nbt = NbtCompound::new();
     enderman.save_additional(&mut nbt);
-    assert!(nbt.compound("carriedBlockState").is_some());
+    assert_eq!(
+        nbt.string("carriedBlockState").map(|name| name.to_str()),
+        Some("minecraft:grass_block".into()),
+        "vanilla writes a default carried state as its block id"
+    );
     let mut bytes = Vec::new();
     nbt.write(&mut bytes);
     let borrowed = read_compound(&mut Cursor::new(&bytes))

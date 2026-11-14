@@ -397,7 +397,7 @@ pub trait AbstractMinecart: VehicleEntity {
 
     /// Vanilla `AbstractMinecart.readAdditionalSaveData`.
     fn load_minecart(&self, nbt: BorrowedNbtCompoundView<'_, '_>) {
-        let display_state = nbt.compound("DisplayState").and_then(block_state_nbt::load);
+        let display_state = nbt.get("DisplayState").and_then(block_state_nbt::load);
         self.set_custom_display_block_state(display_state);
         self.set_display_offset(
             nbt.int("DisplayOffset")

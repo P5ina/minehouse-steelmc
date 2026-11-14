@@ -521,10 +521,7 @@ impl Entity for FallingBlockEntity {
 
     fn save_additional(&self, nbt: &mut NbtCompound) {
         let state = self.state.lock();
-        nbt.insert(
-            "BlockState",
-            NbtTag::Compound(block_state_nbt::save(state.block_state)),
-        );
+        nbt.insert("BlockState", block_state_nbt::save(state.block_state));
         nbt.insert("Time", state.time);
         nbt.insert("DropItem", i8::from(state.drop_item));
         nbt.insert("HurtEntities", i8::from(state.hurt_entities));
@@ -538,7 +535,7 @@ impl Entity for FallingBlockEntity {
 
     fn load_additional(&self, nbt: BorrowedNbtCompoundView<'_, '_>) {
         let block_state = nbt
-            .compound("BlockState")
+            .get("BlockState")
             .and_then(block_state_nbt::load)
             .unwrap_or_else(|| vanilla_blocks::SAND.default_state());
         let mut state = self.state.lock();

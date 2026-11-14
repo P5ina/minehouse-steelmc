@@ -101,6 +101,14 @@ impl<T: Clone + PartialEq> SyncedValue<T> {
         }
     }
 
+    /// Vanilla `SynchedEntityData.set(accessor, value, true)`: stores the value
+    /// and marks it dirty even when it is unchanged, so clients see it again.
+    #[inline]
+    pub fn set_forced(&mut self, value: T) {
+        self.value = value;
+        self.dirty = true;
+    }
+
     /// Returns true if the value has been modified since last sync.
     #[inline]
     pub const fn is_dirty(&self) -> bool {
