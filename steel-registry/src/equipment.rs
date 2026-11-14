@@ -109,6 +109,13 @@ impl EquipmentSlot {
         }
     }
 
+    /// Vanilla `EquipmentSlot.getFilterBit`: the slot's bit in a bit set that
+    /// reserves a block of bits per purpose, starting at `offset`.
+    #[must_use]
+    pub const fn filter_bit(self, offset: i32) -> i32 {
+        self.id() + offset
+    }
+
     /// Returns the equipment slot with the given vanilla protocol ID.
     #[must_use]
     pub const fn by_id(id: i32) -> Self {

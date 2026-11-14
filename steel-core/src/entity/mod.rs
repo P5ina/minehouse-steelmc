@@ -926,7 +926,8 @@ pub(crate) use shearable::Shearable;
 pub(crate) use spawn::{
     AgeableMobGroupData, EntitySpawnPlacement, EntitySpawnReason, EntitySpawnRequest,
     SpawnGroupData, WolfPackData, add_spawned_entity, apply_implicit_item_stack_components,
-    apply_item_stack_components, create_entity_instance, load_entity_recursive_owned, spawn_entity,
+    apply_item_stack_components, create_entity_instance, create_spawned_entity,
+    load_entity_recursive_owned, spawn_entity,
 };
 pub(crate) use spawn_placements::SpawnPlacements;
 pub(crate) use spawn_placements::is_valid_empty_spawn_block;

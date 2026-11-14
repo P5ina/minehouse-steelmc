@@ -25,7 +25,7 @@ use crate::entity::ai::brain::memory::MemoryRequirement;
 use crate::entity::ai::brain::memory_types::{
     LOOK_TARGET, PositionTracker, SECONDARY_JOB_SITE, WALK_TARGET, WalkTarget,
 };
-use crate::entity::{Entity as _, Mob as _};
+use crate::entity::{Entity as _, LivingEntity as _};
 use crate::inventory::container::Container as _;
 use crate::inventory::equipment::EquipmentSlot;
 use crate::world::World;

@@ -1009,6 +1009,22 @@ impl LivingEntityBase {
         self.state.lock().rotation.y_head_rot = y_head_rot;
     }
 
+    /// Sets the body yaw and its previous-tick value together.
+    pub fn set_y_body_rot_and_old(&self, y_body_rot: f32, y_body_rot_o: f32) {
+        let mut state = self.state.lock();
+        state.rotation.y_body_rot = y_body_rot;
+        state.rotation.y_body_rot_o = y_body_rot_o;
+    }
+
+    /// Points body and head the same way, in this tick and the previous one.
+    pub fn snap_body_and_head_rot(&self, y_rot: f32) {
+        let mut state = self.state.lock();
+        state.rotation.y_body_rot = y_rot;
+        state.rotation.y_body_rot_o = y_rot;
+        state.rotation.y_head_rot = y_rot;
+        state.rotation.y_head_rot_o = y_rot;
+    }
+
     /// Copies current living head/body rotations to their old-rotation fields.
     pub fn advance_rotation_for_base_tick(&self) {
         let mut state = self.state.lock();

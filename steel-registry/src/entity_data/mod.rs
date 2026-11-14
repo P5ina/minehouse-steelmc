@@ -188,9 +188,23 @@ impl Rotations {
         z: 0.0,
     };
 
+    /// Vanilla `Rotations(x, y, z)`: each angle wrapped by `% 360`, with
+    /// infinite and NaN angles reset to zero.
     #[must_use]
     pub const fn new(x: f32, y: f32, z: f32) -> Self {
-        Self { x, y, z }
+        Self {
+            x: wrap_rotation(x),
+            y: wrap_rotation(y),
+            z: wrap_rotation(z),
+        }
+    }
+}
+
+const fn wrap_rotation(angle: f32) -> f32 {
+    if angle.is_finite() {
+        angle % 360.0
+    } else {
+        0.0
     }
 }
 

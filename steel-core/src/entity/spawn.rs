@@ -380,6 +380,25 @@ pub(crate) fn spawn_entity(
     world: &Arc<World>,
     request: EntitySpawnRequest<'_>,
 ) -> Result<SharedEntity, EntitySpawnError> {
+    let play_ambient_sound = request.play_ambient_sound;
+    let entity = create_spawned_entity(world, request)?;
+
+    add_spawned_entity(world, Arc::clone(&entity)).map_err(|_| EntitySpawnError::AddEntity)?;
+
+    if play_ambient_sound && let Some(mob) = entity.as_mob() {
+        mob.play_ambient_sound();
+    }
+
+    Ok(entity)
+}
+
+/// Vanilla `EntityType.create(level, postSpawnConfig, pos, reason, tryMoveDown,
+/// movedUp)`: an entity placed, rotated, finalized and configured from the item
+/// stack, not yet added to the world.
+pub(crate) fn create_spawned_entity(
+    world: &Arc<World>,
+    request: EntitySpawnRequest<'_>,
+) -> Result<SharedEntity, EntitySpawnError> {
     let entity = create_entity_instance(
         world,
         request.entity_type,
@@ -427,14 +446,6 @@ pub(crate) fn spawn_entity(
 
     if let Some(item_stack) = request.item_stack {
         apply_item_stack_components(&entity, item_stack, request.user_is_operator)?;
-    }
-
-    add_spawned_entity(world, Arc::clone(&entity)).map_err(|_| EntitySpawnError::AddEntity)?;
-
-    if request.play_ambient_sound
-        && let Some(mob) = entity.as_mob()
-    {
-        mob.play_ambient_sound();
     }
 
     Ok(entity)
