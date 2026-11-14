@@ -54,7 +54,7 @@ pub(crate) fn legacy_iron_golem(
     let block = state.get_block();
     let path = block.key.path.as_ref();
     // Vanilla `StainedGlassBlock` and `StainedGlassPaneBlock` are exactly the
-    // sixteen coloured glass blocks and panes.
+    // sixteen colored glass blocks and panes.
     let stained_glass = path.ends_with("_stained_glass") || path.ends_with("_stained_glass_pane");
     let excluded = [
         &vanilla_blocks::COBWEB,
