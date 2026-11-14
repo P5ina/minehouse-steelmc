@@ -23,7 +23,7 @@ use crate::player::Player;
 use crate::server::worlds::NETHER_WORLD_NAME;
 use crate::world::{LevelReader, World};
 
-use super::MapBanner;
+use super::{MapBanner, MapFrame};
 
 /// Vanilla `MapItem.IMAGE_WIDTH` and `IMAGE_HEIGHT`.
 pub const MAP_SIZE: usize = 128;
@@ -149,6 +149,8 @@ pub struct MapItemSavedData {
     carried_by: Vec<HoldingPlayer>,
     /// Keyed by [`MapBanner::id`], in the order they were marked.
     banner_markers: Vec<(String, MapBanner)>,
+    /// Keyed by [`MapFrame::id`], in the order the frames were seen.
+    frame_markers: Vec<MapFrame>,
     /// Vanilla keeps a `LinkedHashMap`; the order is the packet order.
     decorations: Vec<(String, MapDecorationData)>,
     tracked_decoration_count: i32,
@@ -176,6 +178,7 @@ impl MapItemSavedData {
             locked,
             carried_by: Vec::new(),
             banner_markers: Vec::new(),
+            frame_markers: Vec::new(),
             decorations: Vec::new(),
             tracked_decoration_count: 0,
             dirty: false,
@@ -262,14 +265,14 @@ impl MapItemSavedData {
         self.colors[x + y * MAP_SIZE]
     }
 
-    /// Vanilla `MapItemSavedData.tickCarriedBy` for a map in a player's inventory.
-    ///
-    /// Item frames do not carry maps yet, so the framed-map branch is not reachable.
+    /// Vanilla `MapItemSavedData.tickCarriedBy`, for a map in a player's inventory or, with
+    /// `placed_in_frame`, for a map hanging in that item frame.
     pub fn tick_carried_by(
         &mut self,
         ticking_player: &Arc<Player>,
         map_id: Option<MapId>,
         static_decorations: Option<&MapDecorations>,
+        placed_in_frame: Option<MapFrame>,
     ) {
         if !self
             .carried_by
@@ -291,10 +294,13 @@ impl MapItemSavedData {
             let other = self.carried_by[i].player.upgrade();
             let other_name = self.carried_by[i].name.clone();
             let carried = other.as_ref().is_some_and(|player| {
-                !player.is_removed() && inventory_contains_map(player, map_id)
+                !player.is_removed()
+                    && (placed_in_frame.is_some() || inventory_contains_map(player, map_id))
             });
             if carried {
-                if let Some(other) = &other {
+                if placed_in_frame.is_none()
+                    && let Some(other) = &other
+                {
                     let world = other.get_world();
                     if world.key == self.dimension && self.tracking_position {
                         let position = other.position();
@@ -323,6 +329,12 @@ impl MapItemSavedData {
             i += 1;
         }
 
+        if let Some(frame) = placed_in_frame
+            && self.tracking_position
+        {
+            self.mark_frame(&ticking_player.get_world(), frame);
+        }
+
         if let Some(static_decorations) = static_decorations
             && !static_decorations
                 .decorations()
@@ -344,6 +356,53 @@ impl MapItemSavedData {
                 }
             }
         }
+    }
+
+    /// The framed-map part of vanilla `tickCarriedBy`: points the frame marker at `frame`.
+    fn mark_frame(&mut self, world: &World, frame: MapFrame) {
+        let id = frame.id();
+        let existing = self
+            .frame_markers
+            .iter()
+            .position(|marked| marked.id() == id);
+        if let Some(index) = existing {
+            let existing_entity = self.frame_markers[index].entity_id;
+            if existing_entity != frame.entity_id {
+                self.remove_decoration(&MapFrame::decoration_key(existing_entity));
+            }
+        }
+        self.add_decoration(
+            type_ref(&vanilla_map_decoration_types::FRAME),
+            Some(world),
+            &MapFrame::decoration_key(frame.entity_id),
+            f64::from(frame.pos.x()),
+            f64::from(frame.pos.z()),
+            f64::from(frame.rotation),
+            None,
+        );
+        match existing {
+            Some(index) if self.frame_markers[index] == frame => {}
+            Some(index) => {
+                self.frame_markers[index] = frame;
+                self.set_dirty();
+            }
+            None => {
+                self.frame_markers.push(frame);
+                self.set_dirty();
+            }
+        }
+    }
+
+    /// Vanilla `MapItemSavedData.removedFromFrame`: the map left the frame `entity_id` at `pos`.
+    pub fn removed_from_frame(&mut self, pos: BlockPos, entity_id: i32) {
+        self.remove_decoration(&MapFrame::decoration_key(entity_id));
+        let id = MapFrame::frame_id(pos);
+        self.frame_markers.retain(|marked| marked.id() != id);
+    }
+
+    /// The frames this map was last seen in.
+    pub fn frames(&self) -> impl Iterator<Item = &MapFrame> {
+        self.frame_markers.iter()
     }
 
     fn decoration_index(&self, key: &str) -> Option<usize> {
@@ -671,6 +730,12 @@ impl MapItemSavedData {
                 NbtList::Compound(self.banners().map(MapBanner::to_nbt).collect()),
             );
         }
+        if !self.frame_markers.is_empty() {
+            nbt.insert(
+                "frames",
+                NbtList::Compound(self.frames().copied().map(MapFrame::to_nbt).collect()),
+            );
+        }
         nbt
     }
 
@@ -725,6 +790,26 @@ impl MapItemSavedData {
                 f64::from(banner.pos.z()),
             );
             data.put_banner_marker(id, banner);
+        }
+        for frame in nbt
+            .list("frames")
+            .and_then(|list| list.compounds())
+            .into_iter()
+            .flatten()
+            .filter_map(MapFrame::from_nbt)
+        {
+            let id = frame.id();
+            data.frame_markers.retain(|marked| marked.id() != id);
+            data.frame_markers.push(frame);
+            data.add_decoration(
+                type_ref(&vanilla_map_decoration_types::FRAME),
+                None,
+                &MapFrame::decoration_key(frame.entity_id),
+                f64::from(frame.pos.x()),
+                f64::from(frame.pos.z()),
+                f64::from(frame.rotation),
+                None,
+            );
         }
         Ok(data)
     }

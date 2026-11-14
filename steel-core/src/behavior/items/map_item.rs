@@ -357,7 +357,7 @@ impl ItemBehavior for MapItem {
             return;
         };
         let mut data = data.lock();
-        data.tick_carried_by(&player, Some(map_id), static_decorations.as_ref());
+        data.tick_carried_by(&player, Some(map_id), static_decorations.as_ref(), None);
         if !data.locked
             && context
                 .slot
@@ -514,7 +514,7 @@ mod tests {
         let data = world.map_data(id).expect("map data");
         let mut data = data.lock();
 
-        data.tick_carried_by(&player, Some(id), None);
+        data.tick_carried_by(&player, Some(id), None, None);
         for _ in 0..16 {
             MapItem::update(world, &player, &mut data);
         }

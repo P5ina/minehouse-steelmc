@@ -290,7 +290,9 @@ impl EntityTracker {
 
     /// Sends tracker-owned movement changes for all tracked entities.
     ///
-    /// Mirrors vanilla `ChunkMap.tick` driving `ServerEntity.sendChanges`.
+    /// Mirrors vanilla `ChunkMap.tick` driving `ServerEntity.sendChanges`. Returns the item frames
+    /// whose framed map is due to sync this pass (every tenth pass of each frame), which the
+    /// world handles because map data lives outside the tracker.
     #[expect(
         clippy::too_many_lines,
         reason = "entity tracker fanout mirrors vanilla sendChanges ordering"
@@ -318,7 +320,8 @@ impl EntityTracker {
             Passengers,
             EntityLink,
         >,
-    ) where
+    ) -> Vec<SharedEntity>
+    where
         Movement: FnMut(i32, EntityMovementSyncPacket),
         SelfMovement: FnMut(i32, EntityMovementSyncPacket),
         EntityData: FnMut(i32, Vec<DataValue>),
@@ -338,6 +341,7 @@ impl EntityTracker {
         let mut mob_effect_packets_to_send = Vec::new();
         let mut equipment_to_broadcast = Vec::new();
         let mut entity_links_to_broadcast = Vec::new();
+        let mut framed_map_syncs = Vec::new();
 
         self.entities.iter_sync(|entity_id, tracked| {
             let entity_id = *entity_id;
@@ -382,28 +386,29 @@ impl EntityTracker {
                 }
             }
 
+            let mut server_entity = tracked.server_entity.lock();
+            if entity.as_item_frame().is_some() && server_entity.tick_count() % 10 == 0 {
+                framed_map_syncs.push(Arc::clone(&entity));
+            }
             let dirty_entity_data = entity.pack_dirty_entity_data();
             let has_dirty_entity_data = dirty_entity_data.is_some();
-            let result =
-                tracked
-                    .server_entity
-                    .lock()
-                    .record_send_changes(ServerEntityMovementSyncUpdate {
-                        entity_type: entity.entity_type(),
-                        vertical_collision: entity.vertical_collision(),
-                        horizontal_collision: entity.horizontal_collision(),
-                        requires_precise_position: entity.base().requires_precise_position(),
-                        entity_id,
-                        is_passenger: entity.is_passenger(),
-                        position: entity.position(),
-                        velocity: entity.velocity(),
-                        body_rotation: entity.rotation(),
-                        head_yaw: entity.head_yaw(),
-                        on_ground: entity.on_ground(),
-                        needs_velocity_sync: entity.needs_velocity_sync(),
-                        has_dirty_entity_data,
-                        force_velocity_sync: entity.forces_fall_flying_velocity_sync(),
-                    });
+            let result = server_entity.record_send_changes(ServerEntityMovementSyncUpdate {
+                entity_type: entity.entity_type(),
+                vertical_collision: entity.vertical_collision(),
+                horizontal_collision: entity.horizontal_collision(),
+                requires_precise_position: entity.base().requires_precise_position(),
+                entity_id,
+                is_passenger: entity.is_passenger(),
+                position: entity.position(),
+                velocity: entity.velocity(),
+                body_rotation: entity.rotation(),
+                head_yaw: entity.head_yaw(),
+                on_ground: entity.on_ground(),
+                needs_velocity_sync: entity.needs_velocity_sync(),
+                has_dirty_entity_data,
+                force_velocity_sync: entity.forces_fall_flying_velocity_sync(),
+            });
+            drop(server_entity);
             if result.should_clear_velocity_sync() {
                 entity.clear_velocity_sync();
             }
@@ -515,6 +520,8 @@ impl EntityTracker {
         for (entity_id, packet) in entity_links_to_broadcast {
             (senders.entity_link)(entity_id, packet);
         }
+
+        framed_map_syncs
     }
 
     /// Removes a player from every entity pairing and despawns those entities from their client.

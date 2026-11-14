@@ -113,16 +113,27 @@ pub(crate) struct DiscoveredObject {
     pub(crate) spawn_rule: bool,
 }
 
+/// Parses an annotated struct into one entry per class it implements.
+///
+/// `class` may be repeated when one struct implements several vanilla classes that differ only
+/// in data the struct reads from its type (vanilla `GlowItemFrame` over `ItemFrame`).
 pub(crate) fn parse_object_behavior(
     s: &syn::ItemStruct,
     attribute_name: &str,
-) -> Option<DiscoveredObject> {
+) -> Vec<DiscoveredObject> {
     let attr = s
         .attrs
         .iter()
-        .find(|a| path_ends_with(a.path(), attribute_name))?;
+        .find(|a| path_ends_with(a.path(), attribute_name));
+    let Some(attr) = attr else {
+        return Vec::new();
+    };
     let args = parse_behavior_args(attr, attribute_name);
-    let class_name = args.class_name.unwrap_or(s.ident.to_string());
+    let class_names = if args.class_names.is_empty() {
+        vec![s.ident.to_string()]
+    } else {
+        args.class_names
+    };
 
     let mut fields = Vec::new();
     if let syn::Fields::Named(ref named) = s.fields {
@@ -133,12 +144,15 @@ pub(crate) fn parse_object_behavior(
         }
     }
 
-    Some(DiscoveredObject {
-        struct_name: s.ident.to_string(),
-        class_name,
-        fields,
-        spawn_rule: args.spawn_rule,
-    })
+    class_names
+        .into_iter()
+        .map(|class_name| DiscoveredObject {
+            struct_name: s.ident.to_string(),
+            class_name,
+            fields: fields.clone(),
+            spawn_rule: args.spawn_rule,
+        })
+        .collect()
 }
 
 const KNOWN_REGISTRIES: &[&str] = &[
@@ -409,7 +423,7 @@ pub(crate) fn generate_arg(
 /// Arguments of the behavior attribute itself, e.g. `#[entity_behavior(class = "Pig", spawn_rule)]`.
 #[derive(Default)]
 struct BehaviorArgs {
-    class_name: Option<String>,
+    class_names: Vec<String>,
     spawn_rule: bool,
 }
 
@@ -423,7 +437,7 @@ fn parse_behavior_args(attr: &syn::Attribute, attribute_name: &str) -> BehaviorA
         if meta.path.is_ident("class") {
             let value = meta.value()?;
             let lit: syn::LitStr = value.parse()?;
-            args.class_name = Some(lit.value());
+            args.class_names.push(lit.value());
         } else if meta.path.is_ident("spawn_rule") {
             args.spawn_rule = true;
         }
@@ -457,11 +471,11 @@ pub(crate) fn scan_object_behaviors_with_pattern(
             .unwrap_or_else(|e| panic!("Failed to parse {}: {e}", path.display()));
 
         for item in &file.items {
-            if let syn::Item::Struct(s) = item
-                && let Some(info) = parse_object_behavior(s, attribute_name)
-            {
-                let class_name = info.class_name.clone();
-                discovered.insert(class_name, info);
+            if let syn::Item::Struct(s) = item {
+                for info in parse_object_behavior(s, attribute_name) {
+                    let class_name = info.class_name.clone();
+                    discovered.insert(class_name, info);
+                }
             }
         }
     }
