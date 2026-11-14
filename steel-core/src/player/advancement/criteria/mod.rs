@@ -76,6 +76,14 @@ pub(crate) struct DamagePredicate {
     pub(crate) damage_type: Option<DamageSourcePredicate>,
 }
 
+/// Vanilla `PotionsPredicate`. No vanilla advancement narrows by `effects`,
+/// so only the potion holder set is modeled.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct PotionsPredicate {
+    pub(crate) potions: Option<IdSet>,
+}
+
 /// Vanilla `InventoryChangeTrigger.TriggerInstance.Slots`.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -156,7 +164,7 @@ pub(crate) struct Conditions {
     pub(crate) distance: Option<DistanceField>,
     pub(crate) start_position: Option<LocationPredicate>,
     pub(crate) effects: Option<MobEffectsPredicate>,
-    pub(crate) potion: Option<IdSet>,
+    pub(crate) potion: Option<PotionsPredicate>,
     pub(crate) from: Option<Identifier>,
     pub(crate) to: Option<Identifier>,
     pub(crate) count: Option<i32>,

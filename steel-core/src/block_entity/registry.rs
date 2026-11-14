@@ -247,6 +247,11 @@ pub fn init_block_entities() {
         });
 
         registry.register(
+            &vanilla_block_entity_types::BREWING_STAND,
+            |level, pos, state| Arc::new(BrewingStandBlockEntity::new(level, pos, state)),
+        );
+
+        registry.register(
             &vanilla_block_entity_types::CAMPFIRE,
             |level, pos, state| Arc::new(CampfireBlockEntity::new(level, pos, state)),
         );

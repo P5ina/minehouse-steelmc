@@ -12,11 +12,13 @@ use steel_protocol::packets::game::{
     CUpdateRecipes, RecipePropertySetEntry, StonecutterRecipeEntry,
 };
 use steel_registry::recipe::{
-    CookingRecipe, Ingredient, PlacementInfo, RecipeProperties, RecipeType, SingleItemRecipeInput,
-    SmithingRecipe, StonecuttingRecipe, TypedRecipeRef, vanilla_recipe_types,
+    BrewingRecipe, CookingRecipe, Ingredient, PlacementInfo, RecipeProperties, RecipeType,
+    SingleItemRecipeInput, SmithingRecipe, StonecuttingRecipe, TypedRecipeRef,
+    vanilla_recipe_types,
 };
 use steel_registry::{
     REGISTRY, RegistryEntry, RegistryHolderSet, item_stack::ItemStack, items::Item,
+    vanilla_item_tags::ItemTag,
 };
 use steel_utils::{Identifier, codec::VarInt};
 
@@ -141,6 +143,14 @@ pub struct RecipeAccess {
 /// The server's recipe access, built from the frozen recipe registry on first use.
 pub static RECIPE_ACCESS: LazyLock<RecipeAccess> = LazyLock::new(RecipeAccess::finalize);
 
+/// Vanilla `PotionIngredient.isPotionInput`: a brewing recipe input or an item
+/// tagged `brewing_potion_inputs`.
+#[must_use]
+pub fn is_potion_input(stack: &ItemStack) -> bool {
+    RECIPE_ACCESS.property_set(&BREWING_INPUTS).test(stack)
+        || stack.item().has_tag(&ItemTag::BREWING_POTION_INPUTS)
+}
+
 /// Vanilla ignores non-special recipes whose ingredients can never be placed.
 fn is_ignored(properties: &RecipeProperties) -> bool {
     !properties.special
@@ -162,6 +172,14 @@ impl RecipeAccess {
         let smithing_set = |extract: fn(&SmithingRecipe) -> Option<&Ingredient>| {
             RecipePropertySet::create(smithing.iter().filter_map(|recipe| extract(recipe)))
         };
+
+        let brewing: Vec<&BrewingRecipe> = REGISTRY
+            .recipes
+            .by_type(&vanilla_recipe_types::BREWING)
+            .iter()
+            .map(TypedRecipeRef::data)
+            .filter(|recipe| !is_ignored(&recipe.properties))
+            .collect();
 
         let cooking_set =
             |recipe_type: &'static RecipeType<CookingRecipe, SingleItemRecipeInput>| {
@@ -199,10 +217,14 @@ impl RecipeAccess {
                 CAMPFIRE_INPUT,
                 cooking_set(&vanilla_recipe_types::CAMPFIRE_COOKING),
             ),
-            // TODO: Collect brewing recipe inputs and reagents once the brewing
-            // recipe type is registered with the brewing stand.
-            (BREWING_INPUTS, RecipePropertySet::default()),
-            (BREWING_REAGENTS, RecipePropertySet::default()),
+            (
+                BREWING_INPUTS,
+                RecipePropertySet::create(brewing.iter().map(|recipe| &recipe.input.ingredient)),
+            ),
+            (
+                BREWING_REAGENTS,
+                RecipePropertySet::create(brewing.iter().map(|recipe| &recipe.reagent.ingredient)),
+            ),
         ];
 
         let stonecutter_recipes = StonecutterRecipeSet {
@@ -275,7 +297,10 @@ mod tests {
     use steel_registry::{init_vanilla_registry, item_stack::ItemStack, vanilla_items};
     use steel_utils::serial::WriteTo as _;
 
-    use super::{BREWING_INPUTS, FURNACE_INPUT, RECIPE_ACCESS, SMITHING_BASE, SMITHING_TEMPLATE};
+    use super::{
+        BREWING_INPUTS, BREWING_REAGENTS, FURNACE_INPUT, RECIPE_ACCESS, SMITHING_BASE,
+        SMITHING_TEMPLATE,
+    };
 
     #[test]
     fn property_sets_collect_recipe_ingredients() {
@@ -304,9 +329,24 @@ mod tests {
                 .test(&ItemStack::new(&vanilla_items::RAW_IRON))
         );
         assert!(
-            !access
+            access
                 .property_set(&BREWING_INPUTS)
                 .test(&ItemStack::new(&vanilla_items::POTION))
+        );
+        assert!(
+            !access
+                .property_set(&BREWING_INPUTS)
+                .test(&ItemStack::new(&vanilla_items::GLASS_BOTTLE))
+        );
+        assert!(
+            access
+                .property_set(&BREWING_REAGENTS)
+                .test(&ItemStack::new(&vanilla_items::NETHER_WART))
+        );
+        assert!(
+            !access
+                .property_set(&BREWING_REAGENTS)
+                .test(&ItemStack::new(&vanilla_items::DIAMOND))
         );
     }
 

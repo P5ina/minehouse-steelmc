@@ -1,6 +1,7 @@
-//! Build script for the vanilla `context_int_provider/compostable` datapack
-//! folder. Only the provider shapes that folder uses are modeled; anything
-//! else panics so that a data update fails loudly.
+//! Build script for the vanilla `context_int_provider/compostable` and
+//! `context_int_provider/brewing` datapack folders. Only the provider shapes
+//! those folders use are modeled; anything else panics so that a data update
+//! fails loudly.
 
 use std::fs;
 
@@ -8,8 +9,7 @@ use serde::Deserialize;
 
 use super::{ConditionRefJson, TokenStream, generate_condition, quote};
 
-const FOLDER: &str =
-    "../steel-utils/build_assets/builtin_datapacks/minecraft/context_int_provider/compostable";
+const ROOT: &str = "../steel-utils/build_assets/builtin_datapacks/minecraft/context_int_provider";
 
 /// `ContextIntProviders.CODEC`: an inline constant or a typed provider object.
 #[derive(Deserialize, Debug)]
@@ -76,15 +76,17 @@ fn generate_provider(provider: &ProviderJson) -> TokenStream {
                 });
                 quote! { ContextIntProvider::WeightedList(&[#(#entries),*]) }
             }
-            other => panic!("unsupported compostable context int provider type {other}"),
+            other => panic!("unsupported context int provider type {other}"),
         },
     }
 }
 
-pub(crate) fn build() -> TokenStream {
-    println!("cargo:rerun-if-changed={FOLDER}");
-    let mut files: Vec<_> = fs::read_dir(FOLDER)
-        .unwrap_or_else(|e| panic!("Failed to read {FOLDER}: {e}"))
+/// The `NamedContextIntProvider` declarations of one datapack folder.
+fn generate_folder(folder: &str) -> Vec<TokenStream> {
+    let dir = format!("{ROOT}/{folder}");
+    println!("cargo:rerun-if-changed={dir}");
+    let mut files: Vec<_> = fs::read_dir(&dir)
+        .unwrap_or_else(|e| panic!("Failed to read {dir}: {e}"))
         .map(|entry| {
             entry
                 .unwrap_or_else(|e| panic!("Failed to read entry: {e}"))
@@ -94,24 +96,32 @@ pub(crate) fn build() -> TokenStream {
         .collect();
     files.sort();
 
-    let providers = files.iter().map(|path| {
-        let name = path
-            .file_stem()
-            .and_then(|stem| stem.to_str())
-            .unwrap_or_else(|| panic!("Bad file name {}", path.display()));
-        let key = format!("compostable/{name}");
-        let content = fs::read_to_string(path)
-            .unwrap_or_else(|e| panic!("Failed to read {}: {e}", path.display()));
-        let json: ProviderJson = serde_json::from_str(&content)
-            .unwrap_or_else(|e| panic!("Failed to parse {}: {e}", path.display()));
-        let provider = generate_provider(&json);
-        quote! {
-            NamedContextIntProvider {
-                key: Identifier::vanilla_static(#key),
-                provider: #provider,
+    files
+        .iter()
+        .map(|path| {
+            let name = path
+                .file_stem()
+                .and_then(|stem| stem.to_str())
+                .unwrap_or_else(|| panic!("Bad file name {}", path.display()));
+            let key = format!("{folder}/{name}");
+            let content = fs::read_to_string(path)
+                .unwrap_or_else(|e| panic!("Failed to read {}: {e}", path.display()));
+            let json: ProviderJson = serde_json::from_str(&content)
+                .unwrap_or_else(|e| panic!("Failed to parse {}: {e}", path.display()));
+            let provider = generate_provider(&json);
+            quote! {
+                NamedContextIntProvider {
+                    key: Identifier::vanilla_static(#key),
+                    provider: #provider,
+                }
             }
-        }
-    });
+        })
+        .collect()
+}
+
+pub(crate) fn build() -> TokenStream {
+    let compostable = generate_folder("compostable");
+    let brewing = generate_folder("brewing");
 
     quote! {
         use steel_utils::Identifier;
@@ -122,13 +132,17 @@ pub(crate) fn build() -> TokenStream {
         use crate::loot_table::{LootCondition, PropertyCheck};
 
         /// The `context_int_provider/compostable` providers of the vanilla datapack.
-        pub static COMPOSTABLE: &[NamedContextIntProvider] = &[#(#providers),*];
+        pub static COMPOSTABLE: &[NamedContextIntProvider] = &[#(#compostable),*];
 
-        /// The compostable provider named `key`.
+        /// The `context_int_provider/brewing` providers of the vanilla datapack.
+        pub static BREWING: &[NamedContextIntProvider] = &[#(#brewing),*];
+
+        /// The vanilla provider named `key`.
         #[must_use]
         pub fn get(key: &Identifier) -> Option<&'static ContextIntProvider> {
             COMPOSTABLE
                 .iter()
+                .chain(BREWING)
                 .find(|named| named.key == *key)
                 .map(|named| &named.provider)
         }

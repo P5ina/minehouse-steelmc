@@ -184,6 +184,7 @@ const CUSTOM_STATS: &str = "custom_stats";
 const SUSPICIOUS_STEW_EFFECTS: &str = "suspicious_stew_effects";
 const VILLAGER_TRADES: &str = "villager_trades";
 const CONTEXT_INT_PROVIDERS: &str = "context_int_providers";
+const CONTEXT_FLOAT_PROVIDERS: &str = "context_float_providers";
 
 pub fn main() {
     // Rerun build script when any file in the build/ directory changes
@@ -286,6 +287,10 @@ pub fn main() {
         (
             loot_tables::context_int_providers::build(),
             CONTEXT_INT_PROVIDERS,
+        ),
+        (
+            loot_tables::context_float_providers::build(),
+            CONTEXT_FLOAT_PROVIDERS,
         ),
     ];
 

@@ -1,6 +1,6 @@
 //! Vanilla `ContextIntProvider` data, limited to the provider shapes of the
-//! datapack's `context_int_provider/compostable` folder (generated into
-//! [`crate::vanilla_context_int_providers`]).
+//! datapack's `context_int_provider/compostable` and `context_int_provider/brewing`
+//! folders (generated into [`crate::vanilla_context_int_providers`]).
 
 use rand::RngExt as _;
 use steel_utils::{BlockStateId, Identifier};

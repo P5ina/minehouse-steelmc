@@ -10,6 +10,7 @@ use serde::Deserialize;
 use steel_utils::Identifier;
 
 mod conditions;
+pub(crate) mod context_float_providers;
 pub(crate) mod context_int_providers;
 mod entries;
 mod functions;

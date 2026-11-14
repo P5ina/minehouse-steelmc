@@ -3,6 +3,7 @@
 mod anvil_menu;
 mod basic_menu;
 mod beacon_menu;
+mod brewing_stand_menu;
 mod chest_menu;
 mod crafting_menu;
 mod enchantment_menu;
@@ -19,6 +20,7 @@ mod stonecutter_menu;
 pub use anvil_menu::{AnvilKind, anvil};
 pub use basic_menu::BasicKind;
 pub use beacon_menu::{BeaconKind, beacon};
+pub use brewing_stand_menu::{BrewingStandKind, brewing_stand};
 pub(crate) use chest_menu::chest_with_kind;
 pub use chest_menu::{ChestKind, chest, chest_halves};
 pub use crafting_menu::{CraftingKind, crafting};
