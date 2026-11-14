@@ -2,6 +2,7 @@ use super::{
     ConditionalLootFunction, Identifier, ItemStack, LootCondition, LootContext, LootType,
     NumberProvider, REGISTRY, RegistryExt, RngExt, TaggedRegistryExt,
 };
+use crate::items::ItemRef;
 
 /// A loot table entry that can generate items.
 #[derive(Debug, Clone)]
@@ -263,57 +264,147 @@ impl LootPool {
         }
     }
 
-    /// Select and add a single random item from this pool.
+    /// Vanilla `LootPool.addRandomItem`: expands every entry into its
+    /// singleton candidates, then creates one weighted pick.
     fn add_random_item<R: rand::Rng>(
         &self,
         ctx: &mut LootContext<'_, R>,
         result: &mut Vec<ItemStack>,
     ) {
-        // Collect valid entries with their effective weights
-        let mut valid_entries: Vec<(&LootEntry, i32)> = Vec::new();
-        let mut total_weight = 0;
-
+        let mut candidates: Vec<LootCandidate> = Vec::new();
         for entry in self.entries {
-            // Check entry conditions
-            let passes_conditions = entry.conditions().iter().all(|c| c.test(ctx));
+            entry.expand(ctx, &mut candidates);
+        }
 
-            if !passes_conditions {
-                continue;
-            }
-
-            let weight = entry.effective_weight(ctx.luck);
+        let mut valid_entries: Vec<(LootCandidate, i32)> = Vec::new();
+        let mut total_weight = 0;
+        for candidate in candidates {
+            let weight = candidate.entry.effective_weight(ctx.luck);
             if weight > 0 {
-                valid_entries.push((entry, weight));
+                valid_entries.push((candidate, weight));
                 total_weight += weight;
             }
         }
 
-        if total_weight == 0 || valid_entries.is_empty() {
+        if valid_entries.is_empty() {
             return;
         }
 
-        // Weighted random selection
         let selected = if valid_entries.len() == 1 {
             valid_entries[0].0
         } else {
             let mut index = ctx.rng.random_range(0..total_weight);
             let mut selected_entry = valid_entries[0].0;
-            for (entry, weight) in &valid_entries {
+            for (candidate, weight) in &valid_entries {
                 index -= weight;
                 if index < 0 {
-                    selected_entry = entry;
+                    selected_entry = *candidate;
                     break;
                 }
             }
             selected_entry
         };
 
-        // Generate item(s) from the selected entry
         selected.create_items(ctx, result);
     }
 }
 
+/// One vanilla `LootPoolEntry` produced by `LootPoolEntryContainer.expand`:
+/// a singleton entry, or one item of an expanded tag entry.
+#[derive(Clone, Copy)]
+struct LootCandidate {
+    entry: &'static LootEntry,
+    tag_item: Option<ItemRef>,
+}
+
+impl LootCandidate {
+    fn create_items<R: rand::Rng>(self, ctx: &mut LootContext<'_, R>, result: &mut Vec<ItemStack>) {
+        match self.tag_item {
+            Some(item) => {
+                let mut item = ItemStack::new(item);
+                apply_functions(self.entry.functions(), &mut item, ctx);
+                if item.count > 0 {
+                    result.push(item);
+                }
+            }
+            None => self.entry.create_items(ctx, result),
+        }
+    }
+}
+
+fn apply_functions<R: rand::Rng>(
+    functions: &[ConditionalLootFunction],
+    item: &mut ItemStack,
+    ctx: &mut LootContext<'_, R>,
+) {
+    for cond_func in functions {
+        if cond_func.conditions.iter().all(|c| c.test(ctx)) {
+            cond_func.function.apply(item, ctx);
+        }
+    }
+}
+
 impl LootEntry {
+    /// Vanilla `LootPoolEntryContainer.expand`: returns whether this entry
+    /// ran, adding the singleton candidates it yields to `output`.
+    fn expand<R: rand::Rng>(
+        &'static self,
+        ctx: &mut LootContext<'_, R>,
+        output: &mut Vec<LootCandidate>,
+    ) -> bool {
+        if !self.conditions().iter().all(|c| c.test(ctx)) {
+            return false;
+        }
+        match self {
+            Self::Alternatives { children, .. } => {
+                for child in *children {
+                    if child.expand(ctx, output) {
+                        return true;
+                    }
+                }
+                false
+            }
+            Self::Sequence { children, .. } => {
+                for child in *children {
+                    if !child.expand(ctx, output) {
+                        return false;
+                    }
+                }
+                true
+            }
+            Self::Group { children, .. } => {
+                for child in *children {
+                    child.expand(ctx, output);
+                }
+                true
+            }
+            Self::Tag {
+                name, expand: true, ..
+            } => {
+                // Vanilla `TagEntry.expandTag`: one candidate per tagged item,
+                // each with the entry's weight; true only if any item exists.
+                let Some(items) = REGISTRY.items.get_tag(name) else {
+                    return false;
+                };
+                let any = !items.is_empty();
+                for item in items {
+                    output.push(LootCandidate {
+                        entry: self,
+                        tag_item: Some(item),
+                    });
+                }
+                any
+            }
+            _ => {
+                output.push(LootCandidate {
+                    entry: self,
+                    tag_item: None,
+                });
+                true
+            }
+        }
+    }
+
     /// Create items from this entry and add them to the result.
     fn create_items<R: rand::Rng>(
         &self,
@@ -375,95 +466,45 @@ impl LootEntry {
                 result.extend(items.into_iter().filter(|i| i.count > 0));
             }
             LootEntry::Tag {
-                name,
-                expand,
-                functions,
-                ..
+                name, functions, ..
             } => {
-                // Get all items in the tag
                 if let Some(items) = REGISTRY.items.get_tag(name) {
-                    if *expand {
-                        // Pick one random item from the tag (weighted equally)
-                        if !items.is_empty() {
-                            let index = ctx.rng.random_range(0..items.len());
-                            let mut item = ItemStack::new(items[index]);
-                            for cond_func in *functions {
-                                if cond_func.conditions.iter().all(|c| c.test(ctx)) {
-                                    cond_func.function.apply(&mut item, ctx);
-                                }
-                            }
-                            if item.count > 0 {
-                                result.push(item);
+                    // Vanilla `TagEntry.createItemStack`: a non-expanded tag
+                    // drops every tagged item; expanded tags became one
+                    // candidate per item in `expand`.
+                    for item_ref in items {
+                        let mut item = ItemStack::new(item_ref);
+                        for cond_func in *functions {
+                            if cond_func.conditions.iter().all(|c| c.test(ctx)) {
+                                cond_func.function.apply(&mut item, ctx);
                             }
                         }
-                    } else {
-                        // Drop all items from the tag
-                        for item_ref in items {
-                            let mut item = ItemStack::new(item_ref);
-                            for cond_func in *functions {
-                                if cond_func.conditions.iter().all(|c| c.test(ctx)) {
-                                    cond_func.function.apply(&mut item, ctx);
-                                }
-                            }
-                            if item.count > 0 {
-                                result.push(item);
-                            }
+                        if item.count > 0 {
+                            result.push(item);
                         }
                     }
                 }
             }
-            LootEntry::Alternatives { children, .. } => {
-                // Try children in order, use first that passes conditions and produces items
-                for child in *children {
-                    // Check child's conditions first
-                    let passes_conditions = child.conditions().iter().all(|c| c.test(ctx));
-                    if !passes_conditions {
-                        continue; // Try next alternative
-                    }
-
-                    let before_len = result.len();
-                    child.create_items(ctx, result);
-                    if result.len() > before_len {
-                        break; // First successful child that produced items, stop
-                    }
-                }
-            }
-            LootEntry::Group { children, .. } => {
-                // Use all children that pass their conditions
-                for child in *children {
-                    let passes_conditions = child.conditions().iter().all(|c| c.test(ctx));
-                    if passes_conditions {
-                        child.create_items(ctx, result);
-                    }
-                }
-            }
-            LootEntry::Sequence { children, .. } => {
-                // Use children in sequence until one fails its conditions
-                // Note: Unlike Alternatives, Sequence stops when conditions FAIL,
-                // not when items are produced. A child can produce nothing but still "succeed".
-                for child in *children {
-                    let passes_conditions = child.conditions().iter().all(|c| c.test(ctx));
-                    if !passes_conditions {
-                        break; // Condition failed, stop sequence
-                    }
-                    child.create_items(ctx, result);
-                }
+            LootEntry::Alternatives { .. }
+            | LootEntry::Group { .. }
+            | LootEntry::Sequence { .. } => {
+                // Composite entries never become candidates: `expand` replaces
+                // them with their children.
             }
             LootEntry::Empty { .. } => {
                 // Empty entry produces nothing
             }
             LootEntry::Dynamic { name, .. } => {
-                // Dynamic entries are used for block entity contents (like shulker boxes)
-                // The name identifies what content to retrieve:
-                // - "contents" = block entity inventory contents
-                // - Other names may exist for specific use cases
-                //
-                // TODO: Implement when block entity system supports inventory retrieval
-                // This requires:
-                // 1. Block entity reference in LootContext
-                // 2. Method to get inventory contents from block entity
-                // 3. Adding those items to the result
-                let _ = name;
+                // Vanilla `LootContext.addDynamicDrops`: the block supplies the
+                // drops for `name` (decorated pot sherds).
+                if let Some(drops) = ctx.dynamic_drops {
+                    result.extend(
+                        drops
+                            .iter()
+                            .filter(|(drop_name, _)| drop_name == name)
+                            .flat_map(|(_, items)| items.iter().cloned()),
+                    );
+                }
             }
             LootEntry::Slots {
                 slots, functions, ..

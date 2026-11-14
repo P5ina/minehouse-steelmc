@@ -578,3 +578,50 @@ fn test_survives_explosion_condition() {
         "Expected ~25% survival rate, got {survived}%"
     );
 }
+
+fn cracked_pot_state(cracked: bool) -> steel_utils::BlockStateId {
+    use crate::blocks::block_state_ext::BlockStateExt as _;
+    use crate::blocks::properties::BlockStateProperties;
+    crate::vanilla_blocks::DECORATED_POT
+        .default_state()
+        .set_value(&BlockStateProperties::CRACKED, cracked)
+}
+
+#[test]
+fn alternatives_pick_the_first_child_whose_conditions_pass_even_without_items() {
+    // Vanilla `AlternativesEntry` stops at the first child that runs; a
+    // cracked pot with no sherds drops nothing instead of the pot item.
+    init_test_registries();
+    let mut rng = test_rng();
+    let mut ctx = LootContext::new(&mut rng).with_block_state(cracked_pot_state(true));
+    let items = vanilla_loot_tables::BLOCKS_DECORATED_POT.get_random_items(&mut ctx);
+    assert!(items.is_empty(), "{items:?}");
+}
+
+#[test]
+fn dynamic_entries_drop_the_named_dynamic_drops() {
+    init_test_registries();
+    let drops = [(
+        Identifier::vanilla_static("sherds"),
+        vec![
+            ItemStack::new(&vanilla_items::BRICK),
+            ItemStack::new(&vanilla_items::ANGLER_POTTERY_SHERD),
+        ],
+    )];
+    let mut rng = test_rng();
+    let mut ctx = LootContext::new(&mut rng)
+        .with_block_state(cracked_pot_state(true))
+        .with_dynamic_drops(&drops);
+    let items = vanilla_loot_tables::BLOCKS_DECORATED_POT.get_random_items(&mut ctx);
+    assert_eq!(items.len(), 2);
+    assert!(items[0].is(&vanilla_items::BRICK));
+    assert!(items[1].is(&vanilla_items::ANGLER_POTTERY_SHERD));
+
+    let mut rng = test_rng();
+    let mut ctx = LootContext::new(&mut rng)
+        .with_block_state(cracked_pot_state(false))
+        .with_dynamic_drops(&drops);
+    let items = vanilla_loot_tables::BLOCKS_DECORATED_POT.get_random_items(&mut ctx);
+    assert_eq!(items.len(), 1);
+    assert!(items[0].is(&vanilla_items::DECORATED_POT));
+}

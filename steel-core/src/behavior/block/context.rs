@@ -1,5 +1,6 @@
 use crate::block_entity::BlockEntity;
 use steel_math::lerp;
+use steel_utils::Identifier;
 
 use super::{
     Arc, Axis, BlockLocalAabb, BlockPos, BlockStateId, DVec3, DamageSource, Entity, EntityTypeRef,
@@ -106,6 +107,7 @@ pub type BlockCollisionBoxes = SmallVec<[BlockLocalAabb; 4]>;
 /// This is the Steel counterpart to vanilla's block `LootParams`. Behaviors can
 /// override loot generation while retaining the original tool, entity, luck,
 /// and position when delegating to another block state.
+#[derive(Clone, Copy)]
 pub struct BlockLootContext<'a> {
     world: &'a Arc<World>,
     pos: BlockPos,
@@ -114,6 +116,7 @@ pub struct BlockLootContext<'a> {
     tool: Option<&'a ItemStack>,
     explosion_radius: Option<f32>,
     luck: f32,
+    dynamic_drops: &'a [(Identifier, Vec<ItemStack>)],
 }
 
 impl<'a> BlockLootContext<'a> {
@@ -128,6 +131,7 @@ impl<'a> BlockLootContext<'a> {
             tool: None,
             explosion_radius: None,
             luck: 0.0,
+            dynamic_drops: &[],
         }
     }
 
@@ -163,6 +167,17 @@ impl<'a> BlockLootContext<'a> {
     #[must_use]
     pub const fn with_luck(mut self, luck: f32) -> Self {
         self.luck = luck;
+        self
+    }
+
+    /// Vanilla `LootParams.Builder.withDynamicDrop`: the items each
+    /// `minecraft:dynamic` loot entry of that name yields.
+    #[must_use]
+    pub const fn with_dynamic_drops(
+        mut self,
+        dynamic_drops: &'a [(Identifier, Vec<ItemStack>)],
+    ) -> Self {
+        self.dynamic_drops = dynamic_drops;
         self
     }
 
@@ -202,6 +217,17 @@ impl<'a> BlockLootContext<'a> {
 
     pub(crate) const fn luck(&self) -> f32 {
         self.luck
+    }
+
+    pub(crate) const fn dynamic_drops(&self) -> &'a [(Identifier, Vec<ItemStack>)] {
+        self.dynamic_drops
+    }
+
+    /// Vanilla `BlockBehaviour.getDrops`: rolls the block's own loot table,
+    /// skipping the behavior's `get_drops` override.
+    #[must_use]
+    pub fn default_drops(&self, state: BlockStateId) -> Vec<ItemStack> {
+        World::default_block_drops(state, self)
     }
 }
 
