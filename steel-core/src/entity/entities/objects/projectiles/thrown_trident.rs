@@ -119,6 +119,28 @@ impl ThrownTridentEntity {
         trident
     }
 
+    /// Vanilla `ThrownTrident(level, x, y, z, tridentItem)`: a trident at an
+    /// exact position that is also its own weapon (dispensed or spawned by an
+    /// ominous item spawner).
+    #[must_use]
+    pub fn at_position(world: &Arc<World>, position: DVec3, trident_item: &ItemStack) -> Self {
+        let trident = Self::new(
+            &vanilla_entities::TRIDENT,
+            next_entity_id(),
+            position,
+            Arc::downgrade(world),
+        );
+        trident.init_from_items(trident_item, Some(trident_item));
+        trident.set_loyalty(loyalty_from_item(trident_item, &trident));
+        trident
+            .entity_data
+            .lock()
+            .thrown_trident
+            .id_foil
+            .set(trident_has_foil(trident_item));
+        trident
+    }
+
     /// Vanilla `ID_LOYALTY`.
     #[must_use]
     pub fn loyalty(&self) -> i8 {

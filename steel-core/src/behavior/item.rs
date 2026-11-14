@@ -24,6 +24,7 @@ use text_components::TextComponent;
 use crate::behavior::items::{
     BannerItem, BlockItem, DefaultItemBehavior, SpawnEggItem, block_transformer,
 };
+use crate::behavior::projectile_item::ProjectileItem;
 use crate::behavior::{
     ITEM_BEHAVIORS, InteractionResult, InventoryTickContext, UseItemContext, UseOnContext,
 };
@@ -313,6 +314,12 @@ pub trait ItemBehavior: Send + Sync {
 
     /// Returns the capability used by sign block interactions.
     fn as_sign_applicator(&self) -> Option<&dyn SignApplicator> {
+        None
+    }
+
+    /// Returns this item behavior as a `ProjectileItem` (vanilla
+    /// `instanceof ProjectileItem`).
+    fn as_projectile_item(&self) -> Option<&dyn ProjectileItem> {
         None
     }
 }

@@ -3,7 +3,10 @@
 //! Rockets can be placed against a block face or used while fall flying to
 //! attach a boosting rocket to the player.
 
+use crate::behavior::projectile_item::{DispenseConfig, DispensePosition, ProjectileItem};
 use crate::player::Player;
+use steel_registry::item_stack::ItemStack;
+use steel_registry::level_events;
 
 use std::sync::Arc;
 
@@ -49,6 +52,10 @@ impl FireworkRocketItem {
 }
 
 impl ItemBehavior for FireworkRocketItem {
+    fn as_projectile_item(&self) -> Option<&dyn ProjectileItem> {
+        Some(self)
+    }
+
     fn use_on(&self, context: &mut UseOnContext) -> InteractionResult {
         if context.player.is_fall_flying() {
             return InteractionResult::Pass;
@@ -125,6 +132,35 @@ impl ItemBehavior for FireworkRocketItem {
         });
 
         InteractionResult::Success
+    }
+}
+
+impl ProjectileItem for FireworkRocketItem {
+    fn as_projectile(
+        &self,
+        world: &Arc<World>,
+        position: DVec3,
+        stack: &ItemStack,
+        _direction: Direction,
+    ) -> SharedEntity {
+        let rocket = FireworkRocketEntity::launched(
+            &vanilla_entities::FIREWORK_ROCKET,
+            next_entity_id(),
+            position,
+            Arc::downgrade(world),
+            stack.copy_with_count(1),
+        );
+        rocket.set_shot_at_angle(true);
+        Arc::new(rocket)
+    }
+
+    fn create_dispense_config(&self) -> DispenseConfig {
+        DispenseConfig {
+            position: DispensePosition::JustOutsideBlock,
+            uncertainty: 1.0,
+            power: 0.5,
+            override_dispense_event: Some(level_events::SOUND_FIREWORK_SHOOT),
+        }
     }
 }
 

@@ -3,10 +3,20 @@
 use crate::behavior::blocks::FireBlock;
 use crate::behavior::context::{InteractionResult, UseOnContext};
 use crate::behavior::item::ItemBehavior;
+use crate::behavior::projectile_item::{DispenseConfig, ProjectileItem, charge_direction};
+use crate::entity::entities::{Fireball as _, SmallFireballEntity};
+use crate::entity::projectile::normalize_or_zero;
+use crate::entity::{AbstractHurtingProjectile as _, SharedEntity, next_entity_id};
+use crate::world::World;
+use glam::DVec3;
+use std::sync::Arc;
 use steel_macros::item_behavior;
+use steel_registry::blocks::properties::Direction;
 use steel_registry::item_stack::ItemStack;
+use steel_registry::level_events;
 use steel_registry::sound_event::SoundEventRef;
 use steel_registry::vanilla_block_tags::BlockTag;
+use steel_registry::vanilla_entities;
 use steel_registry::{
     blocks::{block_state_ext::BlockStateExt, properties::BlockStateProperties},
     sound_events, vanilla_game_events,
@@ -79,6 +89,10 @@ impl ItemBehavior for FlintAndSteelItem {
 pub struct FireChargeItem;
 
 impl ItemBehavior for FireChargeItem {
+    fn as_projectile_item(&self) -> Option<&dyn ProjectileItem> {
+        Some(self)
+    }
+
     fn use_on(&self, context: &mut UseOnContext) -> InteractionResult {
         let click_pos = context.hit_result.block_pos;
         let clicked_state = context.world.get_block_state(click_pos);
@@ -180,6 +194,31 @@ fn flint_and_steel_pitch() -> f32 {
 
 fn fire_charge_pitch() -> f32 {
     (rand::random::<f32>() - rand::random::<f32>()) * 0.2 + 1.0
+}
+
+impl ProjectileItem for FireChargeItem {
+    fn as_projectile(
+        &self,
+        world: &Arc<World>,
+        position: DVec3,
+        stack: &ItemStack,
+        direction: Direction,
+    ) -> SharedEntity {
+        let direction = charge_direction(direction);
+        let fireball = SmallFireballEntity::new(
+            &vanilla_entities::SMALL_FIREBALL,
+            next_entity_id(),
+            position,
+            Arc::downgrade(world),
+        );
+        fireball.assign_directional_movement(normalize_or_zero(direction));
+        fireball.set_item(stack);
+        Arc::new(fireball)
+    }
+
+    fn create_dispense_config(&self) -> DispenseConfig {
+        DispenseConfig::charge(level_events::SOUND_BLAZE_FIREBALL)
+    }
 }
 
 #[cfg(test)]

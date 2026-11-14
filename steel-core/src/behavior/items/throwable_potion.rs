@@ -3,6 +3,11 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
+use crate::entity::SharedEntity;
+use crate::world::World;
+use glam::DVec3;
+use steel_registry::blocks::properties::Direction;
+
 use steel_macros::item_behavior;
 use steel_protocol::packets::game::SoundSource;
 use steel_registry::item_stack::ItemStack;
@@ -15,6 +20,7 @@ use super::potion::{potion_default_instance, potion_use_on};
 use super::throw_projectile::{ThrowParams, throw_item_projectile};
 use crate::behavior::context::{InteractionResult, UseItemContext, UseOnContext};
 use crate::behavior::item::ItemBehavior;
+use crate::behavior::projectile_item::{DispenseConfig, ProjectileItem, throwable_item_projectile};
 use crate::entity::entities::{LingeringPotionEntity, SplashPotionEntity};
 use crate::entity::next_entity_id;
 
@@ -35,11 +41,14 @@ const LINGERING_THROW: ThrowParams = ThrowParams {
 
 /// Splash-potion behavior providing Vanilla's potion-content-dependent name
 /// and the water default instance inherited from `PotionItem`.
-// TODO: Implement the `ProjectileItem` dispenser dispatch.
 #[item_behavior]
 pub struct SplashPotionItem;
 
 impl ItemBehavior for SplashPotionItem {
+    fn as_projectile_item(&self) -> Option<&dyn ProjectileItem> {
+        Some(self)
+    }
+
     fn get_name<'a>(&self, stack: &'a ItemStack) -> Cow<'a, TextComponent> {
         potion_name(stack)
     }
@@ -66,13 +75,40 @@ impl ItemBehavior for SplashPotionItem {
     }
 }
 
+impl ProjectileItem for SplashPotionItem {
+    fn as_projectile(
+        &self,
+        world: &Arc<World>,
+        position: DVec3,
+        stack: &ItemStack,
+        _direction: Direction,
+    ) -> SharedEntity {
+        throwable_item_projectile(
+            SplashPotionEntity::new(
+                &vanilla_entities::SPLASH_POTION,
+                next_entity_id(),
+                position,
+                Arc::downgrade(world),
+            ),
+            stack,
+        )
+    }
+
+    fn create_dispense_config(&self) -> DispenseConfig {
+        DispenseConfig::LOBBED
+    }
+}
+
 /// Lingering-potion behavior providing Vanilla's potion-content-dependent name
 /// and the water default instance inherited from `PotionItem`.
-// TODO: Implement the `ProjectileItem` dispenser dispatch.
 #[item_behavior]
 pub struct LingeringPotionItem;
 
 impl ItemBehavior for LingeringPotionItem {
+    fn as_projectile_item(&self) -> Option<&dyn ProjectileItem> {
+        Some(self)
+    }
+
     fn get_name<'a>(&self, stack: &'a ItemStack) -> Cow<'a, TextComponent> {
         potion_name(stack)
     }
@@ -96,5 +132,29 @@ impl ItemBehavior for LingeringPotionItem {
             )
         });
         InteractionResult::Success
+    }
+}
+
+impl ProjectileItem for LingeringPotionItem {
+    fn as_projectile(
+        &self,
+        world: &Arc<World>,
+        position: DVec3,
+        stack: &ItemStack,
+        _direction: Direction,
+    ) -> SharedEntity {
+        throwable_item_projectile(
+            LingeringPotionEntity::new(
+                &vanilla_entities::LINGERING_POTION,
+                next_entity_id(),
+                position,
+                Arc::downgrade(world),
+            ),
+            stack,
+        )
+    }
+
+    fn create_dispense_config(&self) -> DispenseConfig {
+        DispenseConfig::LOBBED
     }
 }

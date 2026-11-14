@@ -10,6 +10,7 @@ use steel_registry::blocks::block_state_ext::BlockStateExt as _;
 use steel_registry::blocks::properties::{Axis, BlockStateProperties, Direction};
 use steel_registry::fluid::FluidRef;
 use steel_registry::item_stack::ItemStack;
+use steel_registry::items::ItemRef;
 use steel_registry::{REGISTRY, RegistryExt as _};
 use steel_registry::{
     level_events, vanilla_blocks, vanilla_fluids, vanilla_game_events, vanilla_items,
@@ -20,6 +21,9 @@ use steel_utils::{BlockPos, BlockStateId, WorldAabb};
 use crate::behavior::blocks::{CarvedPumpkinBlock, FireBlock, TntBlock};
 use crate::behavior::context::BlockPlaceContext;
 use crate::behavior::items::{BlockItem, BoneMealItem, can_light, empty_contents};
+use crate::behavior::projectile_item::{
+    DispenseConfig, ProjectileItem, spawn_projectile_using_shoot,
+};
 use crate::behavior::{BLOCK_BEHAVIORS, ITEM_BEHAVIORS, pickup_waterlogged_block};
 use crate::block_entity::entities::DispenserBlockEntity;
 use crate::inventory::prelude::EquipmentSlot;
@@ -42,15 +46,19 @@ impl BlockSource<'_> {
         self.state.get_value(&BlockStateProperties::FACING)
     }
 
-    /// The point items leave from: 0.7 blocks from the center towards `facing`.
-    pub(crate) fn dispense_position(&self) -> DVec3 {
-        let (step_x, step_y, step_z) = self.facing().offset();
-        let center = DVec3::new(
+    /// Vanilla `BlockSource.center`: the middle of the dispenser block.
+    pub(crate) fn center(&self) -> DVec3 {
+        DVec3::new(
             f64::from(self.pos.x()) + 0.5,
             f64::from(self.pos.y()) + 0.5,
             f64::from(self.pos.z()) + 0.5,
-        );
-        center + 0.7 * DVec3::new(f64::from(step_x), f64::from(step_y), f64::from(step_z))
+        )
+    }
+
+    /// The point items leave from: 0.7 blocks from the center towards `facing`.
+    pub(crate) fn dispense_position(&self) -> DVec3 {
+        let (step_x, step_y, step_z) = self.facing().offset();
+        self.center() + 0.7 * DVec3::new(f64::from(step_x), f64::from(step_y), f64::from(step_z))
     }
 
     fn target(&self) -> BlockPos {
@@ -77,11 +85,13 @@ pub(crate) enum DispenseBehavior {
     Shears,
     /// Completes a golem in front, or puts the pumpkin on an entity's head.
     CarvedPumpkin,
+    /// Shoots the item as a projectile (Vanilla `ProjectileDispenseBehavior`).
+    Projectile,
 }
 
 impl DispenseBehavior {
     /// The behavior Vanilla registers for `item` in `DispenserBlock.DISPENSER_REGISTRY`.
-    // TODO: Projectiles, armor, boats, minecarts, spawn eggs, fish and powder snow buckets and the other
+    // TODO: Armor, boats, minecarts, spawn eggs, fish and powder snow buckets and the other
     // `DispenseItemBehavior.bootStrap` entries still use the default drop.
     pub(crate) fn for_item(item: &ItemStack) -> Self {
         if item.is(&vanilla_items::WATER_BUCKET) {
@@ -100,6 +110,8 @@ impl DispenseBehavior {
             Self::CarvedPumpkin
         } else if shulker_box_block(item).is_some() {
             Self::ShulkerBox
+        } else if is_dispensed_projectile(item) {
+            Self::Projectile
         } else {
             Self::Default
         }
@@ -109,6 +121,25 @@ impl DispenseBehavior {
     pub(crate) fn dispense(self, source: &BlockSource<'_>, stack: ItemStack) -> ItemStack {
         match self {
             Self::Default => default_dispense(source, stack),
+            Self::Projectile => {
+                let Some(projectile_item) =
+                    ITEM_BEHAVIORS.get_behavior(stack.item).as_projectile_item()
+                else {
+                    return default_dispense(source, stack);
+                };
+                let config = projectile_item.create_dispense_config();
+                let result = dispense_projectile(source, projectile_item, &config, stack);
+                source.world.level_event(
+                    config
+                        .override_dispense_event
+                        .unwrap_or(level_events::SOUND_DISPENSER_PROJECTILE_LAUNCH),
+                    source.pos,
+                    0,
+                    None,
+                );
+                play_animation(source);
+                result
+            }
             Self::FilledBucket(fluid) => {
                 let result = filled_bucket(source, stack, fluid);
                 play_default_sound_and_animation(source);
@@ -146,6 +177,50 @@ impl DispenseBehavior {
             }
         }
     }
+}
+
+/// Whether `DispenseItemBehavior.bootStrap` registers `item` with
+/// `registerProjectileBehavior` (the trident is a `ProjectileItem` but is not
+/// registered).
+fn is_dispensed_projectile(item: &ItemStack) -> bool {
+    let projectiles: [ItemRef; 13] = [
+        &vanilla_items::ARROW,
+        &vanilla_items::TIPPED_ARROW,
+        &vanilla_items::SPECTRAL_ARROW,
+        &vanilla_items::EGG,
+        &vanilla_items::BLUE_EGG,
+        &vanilla_items::BROWN_EGG,
+        &vanilla_items::SNOWBALL,
+        &vanilla_items::EXPERIENCE_BOTTLE,
+        &vanilla_items::SPLASH_POTION,
+        &vanilla_items::LINGERING_POTION,
+        &vanilla_items::FIREWORK_ROCKET,
+        &vanilla_items::FIRE_CHARGE,
+        &vanilla_items::WIND_CHARGE,
+    ];
+    projectiles.iter().any(|projectile| item.is(projectile))
+}
+
+/// Vanilla `ProjectileDispenseBehavior.execute`.
+fn dispense_projectile(
+    source: &BlockSource<'_>,
+    projectile_item: &dyn ProjectileItem,
+    config: &DispenseConfig,
+    mut stack: ItemStack,
+) -> ItemStack {
+    let direction = source.facing();
+    let position = config.position.resolve(source.center(), direction);
+    let projectile = projectile_item.as_projectile(source.world, position, &stack, direction);
+    spawn_projectile_using_shoot(
+        source.world,
+        &projectile,
+        &stack,
+        direction.offset_vec().as_dvec3(),
+        config.power,
+        config.uncertainty,
+    );
+    stack.shrink(1);
+    stack
 }
 
 /// Vanilla `DefaultDispenseItemBehavior.dispense`.
@@ -483,4 +558,58 @@ pub(crate) fn dispense_equipment(source: &BlockSource<'_>, stack: &mut ItemStack
         mob.set_persistence_required();
     }
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use steel_registry::{init_vanilla_registry, vanilla_items};
+
+    use super::*;
+    use crate::behavior::init_behaviors;
+
+    #[test]
+    fn registered_projectiles_dispense_as_projectiles_but_tridents_drop() {
+        init_vanilla_registry();
+        init_behaviors();
+        for item in [
+            &vanilla_items::ARROW,
+            &vanilla_items::SPECTRAL_ARROW,
+            &vanilla_items::TIPPED_ARROW,
+            &vanilla_items::BLUE_EGG,
+            &vanilla_items::SNOWBALL,
+            &vanilla_items::EXPERIENCE_BOTTLE,
+            &vanilla_items::SPLASH_POTION,
+            &vanilla_items::FIREWORK_ROCKET,
+            &vanilla_items::FIRE_CHARGE,
+            &vanilla_items::WIND_CHARGE,
+        ] {
+            let stack = ItemStack::new(item);
+            assert!(
+                matches!(
+                    DispenseBehavior::for_item(&stack),
+                    DispenseBehavior::Projectile
+                ),
+                "{item:?}"
+            );
+            assert!(
+                ITEM_BEHAVIORS
+                    .get_behavior(stack.item)
+                    .as_projectile_item()
+                    .is_some(),
+                "{item:?}"
+            );
+        }
+
+        let trident = ItemStack::new(&vanilla_items::TRIDENT);
+        assert!(matches!(
+            DispenseBehavior::for_item(&trident),
+            DispenseBehavior::Default
+        ));
+        assert!(
+            ITEM_BEHAVIORS
+                .get_behavior(trident.item)
+                .as_projectile_item()
+                .is_some()
+        );
+    }
 }
