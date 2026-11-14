@@ -24,7 +24,9 @@ pub use mobs::raiders::{
     EvokerEntity, IllusionerEntity, PillagerEntity, RavagerEntity, VindicatorEntity, WitchEntity,
 };
 pub use mobs::villagers::{VillagerEntity, WanderingTraderEntity};
-pub use objects::display_ui::{BlockDisplayEntity, ItemFrameEntity, LeashFenceKnotEntity};
+pub use objects::display_ui::{
+    BlockDisplayEntity, ItemFrameEntity, LeashFenceKnotEntity, PaintingEntity,
+};
 pub use objects::effects::{AreaEffectCloudEntity, LightningBoltEntity};
 pub use objects::explosives::{EndCrystalEntity, PrimedTntEntity};
 pub use objects::items::{ExperienceOrbEntity, FallingBlockEntity, ItemEntity};

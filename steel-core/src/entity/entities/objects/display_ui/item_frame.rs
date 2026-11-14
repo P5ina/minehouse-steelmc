@@ -29,9 +29,9 @@ use crate::entity::damage::DamageSource;
 use crate::entity::entities::LightningBoltEntity;
 use crate::entity::{
     Entity, EntityBase, EntityBaseLoad, EntityBaseState, EntityMoveError, EntitySyncedData,
-    ItemFrame, SharedEntity, physics_state_for_move,
+    HangingEntity, ItemFrame, SharedEntity,
 };
-use crate::physics::{CollisionWorld as _, MoveResult, MoverType, WorldCollisionProvider};
+use crate::physics::{MoveResult, MoverType};
 use crate::player::Player;
 use crate::world::maps::{MapFrame, TRACKED_DECORATION_LIMIT};
 use crate::world::{Explosion, World};
@@ -285,37 +285,6 @@ impl ItemFrameEntity {
         self.entity_data.lock().item.get().has(MAP_ID)
     }
 
-    /// Vanilla `ItemFrame.getPopBox`: the frame's box as if it held no map.
-    fn pop_box(&self) -> WorldAabb {
-        Self::frame_bounding_box(
-            self.block_attached_entity_base.pos(),
-            self.direction(),
-            false,
-        )
-    }
-
-    /// Vanilla `HangingEntity.hasLevelCollision`.
-    fn has_level_collision(&self, world: &Arc<World>, pop_box: &WorldAabb) -> bool {
-        let collisions = WorldCollisionProvider::for_entity(world, self);
-        collisions.has_block_collision_with_context(
-            pop_box,
-            physics_state_for_move(self).block_collision_context(),
-        ) || collisions.has_world_border_collision(pop_box)
-    }
-
-    /// Vanilla `HangingEntity.canCoexist(true)`: no other hanging entity facing the same way
-    /// overlaps this frame.
-    fn can_coexist(&self, world: &World, pop_box: &WorldAabb) -> bool {
-        let id = self.id();
-        let direction = self.direction();
-        !world.has_entity_in_aabb_matching(pop_box, |other| {
-            other.id() != id
-                && other
-                    .as_item_frame()
-                    .is_some_and(|frame| frame.direction() == direction)
-        })
-    }
-
     /// Vanilla `ItemFrame.getFrameItemStackWithData`.
     fn frame_item_with_data(&self) -> ItemStack {
         let mut item = ItemStack::new(if self.is_glow() {
@@ -327,17 +296,6 @@ impl ItemFrameEntity {
             item.set(CUSTOM_NAME, name);
         }
         item
-    }
-
-    /// Vanilla `HangingEntity.spawnAtLocation`: drops sit a little in front of the wall.
-    fn spawn_in_front(&self, item: ItemStack) {
-        let step = self.direction().offset_vec();
-        let offset = DVec3::new(
-            f64::from(step.x as f32 * 0.15),
-            0.0,
-            f64::from(step.z as f32 * 0.15),
-        );
-        self.spawn_at_location_with_offset(item, offset);
     }
 
     /// Vanilla `ItemFrame.dropItem(level, causedBy, withFrame)`.
@@ -475,11 +433,22 @@ fn can_hurt_when_fixed(source: &DamageSource) -> bool {
     source.bypasses_invulnerability() || source.is_creative_player()
 }
 
-impl ItemFrame for ItemFrameEntity {
+impl HangingEntity for ItemFrameEntity {
     fn direction(&self) -> Direction {
         *self.entity_data.lock().hanging_entity.direction.get()
     }
 
+    /// Vanilla `ItemFrame.getPopBox`: the frame's box as if it held no map.
+    fn pop_box(&self) -> WorldAabb {
+        Self::frame_bounding_box(
+            self.block_attached_entity_base.pos(),
+            self.direction(),
+            false,
+        )
+    }
+}
+
+impl ItemFrame for ItemFrameEntity {
     fn analog_output(&self) -> i32 {
         let entity_data = self.entity_data.lock();
         if entity_data.item.get().is_empty() {
@@ -528,10 +497,7 @@ impl Entity for ItemFrameEntity {
     }
 
     fn ignore_explosion(&self, explosion: &dyn Explosion) -> bool {
-        explosion
-            .direct_source_entity()
-            .is_some_and(Entity::is_in_water)
-            || !explosion.should_affect_blocklike_entities()
+        self.ignore_explosion_block_attached_entity(explosion)
     }
 
     /// Vanilla `ItemFrame.hurtServer`: the first hit knocks the item out, the next breaks the
@@ -695,8 +661,7 @@ impl BlockAttachedEntity for ItemFrameEntity {
         let Some(world) = self.level() else {
             return true;
         };
-        let pop_box = self.pop_box();
-        if self.has_level_collision(&world, &pop_box) {
+        if self.has_level_collision(&world, &self.pop_box()) {
             return false;
         }
         let direction = self.direction();
@@ -708,7 +673,7 @@ impl BlockAttachedEntity for ItemFrameEntity {
         let supported = behind.is_solid()
             || (direction.is_horizontal()
                 && BLOCK_BEHAVIORS.get_behavior(behind.get_block()).is_diode());
-        supported && self.can_coexist(&world, &pop_box)
+        supported && self.can_coexist(&world, true)
     }
 
     /// Vanilla `ItemFrame.dropItem(level, causedBy)`: the frame breaks with its item.
