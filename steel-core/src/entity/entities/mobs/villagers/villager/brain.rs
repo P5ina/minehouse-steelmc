@@ -21,6 +21,7 @@ use self::poi::{
 };
 pub(super) use self::poi::{held_job_site, is_acquirable_job, is_home, is_meeting};
 use self::sharing::{GiveGiftToHero, TradeWithVillager};
+use self::sleep::{JumpOnBed, NearestBedSensor, SleepInBed};
 use self::work::{SecondaryPoiSensor, WorkAtPoi, stroll_to_poi_list};
 use super::{VillagerEntity, trading_player_of};
 use crate::entity::ai::brain::behavior::{Behavior, OneShot, TimedBehavior};
@@ -97,11 +98,11 @@ pub(super) const fn schedule_for(baby: bool) -> &'static str {
 }
 
 fn sensors() -> Vec<Box<dyn Sensor<VillagerEntity>>> {
-    // TODO(villager brain): vanilla also has the nearest bed sensor.
     vec![
         Box::new(NearestLivingEntitySensor),
         Box::new(PlayerSensor),
         Box::new(NearestItemSensor),
+        Box::new(NearestBedSensor::new()),
         Box::new(HurtBySensor),
         Box::new(VillagerHostilesSensor),
         Box::new(VillagerBabiesSensor),
@@ -208,7 +209,6 @@ fn core_package(profession: VillagerProfessionRef) -> ActivityData<VillagerEntit
 
 /// Vanilla `VillagerGoalPackages.getPlayPackage`.
 fn play_package() -> ActivityData<VillagerEntity> {
-    // TODO(villager brain): vanilla also jumps on beds (weight 2).
     let wander: Weighted = vec![
         (
             Box::new(interact_with_type(
@@ -238,6 +238,10 @@ fn play_package() -> ActivityData<VillagerEntity> {
                 2,
             )),
             1,
+        ),
+        (
+            Box::new(TimedBehavior::new(JumpOnBed::new(SPEED_MODIFIER))),
+            2,
         ),
         (Box::new(DoNothing::new(20, 40)), 2),
     ];
@@ -447,7 +451,6 @@ fn rest_package() -> ActivityData<VillagerEntity> {
         (Box::new(go_to_closest_village(SPEED_MODIFIER, 4)), 2),
         (Box::new(DoNothing::new(20, 40)), 2),
     ];
-    // TODO(villager brain): vanilla also sleeps in the bed (priority 3).
     let behaviors: Behaviors = vec![
         (
             2,
@@ -460,6 +463,7 @@ fn rest_package() -> ActivityData<VillagerEntity> {
             )),
         ),
         (3, Box::new(validate_nearby_poi(is_home, &HOME))),
+        (3, Box::new(TimedBehavior::new(SleepInBed::new()))),
         (
             5,
             Box::new(run_one(
@@ -505,6 +509,10 @@ fn idle_package() -> ActivityData<VillagerEntity> {
                 |_| SPEED_MODIFIER,
                 2,
             )),
+            1,
+        ),
+        (
+            Box::new(TimedBehavior::new(JumpOnBed::new(SPEED_MODIFIER))),
             1,
         ),
         (Box::new(DoNothing::new(30, 60)), 1),
@@ -1218,6 +1226,7 @@ impl Sensor<VillagerEntity> for GolemSensor {
 mod farm;
 mod poi;
 mod sharing;
+mod sleep;
 mod work;
 
 #[cfg(test)]

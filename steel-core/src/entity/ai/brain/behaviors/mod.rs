@@ -30,7 +30,7 @@ pub use combat::{
 };
 pub use cooldown::CountDownCooldownTicks;
 pub use do_nothing::DoNothing;
-pub use door::interact_with_door;
+pub use door::{close_doors_that_i_have_opened_or_passed_through, interact_with_door};
 pub use fight::{
     erase_memory_if, is_breeding, melee_attack, melee_attack_when,
     set_walk_target_from_attack_target_if_target_out_of_reach, stop_attacking_if_target_invalid,
