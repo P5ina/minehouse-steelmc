@@ -2,7 +2,7 @@
 //! `VillagerGoalPackages`), with the villager-only behaviors and sensors.
 //!
 //! Not yet ported: sleeping,
-//! breeding, gifts to heroes, trading with other villagers, iron
+//! breeding, iron
 //! golem calls and raids.
 
 use std::sync::Arc;
@@ -20,9 +20,11 @@ use self::poi::{
     set_walk_target_from_block_memory, yield_job_site,
 };
 pub(super) use self::poi::{held_job_site, is_acquirable_job, is_home, is_meeting};
+use self::sharing::{GiveGiftToHero, TradeWithVillager};
 use self::work::{SecondaryPoiSensor, WorkAtPoi, stroll_to_poi_list};
 use super::{VillagerEntity, trading_player_of};
 use crate::entity::ai::brain::behavior::{Behavior, OneShot, TimedBehavior};
+use crate::entity::ai::brain::behaviors::gate::{GateBehavior, OrderPolicy, RunningPolicy};
 use crate::entity::ai::brain::behaviors::{
     DoNothing, LookAtTargetSink, MoveToTargetSink, Swim, acquire_poi, go_to_wanted_item,
     inside_brownian_walk, interact_with_door, interact_with_type, run_one, set_entity_look_target,
@@ -298,7 +300,6 @@ fn work_package(profession: VillagerProfessionRef) -> ActivityData<VillagerEntit
             if farmer { 4 } else { 7 },
         ),
     ];
-    // TODO(villager brain): vanilla also gives gifts to heroes at priority 3.
     let behaviors: Behaviors = vec![
         (5, Box::new(minimal_look_behavior())),
         (5, Box::new(run_one(Vec::new(), work))),
@@ -320,6 +321,7 @@ fn work_package(profession: VillagerProfessionRef) -> ActivityData<VillagerEntit
                 1200,
             )),
         ),
+        (3, Box::new(TimedBehavior::new(GiveGiftToHero::new()))),
         (99, Box::new(update_activity_from_schedule())),
     ];
     ActivityData::new(Activity::WORK, behaviors)
@@ -334,8 +336,6 @@ fn meet_package() -> ActivityData<VillagerEntity> {
         ),
         (Box::new(socialize_at_bell()), 2),
     ];
-    // TODO(villager brain): vanilla also gives gifts to heroes and trades
-    // with other villagers at priority 3.
     let behaviors: Behaviors = vec![
         (2, Box::new(trigger_one_shuffled(socialize))),
         (10, Box::new(TimedBehavior::new(ShowTradesToPlayer::new()))),
@@ -356,7 +356,22 @@ fn meet_package() -> ActivityData<VillagerEntity> {
                 200,
             )),
         ),
+        (3, Box::new(TimedBehavior::new(GiveGiftToHero::new()))),
         (3, Box::new(validate_nearby_poi(is_meeting, &MEETING_POINT))),
+        (
+            3,
+            Box::new(GateBehavior::new(
+                Vec::new(),
+                vec![&INTERACTION_TARGET],
+                OrderPolicy::Ordered,
+                RunningPolicy::RunOne,
+                vec![(
+                    Box::new(TimedBehavior::new(TradeWithVillager::new()))
+                        as Box<dyn BehaviorControl<VillagerEntity>>,
+                    1,
+                )],
+            )),
+        ),
         (5, Box::new(full_look_behavior())),
         (99, Box::new(update_activity_from_schedule())),
     ];
@@ -494,10 +509,10 @@ fn idle_package() -> ActivityData<VillagerEntity> {
         ),
         (Box::new(DoNothing::new(30, 60)), 1),
     ];
-    // TODO(villager brain): vanilla also gives gifts to heroes, trades with
-    // other villagers and breeds at priority 3.
+    // TODO(villager brain): vanilla also breeds at priority 3.
     let behaviors: Behaviors = vec![
         (2, Box::new(run_one(Vec::new(), wander))),
+        (3, Box::new(TimedBehavior::new(GiveGiftToHero::new()))),
         (
             3,
             Box::new(set_look_and_interact(
@@ -506,6 +521,20 @@ fn idle_package() -> ActivityData<VillagerEntity> {
             )),
         ),
         (3, Box::new(TimedBehavior::new(ShowTradesToPlayer::new()))),
+        (
+            3,
+            Box::new(GateBehavior::new(
+                Vec::new(),
+                vec![&INTERACTION_TARGET],
+                OrderPolicy::Ordered,
+                RunningPolicy::RunOne,
+                vec![(
+                    Box::new(TimedBehavior::new(TradeWithVillager::new()))
+                        as Box<dyn BehaviorControl<VillagerEntity>>,
+                    1,
+                )],
+            )),
+        ),
         (5, Box::new(full_look_behavior())),
         (99, Box::new(update_activity_from_schedule())),
     ];
@@ -1188,6 +1217,7 @@ impl Sensor<VillagerEntity> for GolemSensor {
 
 mod farm;
 mod poi;
+mod sharing;
 mod work;
 
 #[cfg(test)]
