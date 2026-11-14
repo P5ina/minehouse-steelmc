@@ -1,5 +1,6 @@
 use std::ptr;
 
+use crate::inventory::recipe_access::RECIPE_ACCESS;
 use crate::player::connection::NetworkConnection;
 
 use super::{
@@ -423,6 +424,9 @@ impl Server {
             online_mode: self.config.online_mode,
             enforces_secure_chat: self.enforces_secure_chat(),
         });
+        // Vanilla `PlayerList.placeNewPlayer` syncs the recipe property sets and
+        // stonecutter recipes right after the login state.
+        player.send_packet(RECIPE_ACCESS.update_recipes_packet());
     }
 
     /// Gets all the players on the server
