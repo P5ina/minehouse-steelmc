@@ -105,7 +105,7 @@ impl BlockBehavior for BrewingStandBlock {
         )
     }
 
-    /// Vanilla `Containers.updateNeighboursAfterDestroy`.
+    /// Vanilla `Containers` neighbor update after the stand is destroyed.
     fn affect_neighbors_after_removal(
         &self,
         _state: BlockStateId,
