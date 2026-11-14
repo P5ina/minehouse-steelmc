@@ -527,6 +527,52 @@ impl VillagerEntity {
         self.count_food_points_in_inventory() < 12
     }
 
+    /// Vanilla `Villager.canBreed`: fed enough, awake and grown up.
+    pub(super) fn can_breed(&self) -> bool {
+        let food_level = self.state.lock().food_level;
+        food_level + self.count_food_points_in_inventory() >= 12
+            && !self.is_sleeping()
+            && AgeableMob::get_age(self) == 0
+    }
+
+    /// Vanilla `eatAndDigestFood`: eats from the inventory until full, then
+    /// uses up twelve food points.
+    pub(super) fn eat_and_digest_food(&self) {
+        self.eat_until_full();
+        self.state.lock().food_level -= 12;
+    }
+
+    /// Vanilla `eatUntilFull`.
+    fn eat_until_full(&self) {
+        use crate::inventory::container::Container as _;
+        if self.state.lock().food_level >= 12 {
+            return;
+        }
+        let mut inventory = self.inventory.lock();
+        for slot in 0..inventory.get_container_size() {
+            let (nutrition, item_count) = {
+                let stack = inventory.get_item(slot);
+                let Some(food) = stack.get(VILLAGER_FOOD) else {
+                    continue;
+                };
+                (food.nutrition(), stack.count())
+            };
+            let mut state = self.state.lock();
+            let mut to_remove = 0;
+            for _ in 0..item_count {
+                state.food_level += nutrition;
+                to_remove += 1;
+                if state.food_level >= 12 {
+                    drop(state);
+                    inventory.remove_item(slot, to_remove);
+                    return;
+                }
+            }
+            drop(state);
+            inventory.remove_item(slot, to_remove);
+        }
+    }
+
     /// Vanilla `onReputationEventFrom`.
     pub fn on_reputation_event_from(&self, event: ReputationEventType, source: Uuid) {
         let mut state = self.state.lock();

@@ -76,7 +76,7 @@ impl JitteredLinearRetry {
 }
 
 /// The valid range (vanilla `PoiType.validRange`) of a POI type.
-fn valid_range(poi_type: usize) -> i32 {
+pub fn valid_range(poi_type: usize) -> i32 {
     REGISTRY
         .poi_types
         .by_id(poi_type)

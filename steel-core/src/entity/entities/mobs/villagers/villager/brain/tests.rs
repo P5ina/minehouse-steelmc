@@ -16,6 +16,7 @@ use steel_utils::types::InteractionHand;
 use steel_utils::types::UpdateFlags;
 use steel_utils::{BlockPos, BlockStateId, ChunkPos, GlobalPos};
 
+use super::breed::VillagerMakeLove;
 use super::farm::{HarvestFarmland, UseBonemeal};
 use super::poi::{
     GoToPotentialJobSite, acquirable_job_site, assign_profession_from_job_site, held_job_site,
@@ -35,11 +36,11 @@ use crate::entity::ai::brain::behaviors::{
     validate_nearby_poi,
 };
 use crate::entity::ai::brain::memory_types::{
-    DOORS_TO_CLOSE, GOLEM_DETECTED_RECENTLY, HOME, INTERACTION_TARGET, JOB_SITE, LAST_SLEPT,
-    LAST_WOKEN, LAST_WORKED_AT_POI, LOOK_TARGET, MEETING_POINT, NEAREST_BED, NEAREST_HOSTILE,
-    NEAREST_LIVING_ENTITIES, NEAREST_VISIBLE_LIVING_ENTITIES, NEAREST_VISIBLE_PLAYER,
-    NEAREST_VISIBLE_WANTED_ITEM, PATH, POTENTIAL_JOB_SITE, SECONDARY_JOB_SITE, WALK_TARGET,
-    WalkTarget,
+    BREED_TARGET, DOORS_TO_CLOSE, GOLEM_DETECTED_RECENTLY, HOME, INTERACTION_TARGET, JOB_SITE,
+    LAST_SLEPT, LAST_WOKEN, LAST_WORKED_AT_POI, LOOK_TARGET, MEETING_POINT, NEAREST_BED,
+    NEAREST_HOSTILE, NEAREST_LIVING_ENTITIES, NEAREST_VISIBLE_LIVING_ENTITIES,
+    NEAREST_VISIBLE_PLAYER, NEAREST_VISIBLE_WANTED_ITEM, PATH, POTENTIAL_JOB_SITE,
+    SECONDARY_JOB_SITE, WALK_TARGET, WalkTarget,
 };
 use crate::entity::ai::brain::nearest_visible::NearestVisibleLivingEntities;
 use crate::entity::ai::brain::sensors::NearestItemSensor;
@@ -1294,5 +1295,141 @@ fn villager_babies_jump_on_the_nearest_bed() {
     assert!(
         (3..=6).contains(&jumps),
         "three to six jumps, five ticks apart, then it stops: {jumps}"
+    );
+}
+
+/// Two adult villagers on a stone floor, the first wanting to breed with the
+/// second, each carrying three bread.
+fn breeding_couple(world: &Arc<World>) -> (Arc<VillagerEntity>, Arc<VillagerEntity>) {
+    for x in -2..8 {
+        for z in -2..5 {
+            world.set_block(
+                BlockPos::new(x, 63, z),
+                vanilla_blocks::STONE.default_state(),
+                UpdateFlags::UPDATE_CLIENTS,
+            );
+        }
+    }
+    let first = Arc::new(villager_in(world));
+    let second = Arc::new(villager_in(world));
+    for villager in [&first, &second] {
+        villager.set_on_ground(true);
+        let _ = villager
+            .inventory()
+            .lock()
+            .add_item(&ItemStack::with_count(&vanilla_items::BREAD, 3));
+        world
+            .try_add_entity(Arc::clone(villager) as SharedEntity)
+            .expect("the villager joins the world");
+    }
+    let first_entity: SharedEntity = Arc::clone(&first) as _;
+    let second_entity: SharedEntity = Arc::clone(&second) as _;
+    let mut memories = first.brain.memories().lock();
+    memories.set(&BREED_TARGET, Some(Arc::clone(&second_entity)));
+    memories.set(
+        &NEAREST_VISIBLE_LIVING_ENTITIES,
+        Some(NearestVisibleLivingEntities::new(
+            world,
+            &first_entity,
+            vec![second_entity],
+        )),
+    );
+    drop(memories);
+    (first, second)
+}
+
+fn villager_count(world: &Arc<World>) -> usize {
+    world
+        .get_entities_in_aabb(&WorldAabb::new(-64.0, -64.0, -64.0, 64.0, 320.0, 64.0))
+        .into_iter()
+        .filter(|entity| entity.downcast_ref::<VillagerEntity>().is_some())
+        .count()
+}
+
+/// Runs vanilla `VillagerMakeLove` from `start` until it stops by itself.
+fn make_love(world: &Arc<World>, body: &VillagerEntity, start: i64) {
+    let mut love = TimedBehavior::new(VillagerMakeLove::new());
+    assert!(love.try_start(world, body, start));
+    for time in start + 1..start + 400 {
+        love.tick_or_stop(world, body, time);
+        if !body.brain.memories().lock().has_value(&BREED_TARGET) {
+            return;
+        }
+    }
+    panic!("the villagers never finished");
+}
+
+#[test]
+fn villagers_need_a_free_bed_to_have_a_baby() {
+    init_vanilla_registry();
+    init_behaviors();
+    let fixture = fresh_test_world("villager_brain_breed_no_bed");
+    let world = &fixture.world;
+    insert_ready_full_chunk(world, ChunkPos::new(0, 0));
+    let (first, second) = breeding_couple(world);
+    assert!(first.can_breed() && second.can_breed());
+    let baby = villager_in(world);
+    baby.set_age(baby.get_baby_start_age());
+    assert!(!baby.can_breed(), "babies cannot breed");
+
+    make_love(world, &first, 0);
+
+    assert_eq!(villager_count(world), 2, "no bed, no baby");
+    for villager in [&first, &second] {
+        assert_eq!(
+            villager
+                .inventory()
+                .lock()
+                .count_item(&vanilla_items::BREAD),
+            0,
+            "both still eat the three bread they need"
+        );
+        assert_eq!(villager.get_age(), 0);
+        assert!(!villager.can_breed(), "they are hungry now");
+    }
+}
+
+#[test]
+fn villagers_have_a_baby_that_takes_the_free_bed() {
+    init_vanilla_registry();
+    init_behaviors();
+    let fixture = fresh_test_world("villager_brain_breed");
+    let world = &fixture.world;
+    insert_ready_full_chunk(world, ChunkPos::new(0, 0));
+    let (first, second) = breeding_couple(world);
+    let bed = BlockPos::new(4, 64, 1);
+    world.set_block(
+        bed,
+        vanilla_blocks::WHITE_BED
+            .default_state()
+            .set_value(&BlockStateProperties::BED_PART, BedPart::Head),
+        UpdateFlags::UPDATE_CLIENTS,
+    );
+    add_poi(world, bed, &vanilla_poi_types::HOME);
+
+    make_love(world, &first, 0);
+
+    assert_eq!(villager_count(world), 3);
+    assert_eq!(first.get_age(), 6000);
+    assert_eq!(second.get_age(), 6000);
+    assert!(world.poi_storage.lock().is_occupied(bed));
+    let child = world
+        .get_entities_in_aabb(&WorldAabb::new(-64.0, -64.0, -64.0, 64.0, 320.0, 64.0))
+        .into_iter()
+        .find(|entity| {
+            entity
+                .downcast_ref::<VillagerEntity>()
+                .is_some_and(|villager| villager.get_age() < 0)
+        })
+        .expect("a baby villager");
+    let child = child.downcast_ref::<VillagerEntity>().expect("a villager");
+    assert_eq!(child.get_age(), -24_000);
+    assert_eq!(
+        child.profession().key,
+        vanilla_villager_professions::NONE.key
+    );
+    assert_eq!(
+        child.brain.memories().lock().get(&HOME),
+        Some(global(world, bed))
     );
 }
