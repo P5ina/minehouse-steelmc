@@ -253,7 +253,7 @@ impl BlockBehavior for DecoratedPotBlock {
             .is_some_and(|block_entity| block_entity.trigger_event(event, data))
     }
 
-    /// Vanilla `Containers.updateNeighboursAfterDestroy`.
+    /// Vanilla `Containers`: comparators next to the pot reread it.
     fn affect_neighbors_after_removal(
         &self,
         _state: BlockStateId,
