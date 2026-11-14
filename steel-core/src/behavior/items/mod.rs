@@ -4,6 +4,7 @@
 //! See `src/behavior/generated/items.rs` for the generated registration code.
 
 mod air;
+mod banner_item;
 mod block_item;
 pub(crate) mod block_transformer;
 mod boat_item;
@@ -51,6 +52,7 @@ mod flint_and_steel;
 mod lead;
 
 pub use air::AirItem;
+pub use banner_item::BannerItem;
 pub use block_item::{BlockItem, DoubleHighBlockItem};
 pub use boat_item::BoatItem;
 pub use bonemeal::BoneMealItem;
