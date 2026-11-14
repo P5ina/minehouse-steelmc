@@ -186,3 +186,123 @@ fn a_full_composter_turns_ready_and_gives_bone_meal() {
         });
     assert!(bone_meal, "a bone meal pops out above the composter");
 }
+
+/// Hoppers and droppers reaching the composter's containers.
+mod hopper_containers {
+    use std::sync::Arc;
+
+    use glam::DVec3;
+    use steel_registry::blocks::block_state_ext::BlockStateExt as _;
+    use steel_registry::item_stack::ItemStack;
+    use steel_registry::{init_vanilla_registry, vanilla_blocks, vanilla_items};
+    use steel_utils::locks::shared;
+    use steel_utils::types::UpdateFlags;
+    use steel_utils::{BlockPos, ChunkPos, Direction};
+
+    use super::super::LEVEL_COMPOSTER;
+    use crate::behavior::init_behaviors;
+    use crate::block_entity::entities::{
+        HopperBlockEntity, add_item, hopper_suck_in_items as suck_in_items,
+    };
+    use crate::inventory::container::{Container as _, SimpleContainer};
+    use crate::inventory::lock::{ContainerLockGuard, ContainerRef};
+    use crate::test_support::{fresh_test_world, insert_ready_full_chunk};
+    use crate::world::World;
+
+    const COMPOSTER: BlockPos = BlockPos::new(1, 64, 1);
+
+    fn composter_at_level(world: &Arc<World>, level: u8) {
+        world.set_block(
+            COMPOSTER,
+            vanilla_blocks::COMPOSTER
+                .default_state()
+                .set_value(LEVEL_COMPOSTER, level),
+            UpdateFlags::UPDATE_ALL,
+        );
+    }
+
+    fn level(world: &World) -> u8 {
+        world.get_block_state(COMPOSTER).get_value(LEVEL_COMPOSTER)
+    }
+
+    /// Inserts `stack` into the composter as a hopper on side `from` would.
+    fn insert(world: &Arc<World>, stack: ItemStack, from: Direction) -> ItemStack {
+        let targets = HopperBlockEntity::get_container_at(world, COMPOSTER)
+            .expect("composters are containers");
+        let ids: Vec<_> = targets.iter().map(ContainerRef::container_id).collect();
+        let mut guard = ContainerLockGuard::lock_all(&targets);
+        add_item(&mut guard, None, &ids, stack, Some(from))
+    }
+
+    #[test]
+    fn hoppers_fill_a_composter_from_above_only() {
+        init_vanilla_registry();
+        init_behaviors();
+        let fixture = fresh_test_world("composter_hopper_fill");
+        let world = &fixture.world;
+        insert_ready_full_chunk(world, ChunkPos::new(0, 0));
+        composter_at_level(world, 0);
+
+        let rest = insert(
+            world,
+            ItemStack::with_count(&vanilla_items::PUMPKIN_PIE, 2),
+            Direction::North,
+        );
+        assert_eq!(rest.count(), 2, "only the top face takes items");
+        assert_eq!(level(world), 0);
+
+        let rest = insert(world, ItemStack::new(&vanilla_items::STONE), Direction::Up);
+        assert_eq!(rest.count(), 1, "stone is not compostable");
+
+        // Pumpkin pie always adds a layer.
+        let rest = insert(
+            world,
+            ItemStack::new(&vanilla_items::PUMPKIN_PIE),
+            Direction::Up,
+        );
+        assert!(rest.is_empty());
+        assert_eq!(level(world), 1);
+    }
+
+    #[test]
+    fn a_full_composter_takes_nothing_until_ready() {
+        init_vanilla_registry();
+        init_behaviors();
+        let fixture = fresh_test_world("composter_hopper_full");
+        let world = &fixture.world;
+        insert_ready_full_chunk(world, ChunkPos::new(0, 0));
+        composter_at_level(world, 7);
+        let rest = insert(
+            world,
+            ItemStack::new(&vanilla_items::PUMPKIN_PIE),
+            Direction::Up,
+        );
+        assert_eq!(rest.count(), 1);
+        assert_eq!(level(world), 7);
+    }
+
+    #[test]
+    fn hoppers_take_bone_meal_from_a_ready_composter_below_it() {
+        init_vanilla_registry();
+        init_behaviors();
+        let fixture = fresh_test_world("composter_hopper_take");
+        let world = &fixture.world;
+        insert_ready_full_chunk(world, ChunkPos::new(0, 0));
+        composter_at_level(world, 8);
+        let hopper = shared(SimpleContainer::new(5));
+        let hopper_ref = ContainerRef::from(&hopper);
+        // A hopper right under the composter.
+        let below = DVec3::new(1.5, 63.5, 1.5);
+
+        assert!(suck_in_items(world, &hopper_ref, below, true));
+        assert_eq!(level(world), 0, "taking the bone meal empties it");
+        assert_eq!(hopper.lock().count_item(&vanilla_items::BONE_MEAL), 1);
+
+        composter_at_level(world, 3);
+        assert!(
+            !suck_in_items(world, &hopper_ref, below, true),
+            "a composter that is not ready gives nothing"
+        );
+        assert_eq!(level(world), 3);
+    }
+}
