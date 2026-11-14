@@ -22,7 +22,7 @@ use crate::entity::{
     EntitySyncedData, LivingEntity, RemovalReason, SharedEntity, next_entity_id,
 };
 use crate::fluid::get_fluid_state;
-use crate::physics::{MoverType, WorldCollisionProvider};
+use crate::physics::{MoverType, WorldCollisionProvider, has_collision};
 use crate::player::Player;
 use crate::world::World;
 
@@ -40,6 +40,8 @@ const UNDERWATER_DRAG: f64 = 0.99;
 const UNDERWATER_VERTICAL_ACCEL: f64 = 5.0e-4;
 const UNDERWATER_MAX_Y: f64 = 0.06;
 const FOLLOW_ACCELERATION: f64 = 0.1;
+/// Vanilla `Vec3.normalize` treats shorter vectors as zero.
+const VANILLA_NORMALIZE_EPSILON: f64 = 1.0E-5;
 
 struct ExperienceOrbState {
     age: i32,
@@ -94,9 +96,24 @@ impl ExperienceOrbEntity {
         value: i32,
         world: Weak<World>,
     ) -> Self {
+        Self::with_direction(entity_type, id, position, DVec3::ZERO, value, world)
+    }
+
+    /// Vanilla `ExperienceOrb(level, pos, roughly, value)`: random spawn motion
+    /// flipped to point along `rough_direction`, the orb pushed half its size
+    /// that way and moved out of any collision it starts in.
+    #[must_use]
+    pub fn with_direction(
+        entity_type: EntityTypeRef,
+        id: i32,
+        position: DVec3,
+        rough_direction: DVec3,
+        value: i32,
+        world: Weak<World>,
+    ) -> Self {
         let entity = Self::new(entity_type, id, position, world);
+        entity.initialize_spawn_movement(position, rough_direction);
         entity.set_value(value);
-        entity.initialize_spawn_movement();
         entity
     }
 
@@ -112,7 +129,19 @@ impl ExperienceOrbEntity {
     }
 
     /// Spawns vanilla experience orbs for an XP amount.
-    pub fn award(world: &Arc<World>, position: DVec3, mut amount: i32) {
+    pub fn award(world: &Arc<World>, position: DVec3, amount: i32) {
+        Self::award_with_direction(world, position, DVec3::ZERO, amount);
+    }
+
+    /// Vanilla `ExperienceOrb.awardWithDirection`: splits `amount` into orbs,
+    /// merging into nearby orbs where possible, each new orb thrown roughly
+    /// along `rough_direction`.
+    pub fn award_with_direction(
+        world: &Arc<World>,
+        position: DVec3,
+        rough_direction: DVec3,
+        mut amount: i32,
+    ) {
         while amount > 0 {
             let value = Self::get_experience_value(amount);
             amount -= value;
@@ -120,10 +149,11 @@ impl ExperienceOrbEntity {
                 continue;
             }
 
-            let entity: SharedEntity = Arc::new(Self::with_value(
+            let entity: SharedEntity = Arc::new(Self::with_direction(
                 &vanilla_entities::EXPERIENCE_ORB,
                 next_entity_id(),
                 position,
+                rough_direction,
                 value,
                 Arc::downgrade(world),
             ));
@@ -196,15 +226,50 @@ impl ExperienceOrbEntity {
         self.state.lock().health
     }
 
-    fn initialize_spawn_movement(&self) {
-        let yaw = rand::random_range(0.0..DEGREE_360);
-        let velocity = DVec3::new(
-            f64::from(rand::random_range(-0.1f32..0.1)) * 2.0,
-            f64::from(rand::random_range(0.0f32..0.2)) * 2.0,
-            f64::from(rand::random_range(-0.1f32..0.1)) * 2.0,
+    fn initialize_spawn_movement(&self, position: DVec3, rough_direction: DVec3) {
+        let yaw = rand::random::<f32>() * DEGREE_360;
+        let mut movement = DVec3::new(
+            (rand::random::<f64>() * 0.2 - 0.1) * 2.0,
+            rand::random::<f64>() * 0.2 * 2.0,
+            (rand::random::<f64>() * 0.2 - 0.1) * 2.0,
         );
+        if rough_direction.length_squared() > 0.0 && rough_direction.dot(movement) < 0.0 {
+            movement = -movement;
+        }
+
+        let size = self.bounding_box().size();
+        self.base
+            .set_position_local(position + vanilla_normalize(rough_direction) * (size * 0.5));
         self.base.set_rotation((yaw, 0.0));
-        self.base.set_velocity(velocity);
+        self.base.set_velocity(movement);
+
+        let Some(world) = self.level() else {
+            return;
+        };
+        let collision_world = WorldCollisionProvider::for_entity(&world, self);
+        if has_collision(&collision_world, self.bounding_box()) {
+            self.unstuck_if_possible(&collision_world, size);
+        }
+    }
+
+    /// Vanilla `ExperienceOrb.unstuckIfPossible`: moves the orb to the free
+    /// spot nearest its center within a cube of `max_distance`.
+    fn unstuck_if_possible(&self, collision_world: &WorldCollisionProvider<'_>, max_distance: f64) {
+        let dimensions = self.base.dimensions();
+        let (width, height) = (f64::from(dimensions.width), f64::from(dimensions.height));
+        let center = self.position() + DVec3::new(0.0, height / 2.0, 0.0);
+        let allowed_centers = [WorldAabb::of_size(
+            center,
+            max_distance,
+            max_distance,
+            max_distance,
+        )];
+        if let Some(free) =
+            collision_world.find_free_position(&allowed_centers, center, width, height, width)
+        {
+            self.base
+                .set_position_local(free + DVec3::new(0.0, -height / 2.0, 0.0));
+        }
     }
 
     fn try_merge_to_existing(world: &Arc<World>, position: DVec3, value: i32) -> bool {
@@ -542,6 +607,16 @@ impl Entity for ExperienceOrbEntity {
         drop(state);
 
         self.set_value(i32::from(nbt.short("Value").unwrap_or(0)));
+    }
+}
+
+/// Vanilla `Vec3.normalize`: zero below a length of `1.0E-5`.
+fn vanilla_normalize(vector: DVec3) -> DVec3 {
+    let length = vector.length();
+    if length < VANILLA_NORMALIZE_EPSILON {
+        DVec3::ZERO
+    } else {
+        vector / length
     }
 }
 
