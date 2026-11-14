@@ -21,6 +21,7 @@ use self::poi::{
 };
 pub(super) use self::poi::{held_job_site, is_acquirable_job, is_home, is_meeting};
 use self::sharing::{GiveGiftToHero, TradeWithVillager};
+use self::sleep::SleepInBed;
 use self::work::{SecondaryPoiSensor, WorkAtPoi, stroll_to_poi_list};
 use super::{VillagerEntity, trading_player_of};
 use crate::entity::ai::brain::behavior::{Behavior, OneShot, TimedBehavior};
@@ -447,7 +448,6 @@ fn rest_package() -> ActivityData<VillagerEntity> {
         (Box::new(go_to_closest_village(SPEED_MODIFIER, 4)), 2),
         (Box::new(DoNothing::new(20, 40)), 2),
     ];
-    // TODO(villager brain): vanilla also sleeps in the bed (priority 3).
     let behaviors: Behaviors = vec![
         (
             2,
@@ -460,6 +460,7 @@ fn rest_package() -> ActivityData<VillagerEntity> {
             )),
         ),
         (3, Box::new(validate_nearby_poi(is_home, &HOME))),
+        (3, Box::new(TimedBehavior::new(SleepInBed::new()))),
         (
             5,
             Box::new(run_one(
@@ -1218,6 +1219,7 @@ impl Sensor<VillagerEntity> for GolemSensor {
 mod farm;
 mod poi;
 mod sharing;
+mod sleep;
 mod work;
 
 #[cfg(test)]

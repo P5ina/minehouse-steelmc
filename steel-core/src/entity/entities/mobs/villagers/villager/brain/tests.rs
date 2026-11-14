@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use glam::DVec3;
 use steel_registry::blocks::block_state_ext::BlockStateExt as _;
-use steel_registry::blocks::properties::{BlockStateProperties, DoubleBlockHalf};
+use steel_registry::blocks::properties::{BedPart, BlockStateProperties, DoubleBlockHalf};
 use steel_registry::item_stack::ItemStack;
 use steel_registry::poi::PointOfInterestType;
 use steel_registry::{
@@ -22,6 +22,7 @@ use super::poi::{
     poi_competitor_scan, reset_profession,
 };
 use super::sharing::{GiveGiftToHero, gift_loot_table, throw_half_stack};
+use super::sleep::SleepInBed;
 use super::work::{SecondaryPoiSensor, WorkAtPoi, stroll_to_poi_list};
 use super::{
     ShowTradesToPlayer, VillagerBabiesSensor, VillagerHostilesSensor, VillagerPanicTrigger,
@@ -34,10 +35,11 @@ use crate::entity::ai::brain::behaviors::{
     validate_nearby_poi,
 };
 use crate::entity::ai::brain::memory_types::{
-    DOORS_TO_CLOSE, GOLEM_DETECTED_RECENTLY, HOME, INTERACTION_TARGET, JOB_SITE,
-    LAST_WORKED_AT_POI, LOOK_TARGET, MEETING_POINT, NEAREST_HOSTILE, NEAREST_LIVING_ENTITIES,
-    NEAREST_VISIBLE_LIVING_ENTITIES, NEAREST_VISIBLE_PLAYER, NEAREST_VISIBLE_WANTED_ITEM, PATH,
-    POTENTIAL_JOB_SITE, SECONDARY_JOB_SITE, WALK_TARGET, WalkTarget,
+    DOORS_TO_CLOSE, GOLEM_DETECTED_RECENTLY, HOME, INTERACTION_TARGET, JOB_SITE, LAST_SLEPT,
+    LAST_WOKEN, LAST_WORKED_AT_POI, LOOK_TARGET, MEETING_POINT, NEAREST_HOSTILE,
+    NEAREST_LIVING_ENTITIES, NEAREST_VISIBLE_LIVING_ENTITIES, NEAREST_VISIBLE_PLAYER,
+    NEAREST_VISIBLE_WANTED_ITEM, PATH, POTENTIAL_JOB_SITE, SECONDARY_JOB_SITE, WALK_TARGET,
+    WalkTarget,
 };
 use crate::entity::ai::brain::nearest_visible::NearestVisibleLivingEntities;
 use crate::entity::ai::brain::sensors::NearestItemSensor;
@@ -1193,4 +1195,57 @@ fn villagers_wait_then_toss_a_gift_to_a_hero() {
         !gift.check_extra_start_conditions(world, &mob),
         "waits again"
     );
+}
+
+#[test]
+fn villagers_sleep_in_their_free_home_bed() {
+    init_vanilla_registry();
+    init_behaviors();
+    let fixture = fresh_test_world("villager_brain_sleep");
+    let world = &fixture.world;
+    insert_ready_full_chunk(world, ChunkPos::new(0, 0));
+    let bed = BlockPos::new(1, 64, 1);
+    world.set_block(
+        bed,
+        vanilla_blocks::WHITE_BED
+            .default_state()
+            .set_value(&BlockStateProperties::BED_PART, BedPart::Head),
+        UpdateFlags::UPDATE_CLIENTS,
+    );
+    let sleeper = villager_in(world);
+    let neighbor = villager_in(world);
+    for villager in [&sleeper, &neighbor] {
+        villager
+            .brain
+            .memories()
+            .lock()
+            .set(&HOME, Some(global(world, bed)));
+    }
+    let mut sleep = TimedBehavior::new(SleepInBed::new());
+
+    assert!(sleep.try_start(world, &sleeper, 100));
+    assert!(sleeper.is_sleeping());
+    assert_eq!(sleeper.brain.memories().lock().get(&LAST_SLEPT), Some(100));
+    assert!(
+        world
+            .get_block_state(bed)
+            .get_value(&BlockStateProperties::OCCUPIED)
+    );
+    assert!(
+        !SleepInBed::new().check_extra_start_conditions(world, &neighbor),
+        "the bed is taken"
+    );
+
+    sleep.do_stop(world, &sleeper, 200);
+    assert!(!sleeper.is_sleeping());
+    assert!(sleeper.brain.memories().lock().has_value(&LAST_WOKEN));
+    // Like vanilla, the behavior starts but lies down only 40 ticks later.
+    assert!(sleep.try_start(world, &sleeper, 240));
+    assert!(
+        !sleeper.is_sleeping(),
+        "forty ticks pass before it lies down again"
+    );
+    sleep.do_stop(world, &sleeper, 240);
+    assert!(sleep.try_start(world, &sleeper, 241));
+    assert!(sleeper.is_sleeping());
 }
