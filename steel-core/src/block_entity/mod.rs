@@ -28,6 +28,7 @@ mod components;
 pub mod container_loot;
 pub mod container_openers;
 pub mod entities;
+pub mod player_detector;
 mod registry;
 mod storage;
 

@@ -32,6 +32,7 @@ mod sign;
 mod skull;
 mod spawner;
 mod unimplemented;
+mod vault;
 
 pub use abstract_furnace::{
     BlastFurnaceBlockEntity, FurnaceBlockEntity, FurnaceKind, SmokerBlockEntity,
@@ -87,3 +88,4 @@ pub use spawner::{
     Spawner, SpawnerBlockEntity, WeightedSpawnData,
 };
 pub use unimplemented::UnimplementedBlockEntity;
+pub use vault::{VaultBlockEntity, VaultConfig};
