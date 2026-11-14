@@ -25,7 +25,8 @@ pub use mobs::raiders::{
 };
 pub use mobs::villagers::{VillagerEntity, WanderingTraderEntity};
 pub use objects::display_ui::{
-    BlockDisplayEntity, ItemFrameEntity, LeashFenceKnotEntity, PaintingEntity,
+    ArmorStandEntity, ArmorStandPose, BlockDisplayEntity, ItemFrameEntity, LeashFenceKnotEntity,
+    PaintingEntity,
 };
 pub use objects::effects::{AreaEffectCloudEntity, LightningBoltEntity};
 pub use objects::explosives::{EndCrystalEntity, PrimedTntEntity};

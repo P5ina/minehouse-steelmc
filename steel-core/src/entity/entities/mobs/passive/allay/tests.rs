@@ -9,7 +9,7 @@ use steel_registry::{init_vanilla_registry, vanilla_entities, vanilla_items};
 use steel_utils::BlockPos;
 
 use super::{AllayEntity, DUPLICATION_COOLDOWN_TICKS};
-use crate::entity::{Entity, EquipmentSlot, Mob};
+use crate::entity::{Entity, EquipmentSlot, LivingEntity as _, Mob};
 use crate::inventory::container::Container as _;
 
 fn test_allay() -> AllayEntity {

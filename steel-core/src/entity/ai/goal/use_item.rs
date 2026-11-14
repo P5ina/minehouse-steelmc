@@ -69,8 +69,8 @@ mod tests {
 
     use super::*;
     use crate::behavior::init_behaviors;
+    use crate::entity::LivingEntity;
     use crate::entity::entities::WanderingTraderEntity;
-    use crate::entity::{LivingEntity, Mob};
 
     #[test]
     fn start_holds_and_uses_the_item_and_stop_clears_the_hand() {

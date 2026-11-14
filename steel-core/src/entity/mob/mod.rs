@@ -882,32 +882,6 @@ pub trait Mob: LivingEntity + Leashable {
         equipped
     }
 
-    /// Vanilla `Mob.setItemSlot`: puts `item_stack` in `slot` and runs the
-    /// equip hook with what was there before.
-    fn set_item_slot(&self, slot: EquipmentSlot, item_stack: ItemStack) {
-        let previous = self.equipment_in_slot(slot);
-        let current = item_stack.copy_with_count(item_stack.count());
-        self.living_base().equipment().lock().set(slot, item_stack);
-        self.on_equip_item(slot, &previous, &current);
-    }
-
-    /// Vanilla `LivingEntity.getEquipmentSlotForItem`: the slot an item wants to
-    /// occupy, falling back to the main hand when it is not equippable or the mob
-    /// cannot use that slot.
-    fn get_equipment_slot_for_item(&self, item_stack: &ItemStack) -> EquipmentSlot {
-        match item_stack.get_equippable() {
-            Some(equippable) if self.can_use_slot(equippable.slot) => equippable.slot,
-            _ => EquipmentSlot::MainHand,
-        }
-    }
-
-    /// Returns a copy of whatever this mob currently holds in `slot`.
-    fn equipment_in_slot(&self, slot: EquipmentSlot) -> ItemStack {
-        let equipment = self.living_base().equipment().lock();
-        let stack = equipment.get_ref(slot);
-        stack.copy_with_count(stack.count())
-    }
-
     /// Vanilla `Mob.dropPreservedEquipment(level, shouldDrop)`: drops every
     /// preserved item that passes `should_drop` and returns the slots whose
     /// items did not pass, in slot order.

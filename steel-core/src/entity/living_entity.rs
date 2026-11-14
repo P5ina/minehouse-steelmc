@@ -2092,6 +2092,32 @@ pub trait LivingEntity: Entity {
         has_item
     }
 
+    /// Vanilla `LivingEntity.setItemSlot`: puts `item_stack` in `slot` and runs the
+    /// equip hook with what was there before.
+    fn set_item_slot(&self, slot: EquipmentSlot, item_stack: ItemStack) {
+        let previous = self.equipment_in_slot(slot);
+        let current = item_stack.copy_with_count(item_stack.count());
+        self.living_base().equipment().lock().set(slot, item_stack);
+        self.on_equip_item(slot, &previous, &current);
+    }
+
+    /// Vanilla `LivingEntity.getEquipmentSlotForItem`: the slot an item wants to
+    /// occupy, falling back to the main hand when it is not equippable or the entity
+    /// cannot use that slot.
+    fn get_equipment_slot_for_item(&self, item_stack: &ItemStack) -> EquipmentSlot {
+        match item_stack.get_equippable() {
+            Some(equippable) if self.can_use_slot(equippable.slot) => equippable.slot,
+            _ => EquipmentSlot::MainHand,
+        }
+    }
+
+    /// Returns a copy of whatever this entity currently holds in `slot`.
+    fn equipment_in_slot(&self, slot: EquipmentSlot) -> ItemStack {
+        let equipment = self.living_base().equipment().lock();
+        let stack = equipment.get_ref(slot);
+        stack.copy_with_count(stack.count())
+    }
+
     /// Returns whether vanilla allows this entity to use `slot`.
     fn can_use_slot(&self, _slot: EquipmentSlot) -> bool {
         true
@@ -2440,11 +2466,17 @@ pub trait LivingEntity: Entity {
         self.tick_living_state();
     }
 
-    /// Ticks living-entity counters after movement.
-    fn tick_living_state(&self) {
+    /// Vanilla `LivingEntity.tickHeadTurn`, run after movement. Mobs turn their
+    /// body through their body rotation control (vanilla `Mob.tickHeadTurn`).
+    fn tick_head_turn(&self) {
         if let Some(mob) = self.as_mob() {
             mob.tick_body_rotation_control();
         }
+    }
+
+    /// Ticks living-entity counters after movement.
+    fn tick_living_state(&self) {
+        self.tick_head_turn();
         self.living_base()
             .tick_fall_flying_state(self.is_fall_flying());
         self.refresh_dirty_attributes();
