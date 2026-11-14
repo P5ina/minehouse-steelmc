@@ -26,6 +26,7 @@ mod jukebox;
 mod lectern;
 mod piston_moving;
 mod potent_sulfur;
+mod shelf;
 mod shulker_box;
 mod sign;
 mod skull;
@@ -77,6 +78,7 @@ pub(crate) use lectern::{
 };
 pub use piston_moving::PistonMovingBlockEntity;
 pub use potent_sulfur::PotentSulfurBlockEntity;
+pub use shelf::{SHELF_SLOTS, ShelfBlockEntity};
 pub use shulker_box::{AnimationStatus, SHULKER_BOX_SLOTS, ShulkerBoxBlockEntity};
 pub use sign::{SIGN_LINES, SignBlockEntity, SignText};
 pub use skull::SkullBlockEntity;

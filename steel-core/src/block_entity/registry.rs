@@ -208,6 +208,10 @@ pub fn init_block_entities() {
             |level, pos, state| Arc::new(DecoratedPotBlockEntity::new(level, pos, state)),
         );
 
+        registry.register(&vanilla_block_entity_types::SHELF, |level, pos, state| {
+            Arc::new(ShelfBlockEntity::new(level, pos, state))
+        });
+
         registry.register(&vanilla_block_entity_types::CHEST, |level, pos, state| {
             Arc::new(ChestBlockEntity::new(level, pos, state))
         });
