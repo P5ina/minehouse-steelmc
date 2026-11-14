@@ -212,6 +212,10 @@ pub fn init_block_entities() {
             Arc::new(ShelfBlockEntity::new(level, pos, state))
         });
 
+        registry.register(&vanilla_block_entity_types::VAULT, |level, pos, state| {
+            Arc::new(VaultBlockEntity::new(level, pos, state))
+        });
+
         registry.register(&vanilla_block_entity_types::CHEST, |level, pos, state| {
             Arc::new(ChestBlockEntity::new(level, pos, state))
         });

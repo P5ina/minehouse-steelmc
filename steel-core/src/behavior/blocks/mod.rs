@@ -12,6 +12,7 @@ mod falling;
 mod fluid;
 mod portal;
 mod redstone;
+mod trial;
 mod utils;
 pub mod vegetation;
 
@@ -23,5 +24,6 @@ pub use falling::*;
 pub use fluid::*;
 pub use portal::*;
 pub use redstone::*;
+pub use trial::*;
 pub(crate) use utils::multiface_face_property;
 pub use vegetation::*;
