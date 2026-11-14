@@ -53,6 +53,7 @@ use steel_registry::blocks::shapes::{
     BooleanOp, OffsetVoxelShape, SupportType, VoxelShape, is_offset_face_full, is_shape_full_block,
     join_is_not_empty,
 };
+use steel_registry::data_components::components::MapId;
 use steel_registry::fluid::{FluidRef, FluidState};
 use steel_registry::game_events::GameEventRef;
 use steel_registry::game_rules::{ErasedGameRuleRef, GameRule, GameRuleValue, GameRuleValueType};
@@ -126,6 +127,7 @@ pub mod explosion;
 pub mod game_event;
 mod level_effects;
 mod level_reader;
+pub mod maps;
 pub(crate) mod natural_spawner;
 mod player_index;
 pub(crate) mod player_spawn_finder;
@@ -312,6 +314,8 @@ pub struct World {
     /// Central runtime entity ownership and lookup.
     entity_manager: WorldEntityManager,
     domain_entity_directory: SyncRwLock<Option<Arc<DomainEntityDirectory>>>,
+    /// Map storage, shared by every world of the domain once the world map binds it.
+    domain_maps: SyncRwLock<Arc<maps::DomainMaps>>,
     /// World-global ordered block-entity ticker phase.
     block_entity_tickers: block_entity_ticker::WorldBlockEntityTickers,
     /// Physical entries retained by this world's chunk-owned game-event registries.
@@ -415,6 +419,8 @@ impl World {
 
         let path = config.level_data_path.as_deref().map(Path::new);
         let saved_data = SavedDataManager::new(path);
+        let domain_maps = maps::DomainMaps::new();
+        domain_maps.set_storage(saved_data.clone());
         let mut level_data = LevelDataManager::new(
             path,
             seed,
@@ -492,6 +498,7 @@ impl World {
                 neighbor_updater: CollectingNeighborUpdater::new(max_chained_neighbor_updates),
                 entity_manager: WorldEntityManager::new(),
                 domain_entity_directory: SyncRwLock::new(None),
+                domain_maps: SyncRwLock::new(Arc::new(domain_maps)),
                 block_entity_tickers: block_entity_ticker::WorldBlockEntityTickers::new(),
                 game_event_listener_count: GameEventListenerCount::shared(),
                 entity_tracker: EntityTracker::new(),
@@ -569,6 +576,29 @@ impl World {
 
     pub(crate) fn set_domain_entity_directory(&self, directory: Arc<DomainEntityDirectory>) {
         *self.domain_entity_directory.write() = Some(directory);
+    }
+
+    pub(crate) fn set_domain_maps(&self, maps: Arc<maps::DomainMaps>) {
+        *self.domain_maps.write() = maps;
+    }
+
+    /// Vanilla `Level.getMapData`: maps are shared by every world of the domain.
+    #[must_use]
+    pub fn map_data(&self, id: MapId) -> Option<maps::SharedMapData> {
+        let maps = Arc::clone(&self.domain_maps.read());
+        maps.get(id)
+    }
+
+    /// Vanilla `Level.setMapData`.
+    pub fn set_map_data(&self, id: MapId, data: maps::MapItemSavedData) -> maps::SharedMapData {
+        let maps = Arc::clone(&self.domain_maps.read());
+        maps.set(id, data)
+    }
+
+    /// Vanilla `Level.getFreeMapId`.
+    pub fn free_map_id(&self) -> MapId {
+        let maps = Arc::clone(&self.domain_maps.read());
+        maps.free_map_id()
     }
 
     /// Gets an entity by UUID, checking this world before other loaded worlds in its domain.

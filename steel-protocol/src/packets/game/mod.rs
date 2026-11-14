@@ -26,6 +26,7 @@ mod c_hurt_animation;
 mod c_level_event;
 mod c_level_particles;
 mod c_login;
+mod c_map_item_data;
 mod c_merchant_offers;
 mod c_mount_screen_open;
 mod c_move_entity;
@@ -146,6 +147,7 @@ pub use c_level_event::CLevelEvent;
 pub use c_level_particles::{CLevelParticles, RandomizationType};
 pub use c_login::CLogin;
 pub use c_login::CommonPlayerSpawnInfo;
+pub use c_map_item_data::{CMapItemData, MapDecorationData, MapPatch};
 pub use c_merchant_offers::{CMerchantOffers, MerchantItemCost, MerchantOfferEntry};
 pub use c_mount_screen_open::CMountScreenOpen;
 pub use c_move_entity::{

@@ -134,6 +134,10 @@ impl Server {
             Ok(saved) => log::info!("Saved {saved} domain command storages"),
             Err(error) => log::error!("Failed to save domain command storage: {error}"),
         }
+        match self.worlds.save_maps() {
+            Ok(saved) => log::info!("Saved {saved} maps"),
+            Err(error) => log::error!("Failed to save maps: {error}"),
+        }
         let mut total_saved = 0;
         for world in self.worlds.values() {
             world.cleanup(&mut total_saved).await;
@@ -354,6 +358,10 @@ impl Server {
         match results.storage {
             Ok(saved) => tracing::debug!(saved, "Domain command-storage autosave completed"),
             Err(error) => tracing::error!(%error, "Domain command-storage autosave failed"),
+        }
+        match self.worlds.save_maps() {
+            Ok(saved) => tracing::debug!(saved, "Map autosave completed"),
+            Err(error) => tracing::error!(%error, "Map autosave failed"),
         }
     }
 

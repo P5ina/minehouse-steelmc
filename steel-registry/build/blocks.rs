@@ -131,6 +131,18 @@ pub struct StateBooleanData {
 }
 
 #[derive(Deserialize, Clone, Debug)]
+pub struct ByteOverwrite {
+    pub offset: u16,
+    pub value: u8,
+}
+
+#[derive(Deserialize, Clone, Debug)]
+pub struct StateByteData {
+    pub default: u8,
+    pub overwrites: Vec<ByteOverwrite>,
+}
+
+#[derive(Deserialize, Clone, Debug)]
 pub struct StateFluidValue {
     pub fluid: String,
     pub amount: u8,
@@ -171,6 +183,7 @@ pub struct Block {
     pub visual_shapes: ShapeData,
     pub light_properties: LightPropertiesData,
     pub fluid_state: StateFluidData,
+    pub map_color: StateByteData,
     pub randomly_ticking: StateBooleanData,
     pub suffocating: StateBooleanData,
     pub redstone_conductor: StateBooleanData,
@@ -893,6 +906,17 @@ pub(crate) fn build() -> TokenStream {
         // Generate default state if block has properties
         let default_state = generate_default_state(block);
 
+        let map_color_default = block.map_color.default;
+        let map_color_overwrites = block
+            .map_color
+            .overwrites
+            .iter()
+            .map(|overwrite| {
+                let offset = overwrite.offset;
+                let value = overwrite.value;
+                quote! { StateByteOverwrite::new(#offset, #value) }
+            })
+            .collect::<Vec<_>>();
         let suffocating_default = block.suffocating.default;
         let suffocating_overwrites = block
             .suffocating
@@ -1019,6 +1043,11 @@ pub(crate) fn build() -> TokenStream {
                 #occlusion_fn,
                 #interaction_fn,
                 #visual_fn,
+            ).with_map_color(
+                StateByteData::new(
+                    #map_color_default,
+                    &[#(#map_color_overwrites),*],
+                ),
             ).with_suffocating(
                 StateBooleanData::new(
                     #suffocating_default,
@@ -1063,7 +1092,8 @@ pub(crate) fn build() -> TokenStream {
                 behavior::{BlockConfig, OffsetType, PushReaction},
                 shapes::ShapeOffsetFlags,
                 Block, BlockLightProperties, BlockRegistry, StateBooleanData,
-                StateBooleanOverwrite, StateFluidData, StateFluidOverwrite, offset,
+                StateBooleanOverwrite, StateByteData, StateByteOverwrite, StateFluidData,
+                StateFluidOverwrite, offset,
             },
             blocks::properties::{self, BlockStateProperties, NoteBlockInstrument},
             blocks::shapes::VoxelShape,

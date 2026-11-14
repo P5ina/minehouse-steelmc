@@ -98,6 +98,7 @@ use text_components::{
 };
 use text_components::{content::Resolvable, custom::CustomData};
 
+use crate::behavior::items::synchronize_map_updates;
 use crate::behavior::{
     BlockStateBehaviorExt as _, ITEM_BEHAVIORS, InteractionResult, InventoryTickContext,
     ItemBehavior, apply_use_remainder,
@@ -1071,6 +1072,18 @@ impl Player {
     #[expect(clippy::unused_self, reason = "this is an api function")]
     pub const fn cleanup(&self) {}
 
+    /// Vanilla `ServerPlayer.synchronizeSpecialItemUpdates` for every inventory slot.
+    fn synchronize_special_item_updates(&self) {
+        if let Some(shared) = self
+            .get_world()
+            .players
+            .get_by_entity_id(self.id())
+            .filter(|shared| ptr::eq(Arc::as_ptr(shared), self))
+        {
+            synchronize_map_updates(&shared);
+        }
+    }
+
     /// Returns the world the player is currently in.
     pub fn get_world(&self) -> Arc<World> {
         self.world.load_full()
@@ -1964,6 +1977,8 @@ impl LivingEntity for Player {
             self.trigger_player_criteria(&criteria::LOCATION);
         }
         self.advancements.lock().flush_dirty(self, true);
+
+        self.synchronize_special_item_updates();
 
         {
             let health = self.get_health();

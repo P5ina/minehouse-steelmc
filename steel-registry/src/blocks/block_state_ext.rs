@@ -80,6 +80,8 @@ pub trait BlockStateExt {
     /// occlusion shape rather than collision shape.
     fn is_solid_render(&self) -> bool;
     fn is_suffocating(&self) -> bool;
+    /// Vanilla `BlockState.getMapColor`; the extracted color is static per state.
+    fn get_map_color(&self) -> crate::map_color::MapColor;
     /// Returns the extracted static `BlockState.isRedstoneConductor` value.
     /// Dynamic behavior queries must also receive the live level and position.
     fn is_static_redstone_conductor(&self) -> bool;
@@ -261,6 +263,10 @@ impl BlockStateExt for BlockStateId {
 
     fn is_suffocating(&self) -> bool {
         REGISTRY.blocks.is_suffocating(*self)
+    }
+
+    fn get_map_color(&self) -> crate::map_color::MapColor {
+        crate::map_color::MapColor::from_id(REGISTRY.blocks.map_color_id(*self))
     }
 
     fn is_static_redstone_conductor(&self) -> bool {
