@@ -39,6 +39,7 @@ pub use objects::projectiles::{
     LlamaSpitEntity, SmallFireballEntity, SnowballEntity, SpectralArrowEntity, SplashPotionEntity,
     ThrownEggEntity, ThrownTridentEntity,
 };
+pub use objects::projectiles::{ExperienceBottleEntity, WitherSkullEntity, wither_can_destroy};
 pub use objects::technical::{InteractionEntity, MarkerEntity};
 pub use objects::vehicles::{
     BoatEntity, ChestBoatEntity, ChestMinecartEntity, ChestRaftEntity, FurnaceMinecartEntity,
