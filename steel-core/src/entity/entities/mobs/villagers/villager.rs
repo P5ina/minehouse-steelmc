@@ -91,6 +91,10 @@ const UNHAPPY_TICKS: i32 = 40;
 const TAG_OFFERS: &str = "Offers";
 /// Vanilla `GOSSIP_DECAY_INTERVAL`.
 const GOSSIP_DECAY_INTERVAL: i64 = 24_000;
+/// Vanilla `Villager.GOSSIP_COOLDOWN`.
+const GOSSIP_COOLDOWN: i64 = 1_200;
+/// Vanilla `Villager.MAX_GOSSIP_TOPICS`.
+const MAX_GOSSIP_TOPICS: i32 = 10;
 /// Vanilla `allowedToRestock`: restocks a villager gets per day.
 const MAX_RESTOCKS_PER_DAY: i32 = 2;
 /// Vanilla `allowedToRestock`: ticks between the restocks of a day.
@@ -99,14 +103,21 @@ const RESTOCK_INTERVAL: i64 = 2_400;
 const HALF_DAY: i64 = 12_000;
 /// Vanilla `VillagerProfession.requestedItems`: only farmers ask for wheat,
 /// seeds and bone meal.
-fn is_requested_item(profession: VillagerProfessionRef, item: ItemRef) -> bool {
-    profession.key == vanilla_villager_professions::FARMER.key
-        && [
+pub(super) fn requested_items(profession: VillagerProfessionRef) -> Vec<ItemRef> {
+    if profession.key == vanilla_villager_professions::FARMER.key {
+        vec![
             &vanilla_items::WHEAT,
             &vanilla_items::WHEAT_SEEDS,
             &vanilla_items::BEETROOT_SEEDS,
             &vanilla_items::BONE_MEAL,
         ]
+    } else {
+        Vec::new()
+    }
+}
+
+fn is_requested_item(profession: VillagerProfessionRef, item: ItemRef) -> bool {
+    requested_items(profession)
         .into_iter()
         .any(|requested| requested.key == item.key)
 }
@@ -139,6 +150,8 @@ struct VillagerState {
     trading_player: Option<Uuid>,
     /// Vanilla `lastTradedPlayer`: rewarded with gossip on the next AI step.
     last_traded_player: Option<Uuid>,
+    /// Vanilla `lastGossipTime`: not saved, like vanilla.
+    last_gossip_time: i64,
     /// A behavior changed the profession mid-tick; vanilla rebuilds the
     /// brain right there, Steel once the brain has finished ticking.
     brain_refresh_pending: bool,
@@ -450,6 +463,114 @@ impl VillagerEntity {
     /// Vanilla `setGossips`: merges `gossips` into what this villager knows.
     pub fn set_gossips(&self, gossips: &GossipContainer) {
         self.state.lock().gossips.put_all(gossips);
+    }
+
+    /// Vanilla `Villager.gossip`: hears up to ten pieces of the other
+    /// villager's gossip, at most once a minute for each of them.
+    pub(super) fn gossip(&self, target: &Self, timestamp: i64) {
+        let ready = |last: i64| timestamp < last || timestamp >= last + GOSSIP_COOLDOWN;
+        let target_gossips = {
+            let target_state = target.state.lock();
+            if !ready(target_state.last_gossip_time) {
+                return;
+            }
+            target_state.gossips.clone()
+        };
+        let new_gossip = {
+            let mut state = self.state.lock();
+            if !ready(state.last_gossip_time) {
+                return;
+            }
+            let mut random = Xoroshiro::from_seed(rand::random());
+            let new_gossip =
+                state
+                    .gossips
+                    .transfer_from(&target_gossips, &mut random, MAX_GOSSIP_TOPICS);
+            state.last_gossip_time = timestamp;
+            new_gossip
+        };
+        target.state.lock().last_gossip_time = timestamp;
+        // TODO(villager brain): vanilla `spawnGolemIfNeeded(level, timestamp, 5)`.
+        if new_gossip > 0
+            && let Some(player) = trading_player_of(self)
+        {
+            self.update_special_prices(&player);
+        }
+    }
+
+    /// Vanilla `countFoodPointsInInventory`.
+    fn count_food_points_in_inventory(&self) -> i32 {
+        use crate::inventory::container::Container as _;
+        let inventory = self.inventory.lock();
+        (0..inventory.get_container_size())
+            .map(|slot| {
+                let stack = inventory.get_item(slot);
+                stack
+                    .get(VILLAGER_FOOD)
+                    .map_or(0, |food| stack.count() * food.nutrition())
+            })
+            .sum()
+    }
+
+    /// Whether villagers count `stack` as food (vanilla `VILLAGER_FOOD`).
+    pub(super) fn is_villager_food(stack: &ItemStack) -> bool {
+        stack.get(VILLAGER_FOOD).is_some()
+    }
+
+    /// Vanilla `hasExcessFood`.
+    pub(super) fn has_excess_food(&self) -> bool {
+        self.count_food_points_in_inventory() >= 24
+    }
+
+    /// Vanilla `wantsMoreFood`.
+    pub(super) fn wants_more_food(&self) -> bool {
+        self.count_food_points_in_inventory() < 12
+    }
+
+    /// Vanilla `Villager.canBreed`: fed enough, awake and grown up.
+    pub(super) fn can_breed(&self) -> bool {
+        let food_level = self.state.lock().food_level;
+        food_level + self.count_food_points_in_inventory() >= 12
+            && !self.is_sleeping()
+            && AgeableMob::get_age(self) == 0
+    }
+
+    /// Vanilla `eatAndDigestFood`: eats from the inventory until full, then
+    /// uses up twelve food points.
+    pub(super) fn eat_and_digest_food(&self) {
+        self.eat_until_full();
+        self.state.lock().food_level -= 12;
+    }
+
+    /// Vanilla `eatUntilFull`.
+    fn eat_until_full(&self) {
+        use crate::inventory::container::Container as _;
+        if self.state.lock().food_level >= 12 {
+            return;
+        }
+        let mut inventory = self.inventory.lock();
+        for slot in 0..inventory.get_container_size() {
+            let (nutrition, item_count) = {
+                let stack = inventory.get_item(slot);
+                let Some(food) = stack.get(VILLAGER_FOOD) else {
+                    continue;
+                };
+                (food.nutrition(), stack.count())
+            };
+            let mut state = self.state.lock();
+            let mut to_remove = 0;
+            for _ in 0..item_count {
+                state.food_level += nutrition;
+                to_remove += 1;
+                if state.food_level >= 12 {
+                    drop(state);
+                    inventory.remove_item(slot, to_remove);
+                    return;
+                }
+            }
+            drop(state);
+            inventory.remove_item(slot, to_remove);
+        }
     }
 
     /// Vanilla `onReputationEventFrom`.
