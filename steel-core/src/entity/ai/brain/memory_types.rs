@@ -373,6 +373,7 @@ pub static LAST_WOKEN: MemoryModuleType<i64> =
     MemoryModuleType::with_codec("last_woken", long_codec());
 pub static LAST_WORKED_AT_POI: MemoryModuleType<i64> =
     MemoryModuleType::with_codec("last_worked_at_poi", long_codec());
+pub static HIDING_PLACE: MemoryModuleType<GlobalPos> = MemoryModuleType::new("hiding_place");
 pub static HEARD_BELL_TIME: MemoryModuleType<i64> = MemoryModuleType::new("heard_bell_time");
 pub static NEAREST_BED: MemoryModuleType<BlockPos> = MemoryModuleType::new("nearest_bed");
 pub static ITEM_PICKUP_COOLDOWN_TICKS: MemoryModuleType<i32> =

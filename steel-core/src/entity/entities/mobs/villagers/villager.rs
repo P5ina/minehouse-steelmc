@@ -1415,7 +1415,15 @@ impl Mob for VillagerEntity {
             self.on_reputation_event_from(ReputationEventType::Trade, player);
             self.broadcast_entity_event(EntityStatus::VillagerHappy);
         }
-        // TODO(raids): sweat (entity event 42) during an active raid.
+        if !self.is_no_ai()
+            && rand::random_range(0..100) == 0
+            && let Some(world) = self.level()
+            && world
+                .get_raid_at(self.block_position())
+                .is_some_and(|raid| raid.is_active() && !raid.is_over())
+        {
+            self.broadcast_entity_event(EntityStatus::VillagerSweat);
+        }
         let no_offers = self
             .state
             .lock()
