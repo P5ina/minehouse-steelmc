@@ -279,6 +279,9 @@ pub struct LootContext<'a, R: rand::Rng> {
     pub interacting_entity: Option<EntityRef<'a>>,
     /// The level's structure search for vanilla `ExplorationMapFunction`.
     pub exploration_maps: Option<&'a mut dyn ExplorationMaps>,
+    /// Vanilla `LootParams.dynamicDrops`: the items a `minecraft:dynamic`
+    /// entry of each name yields.
+    pub dynamic_drops: Option<&'a [(Identifier, Vec<ItemStack>)]>,
 }
 
 /// One vanilla `ExplorationMapFunction` roll.
@@ -428,6 +431,7 @@ impl<'a, R: rand::Rng> LootContext<'a, R> {
             block_entity: None,
             interacting_entity: None,
             exploration_maps: None,
+            dynamic_drops: None,
         }
     }
 
@@ -526,6 +530,13 @@ impl<'a, R: rand::Rng> LootContext<'a, R> {
     #[must_use]
     pub const fn with_damage_source(mut self, damage_source: DamageSourceInfo<'a>) -> Self {
         self.damage_source = Some(damage_source);
+        self
+    }
+
+    /// Sets vanilla `LootParams.dynamicDrops`.
+    #[must_use]
+    pub const fn with_dynamic_drops(mut self, drops: &'a [(Identifier, Vec<ItemStack>)]) -> Self {
+        self.dynamic_drops = Some(drops);
         self
     }
 

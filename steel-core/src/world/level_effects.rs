@@ -414,7 +414,7 @@ impl World {
             .unwrap_or_else(|| Self::default_block_drops(state, context))
     }
 
-    pub(super) fn default_block_drops(
+    pub(crate) fn default_block_drops(
         state: BlockStateId,
         context: &BlockLootContext<'_>,
     ) -> Vec<ItemStack> {
@@ -449,6 +449,9 @@ impl World {
         }
         if let Some(radius) = context.explosion_radius() {
             ctx = ctx.with_explosion(radius);
+        }
+        if !context.dynamic_drops().is_empty() {
+            ctx = ctx.with_dynamic_drops(context.dynamic_drops());
         }
         if let Some(block_entity) = block_entity {
             ctx = ctx.with_block_entity(BlockEntityRef {
