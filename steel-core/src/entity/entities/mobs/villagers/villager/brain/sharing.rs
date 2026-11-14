@@ -162,7 +162,7 @@ impl Behavior<VillagerEntity> for TradeWithVillager {
         if let Some(body_entity) = world.get_entity_by_id(body.id()) {
             lock_gaze_and_walk_to_each_other(&body_entity, &target_entity, TRADE_SPEED_MODIFIER, 2);
         }
-        body.gossip(target, time);
+        body.gossip(world, target, time);
         let target_pos = target.position();
         let farmer = body.profession().key == vanilla_villager_professions::FARMER.key;
         if body.has_excess_food() && (farmer || target.wants_more_food()) {

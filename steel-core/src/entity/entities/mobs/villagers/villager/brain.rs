@@ -893,9 +893,18 @@ impl Behavior<VillagerEntity> for VillagerPanicTrigger {
         body.brain.set_active_activity_if_possible(Activity::PANIC);
     }
 
-    // TODO(villager brain): vanilla calls `spawnGolemIfNeeded` every 100
-    // ticks while panicking; villagers only want a golem after sleeping.
+    /// Vanilla: every 100 ticks of panic, three scared villagers that slept
+    /// recently are enough to summon a golem.
+    fn tick(&mut self, world: &Arc<World>, body: &VillagerEntity, time: i64) {
+        if time % 100 == 0 {
+            body.spawn_golem_if_needed(world, time, PANIC_VILLAGERS_NEEDED_FOR_GOLEM);
+        }
+    }
 }
+
+/// Vanilla `VillagerPanicTrigger.tick`: villagers that must agree to summon
+/// a golem while panicking.
+const PANIC_VILLAGERS_NEEDED_FOR_GOLEM: usize = 3;
 
 /// Vanilla `LookAndFollowTradingPlayerSink`: faces and follows the trading
 /// player while they stay close.
@@ -1218,7 +1227,7 @@ const GOLEM_SCAN_RATE: i32 = 200;
 const GOLEM_MEMORY_TIME_TO_LIVE: i64 = 599;
 
 /// Vanilla `GolemSensor.golemDetected`.
-fn golem_detected(memories: &mut Memories) {
+pub(super) fn golem_detected(memories: &mut Memories) {
     memories.set_with_expiry(&GOLEM_DETECTED_RECENTLY, true, GOLEM_MEMORY_TIME_TO_LIVE);
 }
 
