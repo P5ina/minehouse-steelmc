@@ -29,11 +29,12 @@ use steel_registry::{
 use steel_utils::locks::SyncMutex;
 use steel_utils::random::Random;
 use steel_utils::random::legacy_random::LegacyRandom;
-use steel_utils::types::Difficulty;
+use steel_utils::types::{Difficulty, InteractionHand};
 use steel_utils::{
     BlockPos, BlockStateId, Downcast as _, DowncastType, DowncastTypeKey, Identifier,
 };
 
+use crate::behavior::InteractionResult;
 use crate::entity::ai::goal::{
     BreakDoorGoal, HurtByTargetGoal, LookAtPlayerGoal, MoveThroughVillageGoal,
     NearestAttackableTargetGoal, RandomLookAroundGoal, RemoveBlockGoal, RemoveBlockSound,
@@ -486,6 +487,9 @@ trait ZombieVariantHooks {
     fn variant_is_preventing_player_rest(&self, _level: &World, _player: &Player) -> Option<bool> {
         None
     }
+
+    /// The part of the subclass's own `tick` that runs before `Zombie.tick`.
+    fn variant_tick_before_zombie(&self) {}
 }
 
 /// The save data a `Zombie` subclass adds on top of the zombie's own, for
@@ -853,6 +857,12 @@ macro_rules! impl_zombie_traits {
             }
 
             fn tick(self: Arc<Self>) {
+                ZombieVariantHooks::variant_tick_before_zombie(&*self);
+                // A finished conversion discards this mob; vanilla still runs
+                // the rest of the tick on it, with nothing observable.
+                if self.is_removed() {
+                    return;
+                }
                 let mount = self.zombie_state.lock().pending_jockey_mount.take();
                 if let Some(mount) = mount
                     && !mount.is_removed()
@@ -1387,7 +1397,12 @@ impl ZombieVariantHooks for HuskEntity {}
 
 impl ZombieVariantHooks for DrownedEntity {}
 
-impl ZombieVariantHooks for ZombieVillagerEntity {}
+impl ZombieVariantHooks for ZombieVillagerEntity {
+    /// Vanilla `ZombieVillager.tick`: the cure countdown.
+    fn variant_tick_before_zombie(&self) {
+        self.tick_villager_conversion();
+    }
+}
 
 mod zombie_villager;
 
@@ -1488,6 +1503,11 @@ impl_zombie_traits!(
         /// Vanilla `ZombieVillager.removeWhenFarAway`.
         fn remove_when_far_away(&self, _distance_sqr: f64) -> bool {
             self.remove_when_far_away_zombie_villager()
+        }
+
+        /// Vanilla `ZombieVillager.mobInteract`.
+        fn mob_interact(&self, player: &Player, hand: InteractionHand) -> InteractionResult {
+            self.mob_interact_zombie_villager(player, hand)
         }
     }
 );

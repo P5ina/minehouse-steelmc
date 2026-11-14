@@ -17,6 +17,7 @@ use steel_utils::{
 };
 
 use crate::block_entity::{BlockEntity, BlockEntityBase};
+use crate::entity::ai::brain::memory_types::HEARD_BELL_TIME;
 use crate::entity::{MobEffectInstance, SharedEntity};
 use crate::world::World;
 
@@ -119,6 +120,24 @@ impl BellBlockEntity {
             let mut state = self.state.lock();
             state.nearby_entities = Some(entities);
             state.last_ring_timestamp = game_time;
+        }
+
+        // Vanilla `updateEntities`: everyone close enough hears the bell.
+        let pos = self.get_block_pos();
+        let entities = self.state.lock().nearby_entities.clone();
+        for entity in entities.iter().flatten() {
+            if !entity.is_alive()
+                || entity.is_removed()
+                || !pos.closer_to_center_than(entity.position(), HEAR_BELL_RADIUS)
+            {
+                continue;
+            }
+            if let Some(memories) = entity
+                .as_living_entity()
+                .and_then(|living| living.brain_memories())
+            {
+                memories.lock().set(&HEARD_BELL_TIME, Some(game_time));
+            }
         }
     }
 

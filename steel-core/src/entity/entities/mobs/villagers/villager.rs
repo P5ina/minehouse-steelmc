@@ -248,7 +248,7 @@ impl VillagerEntity {
     /// Vanilla `refreshBrain` and `registerBrainGoals`: rebuilds the brain
     /// for the villager's age, keeping the saved memories, and picks up its
     /// schedule right away.
-    fn refresh_brain(&self) {
+    pub(crate) fn refresh_brain(&self) {
         let baby = AgeableMob::is_baby(self);
         let world = self.level();
         if let Some(world) = &world {
@@ -673,6 +673,11 @@ impl VillagerEntity {
             state.gossips.decay();
             state.last_gossip_decay_time = game_time;
         }
+    }
+
+    /// Vanilla `AbstractVillager.setOffers`.
+    pub fn set_offers(&self, offers: MerchantOffers) {
+        self.state.lock().offers = Some(offers);
     }
 
     /// Vanilla `AbstractVillager.getOffers`: rolls the first trades on first use.
@@ -1410,7 +1415,15 @@ impl Mob for VillagerEntity {
             self.on_reputation_event_from(ReputationEventType::Trade, player);
             self.broadcast_entity_event(EntityStatus::VillagerHappy);
         }
-        // TODO(raids): sweat (entity event 42) during an active raid.
+        if !self.is_no_ai()
+            && rand::random_range(0..100) == 0
+            && let Some(world) = self.level()
+            && world
+                .get_raid_at(self.block_position())
+                .is_some_and(|raid| raid.is_active() && !raid.is_over())
+        {
+            self.broadcast_entity_event(EntityStatus::VillagerSweat);
+        }
         let no_offers = self
             .state
             .lock()

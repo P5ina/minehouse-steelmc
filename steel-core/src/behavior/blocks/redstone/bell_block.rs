@@ -69,7 +69,26 @@ impl BellBlock {
         world.is_face_sturdy(support, support_pos, direction.opposite())
     }
 
-    // TODO: Notify villagers when the villager AI is fully implemented.
+    /// Vanilla `BellBlock.attemptToRing`: rings the bell at `pos`, swinging
+    /// toward its own facing when no direction is given. Returns whether a
+    /// bell was there to ring.
+    pub(crate) fn attempt_to_ring(
+        source: Option<&dyn Entity>,
+        world: &Arc<World>,
+        pos: BlockPos,
+        direction: Option<Direction>,
+    ) -> bool {
+        let is_bell = world
+            .get_block_entity(pos)
+            .is_some_and(|block_entity| block_entity.downcast_ref::<BellBlockEntity>().is_some());
+        if !is_bell {
+            return false;
+        }
+        let direction = direction.unwrap_or_else(|| world.get_block_state(pos).get_value(FACING));
+        Self::ring(source, world, pos, direction);
+        true
+    }
+
     fn ring(source: Option<&dyn Entity>, world: &Arc<World>, pos: BlockPos, direction: Direction) {
         let Some(block_entity) = world.get_block_entity(pos) else {
             return;

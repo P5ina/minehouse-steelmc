@@ -1,9 +1,5 @@
 //! The villager brain (vanilla `Villager.BRAIN_PROVIDER` and
 //! `VillagerGoalPackages`), with the villager-only behaviors and sensors.
-//!
-//! Not yet ported: sleeping,
-//! breeding, iron
-//! golem calls and raids.
 
 use std::sync::Arc;
 
@@ -21,6 +17,7 @@ use self::poi::{
     set_walk_target_from_block_memory, yield_job_site,
 };
 pub(super) use self::poi::{held_job_site, is_acquirable_job, is_home, is_meeting};
+use self::raid::{hide_package, pre_raid_package, raid_package, react_to_bell, set_raid_status};
 use self::sharing::{GiveGiftToHero, TradeWithVillager};
 use self::sleep::{JumpOnBed, NearestBedSensor, SleepInBed};
 use self::work::{SecondaryPoiSensor, WorkAtPoi, stroll_to_poi_list};
@@ -86,7 +83,9 @@ pub(super) fn make_brain(baby: bool, profession: VillagerProfessionRef) -> Brain
     activities.push(rest_package());
     activities.push(idle_package());
     activities.push(panic_package());
-    // TODO(raids): the `PRE_RAID`, `RAID` and `HIDE` packages.
+    activities.push(pre_raid_package());
+    activities.push(raid_package());
+    activities.push(hide_package());
     Brain::new(&[], sensors(), activities, None)
 }
 
@@ -122,7 +121,6 @@ fn is_type(entity: &SharedEntity, entity_type: EntityTypeRef) -> bool {
 
 /// Vanilla `VillagerGoalPackages.getCorePackage`.
 fn core_package(profession: VillagerProfessionRef) -> ActivityData<VillagerEntity> {
-    // TODO(raids): vanilla also reacts to bells and tracks raids (priority 0).
     let behaviors: Behaviors = vec![
         (0, Box::new(TimedBehavior::new(Swim::new(0.8)))),
         (0, Box::new(interact_with_door())),
@@ -132,6 +130,8 @@ fn core_package(profession: VillagerProfessionRef) -> ActivityData<VillagerEntit
         ),
         (0, Box::new(TimedBehavior::new(VillagerPanicTrigger))),
         (0, Box::new(wake_up())),
+        (0, Box::new(react_to_bell())),
+        (0, Box::new(set_raid_status())),
         (
             0,
             Box::new(validate_nearby_poi(
@@ -1259,6 +1259,7 @@ impl Sensor<VillagerEntity> for GolemSensor {
 mod breed;
 mod farm;
 mod poi;
+mod raid;
 mod sharing;
 mod sleep;
 mod work;

@@ -21,7 +21,7 @@ use steel_utils::{
 };
 use text_components::TextComponent;
 
-use crate::behavior::blocks::chest_container;
+use crate::behavior::blocks::{chest_container, composter_container};
 use crate::block_entity::container_loot::{ContainerLoot, LOOT_TABLE_SEED_TAG, LOOT_TABLE_TAG};
 use crate::block_entity::{BlockEntity, BlockEntityBase};
 use crate::entity::entities::ItemEntity;
@@ -138,7 +138,7 @@ impl HopperBlockEntity {
     ///
     /// A double chest yields both halves. Vanilla `HopperBlockEntity.getContainerAt`.
     #[must_use]
-    pub fn get_container_at(world: &World, pos: BlockPos) -> Option<Vec<ContainerRef>> {
+    pub fn get_container_at(world: &Arc<World>, pos: BlockPos) -> Option<Vec<ContainerRef>> {
         let center = DVec3::new(
             f64::from(pos.x()) + 0.5,
             f64::from(pos.y()) + 0.5,
@@ -190,7 +190,7 @@ impl HopperBlockEntity {
         moved
     }
 
-    fn eject_items(&self, world: &World, state: BlockStateId) -> bool {
+    fn eject_items(&self, world: &Arc<World>, state: BlockStateId) -> bool {
         let facing: Direction = state.get_value(&BlockStateProperties::FACING_HOPPER);
         let Some(targets) = Self::get_container_at(world, self.base.pos().relative(facing)) else {
             return false;
@@ -232,7 +232,7 @@ impl HopperBlockEntity {
         false
     }
 
-    fn suck_in_items(&self, world: &World) -> bool {
+    fn suck_in_items(&self, world: &Arc<World>) -> bool {
         suck_in_items(world, &self.container_ref, self.level_position(), true)
     }
 
@@ -254,15 +254,21 @@ impl HopperBlockEntity {
 
 /// Vanilla `HopperBlockEntity.getContainerAt(level, pos, state, x, y, z)`: the
 /// block's container, or else a container entity around `point`.
-fn get_container_at_point(world: &World, pos: BlockPos, point: DVec3) -> Option<Vec<ContainerRef>> {
+fn get_container_at_point(
+    world: &Arc<World>,
+    pos: BlockPos,
+    point: DVec3,
+) -> Option<Vec<ContainerRef>> {
     get_block_container(world, pos)
         .or_else(|| get_entity_container(world, point).map(|container| vec![container]))
 }
 
 /// Vanilla `HopperBlockEntity.getBlockContainer`.
-fn get_block_container(world: &World, pos: BlockPos) -> Option<Vec<ContainerRef>> {
+fn get_block_container(world: &Arc<World>, pos: BlockPos) -> Option<Vec<ContainerRef>> {
     let state = world.get_block_state(pos);
-    // TODO: Composters expose a container without a block entity (WorldlyContainerHolder).
+    if let Some(composter) = composter_container(world, pos, state) {
+        return Some(vec![composter]);
+    }
     if let Some(chest) = chest_container(state, world, pos, true) {
         return (!chest.is_empty()).then_some(chest);
     }
@@ -296,7 +302,7 @@ fn get_entity_container(world: &World, point: DVec3) -> Option<ContainerRef> {
 /// `grid_aligned` hoppers (the block) are blocked by a full block above;
 /// hopper minecarts are not.
 pub(crate) fn suck_in_items(
-    world: &World,
+    world: &Arc<World>,
     hopper: &ContainerRef,
     level_position: DVec3,
     grid_aligned: bool,

@@ -389,6 +389,12 @@ impl Raid {
         self.state.lock().status == RaidStatus::Loss
     }
 
+    /// Vanilla `hasFirstWaveSpawned`.
+    #[must_use]
+    pub fn has_first_wave_spawned(&self) -> bool {
+        self.state.lock().has_first_wave_spawned()
+    }
+
     /// Vanilla `isBetweenWaves`.
     #[must_use]
     pub fn is_between_waves(&self) -> bool {

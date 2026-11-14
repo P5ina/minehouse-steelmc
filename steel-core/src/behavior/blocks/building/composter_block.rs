@@ -17,11 +17,15 @@ use steel_registry::item_stack::ItemStack;
 use steel_registry::items::item::BlockHitResult;
 use steel_registry::stat::vanilla_stat_types;
 use steel_registry::{
-    level_events, sound_events, vanilla_context_int_providers, vanilla_game_events, vanilla_items,
+    level_events, sound_events, vanilla_blocks, vanilla_context_int_providers, vanilla_game_events,
+    vanilla_items,
 };
+use steel_utils::locks::shared;
 use steel_utils::types::{InteractionHand, UpdateFlags};
-use steel_utils::{BlockPos, BlockStateId};
+use steel_utils::{BlockPos, BlockStateId, DowncastType, DowncastTypeKey};
 
+use crate::inventory::container::Container;
+use crate::inventory::lock::ContainerRef;
 use crate::{
     behavior::{BlockBehavior, BlockPlaceContext, InteractionResult, InventoryAccess},
     entity::Entity,
@@ -285,6 +289,167 @@ impl BlockBehavior for ComposterBlock {
     ) -> bool {
         false
     }
+}
+
+/// What a composter offers to hoppers and droppers (vanilla
+/// `ComposterBlock.EmptyContainer`, `InputContainer` and `OutputContainer`).
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ComposterContainerKind {
+    /// A full composter waiting to turn ready takes nothing and gives nothing.
+    Empty,
+    /// A composter below level 7 takes one compostable item from above.
+    Input,
+    /// A ready composter gives one bone meal downwards.
+    Output,
+}
+
+/// What a composter container's `setChanged` asks of the world, applied once
+/// every container lock is released.
+enum ComposterChange {
+    AddLayer(Compostable),
+    Empty,
+}
+
+/// Vanilla `ComposterBlock.getContainer`: a short-lived one-slot view of the
+/// composter for hoppers and droppers.
+pub(crate) struct ComposterContainer {
+    kind: ComposterContainerKind,
+    items: Vec<ItemStack>,
+    changed: bool,
+    pending: Option<ComposterChange>,
+}
+
+// SAFETY: This key uniquely identifies `ComposterContainer`.
+unsafe impl DowncastType for ComposterContainer {
+    const TYPE_KEY: DowncastTypeKey = DowncastTypeKey::new("steel:inventory/composter");
+}
+
+/// Slot 0 for the face a composter container works through.
+const COMPOSTER_SLOT: [usize; 1] = [0];
+
+impl Container for ComposterContainer {
+    fn items(&self) -> &[ItemStack] {
+        &self.items
+    }
+
+    fn items_mut(&mut self) -> &mut [ItemStack] {
+        &mut self.items
+    }
+
+    fn get_max_stack_size(&self) -> i32 {
+        1
+    }
+
+    fn slots_for_face(&self, direction: Direction) -> Option<&'static [usize]> {
+        let face = match self.kind {
+            ComposterContainerKind::Input => Direction::Up,
+            ComposterContainerKind::Output => Direction::Down,
+            ComposterContainerKind::Empty => return Some(&[]),
+        };
+        Some(if direction == face {
+            &COMPOSTER_SLOT
+        } else {
+            &[]
+        })
+    }
+
+    fn can_place_item_through_face(
+        &self,
+        _slot: usize,
+        stack: &ItemStack,
+        direction: Direction,
+    ) -> bool {
+        self.kind == ComposterContainerKind::Input
+            && !self.changed
+            && direction == Direction::Up
+            && stack.get(COMPOSTABLE).is_some()
+    }
+
+    fn can_take_item_through_face(
+        &self,
+        _slot: usize,
+        stack: &ItemStack,
+        direction: Direction,
+    ) -> bool {
+        self.kind == ComposterContainerKind::Output
+            && !self.changed
+            && direction == Direction::Down
+            && stack.is(&vanilla_items::BONE_MEAL)
+    }
+
+    fn set_changed(&mut self) {
+        match self.kind {
+            ComposterContainerKind::Empty => {}
+            ComposterContainerKind::Input => {
+                let Some(compostable) = self.items[0].get(COMPOSTABLE).cloned() else {
+                    return;
+                };
+                if self.items[0].is_empty() {
+                    return;
+                }
+                self.changed = true;
+                self.pending = Some(ComposterChange::AddLayer(compostable));
+                self.items[0] = ItemStack::empty();
+            }
+            ComposterContainerKind::Output => {
+                self.pending = Some(ComposterChange::Empty);
+                self.changed = true;
+            }
+        }
+    }
+}
+
+/// Vanilla `ComposterBlock.getContainer`: the container a hopper or dropper
+/// reaches at a composter, or `None` when `state` is not a composter.
+pub(crate) fn composter_container(
+    world: &Arc<World>,
+    pos: BlockPos,
+    state: BlockStateId,
+) -> Option<ContainerRef> {
+    // Vanilla `instanceof WorldlyContainerHolder`: only the composter.
+    if state.get_block() != &vanilla_blocks::COMPOSTER {
+        return None;
+    }
+    let level = composter_level(state);
+    let (kind, items) = if level == READY {
+        (
+            ComposterContainerKind::Output,
+            vec![ItemStack::new(&vanilla_items::BONE_MEAL)],
+        )
+    } else if level < MAX_LEVEL {
+        (ComposterContainerKind::Input, vec![ItemStack::empty()])
+    } else {
+        (ComposterContainerKind::Empty, Vec::new())
+    };
+    let container = shared(ComposterContainer {
+        kind,
+        items,
+        changed: false,
+        pending: None,
+    });
+    let world = Arc::clone(world);
+    let source = Arc::clone(&container);
+    Some(ContainerRef::block_container_with_callback(
+        container,
+        Arc::new(move || {
+            let pending = source.lock().pending.take();
+            match pending {
+                Some(ComposterChange::AddLayer(compostable)) => {
+                    let new_state = add_layer(None, state, &world, pos, &compostable);
+                    world.level_event(
+                        level_events::COMPOSTER_FILL,
+                        pos,
+                        i32::from(new_state != state),
+                        None,
+                    );
+                }
+                Some(ComposterChange::Empty) => {
+                    empty(None, state, &world, pos);
+                }
+                None => {}
+            }
+        }),
+    ))
 }
 
 #[cfg(test)]

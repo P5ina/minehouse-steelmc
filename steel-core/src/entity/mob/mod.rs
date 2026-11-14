@@ -908,6 +908,29 @@ pub trait Mob: LivingEntity + Leashable {
         stack.copy_with_count(stack.count())
     }
 
+    /// Vanilla `Mob.dropPreservedEquipment(level, shouldDrop)`: drops every
+    /// preserved item that passes `should_drop` and returns the slots whose
+    /// items did not pass, in slot order.
+    fn drop_preserved_equipment(
+        &self,
+        should_drop: &dyn Fn(&ItemStack) -> bool,
+    ) -> Vec<EquipmentSlot> {
+        let mut prevented_from_dropping = Vec::new();
+        for slot in EquipmentSlot::ALL {
+            let item_stack = self.equipment_in_slot(slot);
+            if item_stack.is_empty() {
+                continue;
+            }
+            if !should_drop(&item_stack) {
+                prevented_from_dropping.push(slot);
+            } else if self.is_equipment_drop_preserved(slot) {
+                self.set_item_slot(slot, ItemStack::empty());
+                let _ = self.spawn_at_location(item_stack, 0.0);
+            }
+        }
+        prevented_from_dropping
+    }
+
     /// Vanilla `Mob.canReplaceCurrentItem`: whether the freshly picked-up item
     /// should displace what is already in `slot`.
     fn can_replace_current_item(
