@@ -266,6 +266,10 @@ pub fn init_block_entities() {
             Arc::new(JukeboxBlockEntity::new(level, pos, state))
         });
 
+        registry.register(&vanilla_block_entity_types::LECTERN, |level, pos, state| {
+            Arc::new(LecternBlockEntity::new(level, pos, state))
+        });
+
         // Register beehive block entity factory
         registry.register(&vanilla_block_entity_types::BEEHIVE, |level, pos, state| {
             Arc::new(BeehiveBlockEntity::new(level, pos, state))

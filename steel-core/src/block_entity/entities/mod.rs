@@ -21,6 +21,7 @@ mod end_portal;
 mod ender_chest;
 mod hopper;
 mod jukebox;
+mod lectern;
 mod piston_moving;
 mod potent_sulfur;
 mod shulker_box;
@@ -65,6 +66,11 @@ pub(crate) use hopper::{
     add_item_entity as hopper_add_item_entity, suck_in_items as hopper_suck_in_items,
 };
 pub use jukebox::JukeboxBlockEntity;
+pub use lectern::{LecternBlockEntity, LecternBook, PAGE_CHANGE_IMPULSE_TICKS};
+pub(crate) use lectern::{
+    change_powered as lectern_change_powered, reset_book_state as lectern_reset_book_state,
+    update_below as lectern_update_below,
+};
 pub use piston_moving::PistonMovingBlockEntity;
 pub use potent_sulfur::PotentSulfurBlockEntity;
 pub use shulker_box::{AnimationStatus, SHULKER_BOX_SLOTS, ShulkerBoxBlockEntity};

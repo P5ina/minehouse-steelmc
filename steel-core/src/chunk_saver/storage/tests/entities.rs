@@ -144,8 +144,8 @@ fn block_entity_stored_components_survive_chunk_save_load() {
 fn owned_block_entity_load_preserves_stored_components() {
     init_globals();
     assert!(
-        !BLOCK_ENTITIES.has_factory(&vanilla_block_entity_types::LECTERN),
-        "the lectern now has a block entity; pick another unimplemented type for this test"
+        !BLOCK_ENTITIES.has_factory(&vanilla_block_entity_types::VAULT),
+        "the vault now has a block entity; pick another unimplemented type for this test"
     );
 
     for (entity_type, state) in [
@@ -154,8 +154,8 @@ fn owned_block_entity_load_preserves_stored_components() {
             vanilla_blocks::ENCHANTING_TABLE.default_state(),
         ),
         (
-            &vanilla_block_entity_types::LECTERN,
-            vanilla_blocks::LECTERN.default_state(),
+            &vanilla_block_entity_types::VAULT,
+            vanilla_blocks::VAULT.default_state(),
         ),
     ] {
         let mut components = NbtCompound::new();
