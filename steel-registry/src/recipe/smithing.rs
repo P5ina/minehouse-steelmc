@@ -41,6 +41,33 @@ impl SmithingRecipe {
             Self::Trim(recipe) => &recipe.properties,
         }
     }
+
+    /// Vanilla `SmithingRecipe.templateIngredient`.
+    #[must_use]
+    pub const fn template_ingredient(&self) -> Option<&Ingredient> {
+        match self {
+            Self::Transform(recipe) => recipe.template.as_ref(),
+            Self::Trim(recipe) => Some(&recipe.template),
+        }
+    }
+
+    /// Vanilla `SmithingRecipe.baseIngredient`.
+    #[must_use]
+    pub const fn base_ingredient(&self) -> &Ingredient {
+        match self {
+            Self::Transform(recipe) => &recipe.base,
+            Self::Trim(recipe) => &recipe.base,
+        }
+    }
+
+    /// Vanilla `SmithingRecipe.additionIngredient`.
+    #[must_use]
+    pub const fn addition_ingredient(&self) -> Option<&Ingredient> {
+        match self {
+            Self::Transform(recipe) => recipe.addition.as_ref(),
+            Self::Trim(recipe) => Some(&recipe.addition),
+        }
+    }
 }
 
 // SAFETY: This Steel-owned key uniquely identifies the unified vanilla smithing data enum.
@@ -85,17 +112,9 @@ impl RecipeInput for SmithingRecipeInput {
 
 impl RecipeMatches<SmithingRecipeInput> for SmithingRecipe {
     fn matches(&self, input: &SmithingRecipeInput) -> bool {
-        let (template, base, addition) = match self {
-            Self::Transform(recipe) => (
-                recipe.template.as_ref(),
-                &recipe.base,
-                recipe.addition.as_ref(),
-            ),
-            Self::Trim(recipe) => (Some(&recipe.template), &recipe.base, Some(&recipe.addition)),
-        };
-        optional_ingredient_matches(template, &input.template)
-            && base.test(&input.base)
-            && optional_ingredient_matches(addition, &input.addition)
+        optional_ingredient_matches(self.template_ingredient(), &input.template)
+            && self.base_ingredient().test(&input.base)
+            && optional_ingredient_matches(self.addition_ingredient(), &input.addition)
     }
 }
 

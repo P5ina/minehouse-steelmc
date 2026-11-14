@@ -11,6 +11,8 @@ mod restricted_slot;
 mod result_handler;
 mod result_slot;
 pub mod slot;
+mod smithing_slots;
+mod stonecutter_slots;
 
 pub use anvil_slots::*;
 pub use armor_slot::ArmorSlot;
@@ -23,3 +25,5 @@ pub use restricted_slot::*;
 pub use result_handler::ResultHandler;
 pub use result_slot::*;
 pub use slot::*;
+pub use smithing_slots::*;
+pub use stonecutter_slots::*;

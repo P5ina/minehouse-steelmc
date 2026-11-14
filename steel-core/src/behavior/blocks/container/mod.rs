@@ -12,6 +12,8 @@ mod furnace_block;
 mod grindstone_block;
 mod hopper_block;
 mod shulker_box_block;
+mod smithing_table_block;
+mod stonecutter_block;
 
 pub use anvil_block::*;
 pub use barrel_block::*;
@@ -27,6 +29,8 @@ pub use furnace_block::*;
 pub use grindstone_block::*;
 pub use hopper_block::*;
 pub use shulker_box_block::*;
+pub use smithing_table_block::*;
+pub use stonecutter_block::*;
 
 use crate::player::Player;
 use crate::world::World;
